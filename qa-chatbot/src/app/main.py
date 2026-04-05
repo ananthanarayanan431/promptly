@@ -1,22 +1,24 @@
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
-from app.config.app import get_app_settings
 from app.api.router import api_router
+from app.api.types.response import ErrorResponse
+from app.config.app import get_app_settings
+from app.core.logging import setup_logging
 from app.core.middleware import CorrelationIdMiddleware, RateLimitMiddleware
 from app.graph.builder import compile_graph
-from app.api.types.response import ErrorResponse
-
 from app.graph.checkpointer import get_checkpointer
 
 app_settings = get_app_settings()
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    setup_logging(debug=app_settings.DEBUG)
     async with get_checkpointer() as checkpointer:
         app.state.graph = await compile_graph(checkpointer)
         yield
@@ -42,10 +44,18 @@ def create_app() -> FastAPI:
     app.include_router(api_router, prefix=app_settings.API_V1_PREFIX)
 
     @app.exception_handler(ErrorResponse)
-    async def global_error_response_handler(request: Request, exc: ErrorResponse):
+    async def global_error_response_handler(request: Request, exc: ErrorResponse) -> JSONResponse:
         return JSONResponse(
             status_code=exc.error.code,
-            content={"success": False, "data": None, "error": {"code": exc.error.code, "description": exc.error.description, "message": exc.error.message}}
+            content={
+                "success": False,
+                "data": None,
+                "error": {
+                    "code": exc.error.code,
+                    "description": exc.error.description,
+                    "message": exc.error.message,
+                },
+            },
         )
 
     return app

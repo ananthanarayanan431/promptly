@@ -1,0 +1,17 @@
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# .github/CODEOWNERS
+# Replace @ananthanarayanan431 with your actual GitHub username
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# Default owner for everything
+* @ananthanarayanan431
+
+# Graph / LLM pipeline — requires extra review
+src/app/graph/ @ananthanarayanan431
+
+# DB migrations — always needs review
+src/app/migrations/ @ananthanarayanan431
+
+# CI/CD — always needs review
+.github/ @ananthanarayanan431

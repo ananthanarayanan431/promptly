@@ -2389,6 +2389,7 @@ dev = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "pre-commit" },
     { name = "psycopg2-binary" },
 ]
 
@@ -2426,7 +2427,10 @@ requires-dist = [
 provides-extras = ["dev"]
 
 [package.metadata.requires-dev]
-dev = [{ name = "psycopg2-binary", specifier = ">=2.9.11" }]
+dev = [
+    { name = "pre-commit", specifier = ">=4.5.1" },
+    { name = "psycopg2-binary", specifier = ">=2.9.11" },
+]
 
 [[package]]
 name = "redis"
