@@ -1,0 +1,50 @@
+
+> frontend@0.1.0 build
+> next build
+
+  ▲ Next.js 14.2.35
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully
+   Linting and checking validity of types ...
+
+Failed to compile.
+
+./src/app/(auth)/login/page.tsx
+36:54  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+50:21  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+83:16  Error: `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`.  react/no-unescaped-entities
+
+./src/app/(auth)/register/page.tsx
+36:54  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+50:21  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+
+./src/app/(dashboard)/analyze/page.tsx
+22:14  Error: 'error' is defined but never used.  @typescript-eslint/no-unused-vars
+34:14  Error: 'error' is defined but never used.  @typescript-eslint/no-unused-vars
+
+./src/app/(dashboard)/optimize/page.tsx
+33:19  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+
+./src/app/(dashboard)/page.tsx
+1:29  Error: 'CardDescription' is defined but never used.  @typescript-eslint/no-unused-vars
+
+./src/app/(dashboard)/versions/page.tsx
+13:38  Error: 'error' is assigned a value but never used.  @typescript-eslint/no-unused-vars
+
+./src/components/analyze/advisory-display.tsx
+2:52  Error: 'CardDescription' is defined but never used.  @typescript-eslint/no-unused-vars
+
+./src/components/analyze/score-display.tsx
+3:10  Error: 'Badge' is defined but never used.  @typescript-eslint/no-unused-vars
+
+./src/components/layout/sidebar.tsx
+3:27  Error: 'Settings' is defined but never used.  @typescript-eslint/no-unused-vars
+
+./src/components/optimize/prompt-form.tsx
+20:10  Error: 'hasPrefillId' is assigned a value but never used.  @typescript-eslint/no-unused-vars
+
+./src/types/api.ts
+23:10  Error: Unexpected any. Specify a different type.  @typescript-eslint/no-explicit-any
+
+info  - Need to disable some ESLint rules? Learn more here: https://nextjs.org/docs/basic-features/eslint#disabling-rules
