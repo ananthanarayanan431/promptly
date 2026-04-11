@@ -1,22 +1,25 @@
 import time
 import uuid
-from collections.abc import Callable
 from typing import Any
 
-from fastapi import Request, Response
+from fastapi import Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from app.api.types.response import ResponseError
 from app.config.rate_limit import get_rate_limit_settings
 
 
 class CorrelationIdMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next: Callable[..., Any]) -> Response:
+    async def dispatch(self, request: Request, call_next: Any) -> Any:
         correlation_id = request.headers.get("X-Correlation-ID", str(uuid.uuid4()))
         request.state.correlation_id = correlation_id
-        response = await call_next(request)
-        response.headers["X-Correlation-ID"] = correlation_id
-        return response
+        try:
+            response = await call_next(request)
+            response.headers["X-Correlation-ID"] = correlation_id
+            return response
+        except ResponseError as e:
+            return JSONResponse(status_code=e.status_code, content={"detail": e.message})
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
@@ -24,7 +27,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self.rate_limits: dict[str, list[float]] = {}
 
-    async def dispatch(self, request: Request, call_next: Callable[..., Any]) -> Response:
+    async def dispatch(self, request: Request, call_next: Any) -> Any:
         settings = get_rate_limit_settings()
 
         # Simple in-memory rate limiting based on client IP

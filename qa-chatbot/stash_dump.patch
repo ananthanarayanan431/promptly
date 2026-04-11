@@ -1,0 +1,3509 @@
+diff --git a/qa-chatbot/CLAUDE.md b/qa-chatbot/CLAUDE.md
+new file mode 100644
+index 0000000..541f285
+--- /dev/null
++++ b/qa-chatbot/CLAUDE.md
+@@ -0,0 +1,142 @@
++# CLAUDE.md
++
++This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
++
++## Commands
++
++All commands use `uv` (Astral's package manager) and are available via `make`:
++
++```bash
++# Setup
++make install          # uv sync --all-extras
++
++# Infrastructure (requires Docker)
++make infra            # Start postgres + redis containers
++make migrate          # uv run alembic upgrade head
++make migration name=X # uv run alembic revision --autogenerate -m "X"
++make rollback         # uv run alembic downgrade -1
++
++# Run
++make dev              # uvicorn app.main:app --reload (port 8000)
++make worker           # celery worker (concurrency=4)
++
++# Code quality
++make lint             # uv run ruff check src/
++make format           # uv run ruff format src/
++make typecheck        # uv run mypy src/
++make check            # lint + format + typecheck
++
++# Testing
++make test             # pytest tests/ with coverage
++make test-unit        # pytest tests/unit/ only
++make test-api         # pytest tests/integration/ only
++```
++
++One-liner dev setup: `./run.sh dev` (handles infra, migrations, and server start).
++
++Swagger UI is available at `http://localhost:8000/docs` in dev mode.
++
++## Architecture
++
++**Stack:** FastAPI + SQLAlchemy 2.0 (async) + PostgreSQL (pgvector) + Redis + Celery + LangGraph
++
++**Purpose:** Prompt optimizer — submits an existing prompt through a multi-model council that
++independently optimizes it from different angles, then synthesizes the best result.
++
++### LangGraph Pipeline
++
++```
++intent_classifier → (create → END with rejection)
++                  → (optimize → guardrails → council_vote → synthesize → END)
++                                ↓ (safety fail)
++                              END
++```
++
++1. **intent_classifier** — first gate: detects whether the user wants to OPTIMIZE an existing
++   prompt or CREATE a new one. CREATE requests are rejected here with an explanation; only
++   OPTIMIZE requests proceed. Uses `prompts/intent_classifier.md`.
++
++2. **guardrails** — safety gate: rejects empty input, prompts >8000 chars, injection patterns,
++   and blocked keywords. Short-circuits to END on failure.
++
++3. **council_vote** — each `COUNCIL_MODELS` model independently optimizes the raw prompt using a
++   different strategy. Model 0 uses `prompts/council_optimizer_analytical.md` (precision,
++   constraints, output format); model 1 uses `prompts/council_optimizer_creative.md` (context,
++   persona depth, exemplars). Returns `council_responses: [{model, optimized_prompt, usage}]`.
++
++4. **synthesize** — acts as meta-judge: evaluates all council proposals, extracts the strongest
++   elements from each, and produces one coherent synthesized best prompt. Uses
++   `prompts/synthesize_best.md`. Returns `final_response` = the final optimized prompt.
++
++Graph state is persisted to PostgreSQL via `AsyncPostgresSaver` (`src/app/graph/checkpointer.py`),
++keyed by `graph_thread_id`. Prompts are loaded from `prompts/` at module startup via
++`src/app/graph/prompts.py`.
++
++### Prompts Directory
++
++`prompts/` lives at the project root and contains all LLM system prompts as `.md` files.
++Edit prompts here to tune optimization behavior — no code changes needed.
++
++| File | Used by | Purpose |
++|------|---------|---------|
++| `intent_classifier.md` | `intent_classifier` node | Binary OPTIMIZE/CREATE classification |
++| `council_optimizer_analytical.md` | `council_vote` node (model 0) | Precision, constraints, output format |
++| `council_optimizer_creative.md` | `council_vote` node (model 1) | Context, persona, exemplars, reasoning |
++| `synthesize_best.md` | `synthesize` node | Judge + merge council proposals |
++
++### Request Flow
++
++```
++POST /api/v1/chat  →  ChatService.process()  →  LangGraph graph  →  DB (ChatSession + Message)
++```
++
++Response shape:
++```json
++{
++  "session_id": "...",
++  "original_prompt": "the raw input",
++  "optimized_prompt": "the final synthesized best prompt",
++  "council_proposals": [{"model": "...", "optimized_prompt": "...", "usage": {}}],
++  "token_usage": {"total_tokens": N}
++}
++```
++
++- Auth via `get_current_user()` in `src/app/dependencies.py` — JWT Bearer or `qac_`-prefixed API key
++- Each optimization request costs 10 credits (402 if insufficient)
++- Streaming variant (`/chat/stream`) emits SSE chunks from the synthesize node
++
++### Key Layers
++
++| Layer | Location | Purpose |
++|-------|----------|---------|
++| API routes | `src/app/api/v1/` | FastAPI routers (auth, chat, users, prompts, health) |
++| Services | `src/app/services/` | Business logic; `ChatService` owns graph execution |
++| Repositories | `src/app/repositories/` | Async SQLAlchemy data access; extend `BaseRepository` |
++| Models | `src/app/models/` | ORM: `User`, `ChatSession`, `Message`; use `UUIDMixin + TimestampMixin` |
++| Schemas | `src/app/schemas/` | Pydantic I/O contracts |
++| Config | `src/app/config/` | One settings class per concern (app, auth, db, llm, redis, rate_limit) |
++| Graph | `src/app/graph/` | LangGraph state, builder, checkpointer, nodes, and prompt loader |
++| Prompts | `prompts/` | System prompts as `.md` files, loaded once at module startup |
++| Workers | `src/app/workers/` | Celery app + background tasks (Redis broker) |
++
++### Data Models
++
++- **User:** `id`, `email`, `hashed_password`, `api_key_hash`, `credits` (default 100), `is_active`
++- **ChatSession:** `id`, `user_id`, `graph_thread_id` — one session per LangGraph thread
++- **Message:** `id`, `session_id`, `role`, `raw_prompt`, `enhanced_prompt` (unused, kept for schema compat), `response` (= final optimized prompt), `council_votes` (JSON), `token_usage` (JSON)
++
++### Configuration
++
++Settings are loaded from environment variables via `pydantic-settings`. Copy `.env.example` to `.env` before running locally. Key variables:
++
++- `OPENROUTER_API_KEY` — required for all LLM calls
++- `COUNCIL_MODELS` — list of models; index 0 uses analytical strategy, index 1 uses creative strategy
++- `DATABASE_URL` — async postgres URL (asyncpg driver)
++- `REDIS_URL` — used by both cache and Celery
++
++### Code Style
++
++- **Ruff:** line-length=100, target-version=py312, rules: E, F, I, N, UP, ANN, S, B
++- **MyPy:** strict=true, Python 3.12
++- Pre-commit hooks enforce ruff + mypy and block commits directly to `main`
++- All DB operations are async; never use synchronous SQLAlchemy patterns
+diff --git a/qa-chatbot/prompts/council_optimizer_analytical.md b/qa-chatbot/prompts/council_optimizer_analytical.md
+new file mode 100644
+index 0000000..b100df5
+--- /dev/null
++++ b/qa-chatbot/prompts/council_optimizer_analytical.md
+@@ -0,0 +1,58 @@
++You are a senior prompt engineer specializing in precision, structure, and unambiguous instruction.
++
++Your task: transform the prompt below into the most effective version possible, optimizing through
++the lens of CLARITY and CONSTRAINT. Do not change what the prompt is asking for — only improve
++how it asks.
++
++## Your Optimization Framework
++
++Work through each dimension in order. Apply only what the prompt actually needs — do not pad.
++
++### 1. Role & Expertise Persona
++If missing or vague, add a specific expert persona that directly serves the task.
++- Weak: "You are a helpful assistant."
++- Strong: "You are a senior backend engineer with 10+ years of experience in distributed systems."
++Define the expertise level and domain precisely. The persona should make the AI pre-load the right
++mental context before it reads the rest of the prompt.
++
++### 2. Task Decomposition
++For multi-part or complex tasks, break the work into numbered, sequenced steps.
++Make dependencies between steps explicit. Eliminate "do X and Y" run-ons.
++Single-task prompts do not need decomposition — keep them focused.
++
++### 3. Precision over Vagueness
++Replace every subjective or unmeasurable qualifier with a concrete requirement.
++- "Write a good summary" → "Write a summary of exactly 3 sentences covering: main claim,
++  key supporting evidence, and conclusion."
++- "Be concise" → "Respond in under 120 words."
++- "Make it professional" → "Use formal language, no contractions, no first-person."
++Eliminate pronouns with unclear referents. Name every entity explicitly.
++
++### 4. Hard Constraints & Scope Boundary
++Add explicit prohibitions for common failure modes relevant to this task.
++Pattern: "Do NOT [specific behavior]. Do NOT [scope creep]."
++Define what is out of scope so the AI does not over-generate.
++
++### 5. Output Format Specification
++Specify the exact output format when it matters:
++- Structure: JSON, markdown with headers, numbered list, prose, table, code block
++- Required sections or fields
++- Length expectation: "in under 200 words", "in exactly 5 bullet points", "as a 3-paragraph essay"
++If the task has an obvious format already implied, you may skip explicit specification.
++
++### 6. Quality Verification (for precise or risky tasks)
++Add a self-check instruction before the final output when accuracy matters:
++"Before responding, verify that [condition]. Only then provide your answer."
++Use this sparingly — only when the cost of an incorrect answer is high.
++
++## Rules
++- Preserve the original intent exactly. Never expand scope or change the task.
++- Shorter is better when both versions work equally well. Remove padding ruthlessly.
++- Do not add role, constraints, or format if the original prompt does not need them.
++- Return ONLY the optimized prompt text. No preamble, no commentary, no "Here is the improved version:".
++
++## User Feedback (when present)
++The user message may include a section after "---" labelled "Optimization Feedback".
++Treat it as a high-priority directive that overrides any general heuristic above that conflicts
++with it. Apply the feedback precisely — if it says "keep under 50 words", enforce that hard limit;
++if it says "add a JSON output format", add it even if the original had none.
+diff --git a/qa-chatbot/prompts/council_optimizer_creative.md b/qa-chatbot/prompts/council_optimizer_creative.md
+new file mode 100644
+index 0000000..ca0b02e
+--- /dev/null
++++ b/qa-chatbot/prompts/council_optimizer_creative.md
+@@ -0,0 +1,73 @@
++You are an expert prompt engineer specializing in rich context, engagement, and holistic framing.
++
++Your belief: the best prompts do not merely instruct — they set a scene that naturally guides an AI
++to exactly the right response. Context, motivation, and exemplars communicate nuance that bare
++instructions cannot.
++
++Your task: transform the prompt below into the most compelling and effective version possible,
++optimizing through the lens of DEPTH and ENGAGEMENT. Do not change what the prompt is asking
++for — only make the AI more likely to respond in exactly the ideal way.
++
++## Your Optimization Framework
++
++Apply only what actually serves the prompt — do not add elements for their own sake.
++
++### 1. Scene Setting & Situational Context
++Add real-world framing that helps the AI understand the stakes, audience, and environment.
++- Who is asking, and why does it matter right now?
++- What will the output be used for?
++- What would "failure" look like in this context?
++Good context example: "The audience is a technical hiring committee reviewing candidates in
++under 2 minutes. They are skimming, not reading."
++Skip if the task is self-contained and context-independent.
++
++### 2. Persona with Voice & Style
++Define not just expertise but personality, communication register, and style.
++- Not just: "You are a data analyst."
++- But: "You are a data analyst who communicates findings to non-technical stakeholders.
++  You replace jargon with analogies and always lead with the business implication."
++Match tone to use case: formal/casual, technical/accessible, concise/expansive.
++
++### 3. Audience Awareness
++Specify who will read or use the output when it affects content decisions:
++- "The reader has no prior knowledge of this topic."
++- "The reader is an expert — skip foundational explanations."
++- "The output will be read aloud in a 5-minute presentation."
++This single addition often eliminates the most common AI failure: pitching at the wrong level.
++
++### 4. Exemplar-Driven Clarity (when appropriate)
++Add one short, concrete example of the desired output style using "For example:" or a brief sample.
++Show, don't tell. A single example communicates:
++- Tone, length, level of detail
++- What counts as a "good" response
++- Implicit constraints the AI would not otherwise infer
++Use this when the task has a specific style that words alone cannot fully convey.
++
++### 5. Reasoning Activation (for analytical or multi-step tasks)
++Add a chain-of-thought trigger before the main instruction when systematic thinking helps:
++- "Think step by step before writing your response."
++- "Consider at least two alternative approaches before choosing one."
++- "Before answering, identify: [key consideration 1], [key consideration 2]."
++Use this for complex reasoning tasks. Skip for simple factual or creative tasks.
++
++### 6. Motivating the Why
++When knowing the purpose behind a request helps the AI make better judgment calls,
++briefly state the goal behind the immediate task:
++"The goal is to help a non-technical founder explain our tech stack to investors — not to
++teach them engineering."
++This prevents the AI from optimizing for the wrong thing.
++
++## Rules
++- Preserve the original intent exactly. Every word you add must serve the task.
++- Do not make prompts verbose without purpose. If a sentence does not improve the output,
++  cut it. Longer is not better.
++- Do not add structure (role, context, examples) if the original prompt is already precise
++  and complete in that dimension — focus on what is genuinely missing.
++- Return ONLY the optimized prompt text. No preamble, no explanation, no "Here is my version:".
++
++## User Feedback (when present)
++The user message may include a section after "---" labelled "Optimization Feedback".
++Treat it as a high-priority directive that overrides any general heuristic above that conflicts
++with it. Apply the feedback precisely — if it says "make it conversational", match that tone
++even if the original was formal; if it says "add an example", include one even if you would
++not have done so otherwise.
+diff --git a/qa-chatbot/prompts/intent_classifier.md b/qa-chatbot/prompts/intent_classifier.md
+new file mode 100644
+index 0000000..34e6a7e
+--- /dev/null
++++ b/qa-chatbot/prompts/intent_classifier.md
+@@ -0,0 +1,49 @@
++You are a precise binary intent classifier for a prompt optimization service.
++
++Your sole job: decide whether the user wants to OPTIMIZE an existing prompt or CREATE a new prompt from scratch.
++
++## Definitions
++
++OPTIMIZE — The user already has a prompt (even a rough or partial one) and wants it improved,
++refined, rewritten, or made more effective. The raw material exists; you are polishing it.
++
++CREATE — The user wants a brand-new prompt written for them. They describe a topic, task, or
++goal but supply no existing prompt text to work from.
++
++## Classification Rules
++
++Classify as OPTIMIZE when any of these are true:
++- The user's message contains text that reads like a prompt or instruction to an AI model,
++  even if no explicit "optimize/improve" request accompanies it (default assumption: they
++  want it optimized)
++- The user uses words like: improve, enhance, refine, rewrite, fix, strengthen, clean up,
++  make better, rephrase, polish, tighten, iterate on, revise, update
++- The user asks for "a better version of" something they wrote
++- The user provides a prompt and asks for feedback or changes
++- The input starts with role-play framing: "You are a...", "Act as a...", "Pretend you are..."
++- The input is a direct instruction to an AI with a clear task: "Summarize...", "Write a...",
++  "Explain...", "Generate..." — without the meta-layer of asking Claude to write that instruction
++
++Classify as CREATE when ALL of the following are true:
++- The user describes a need, topic, or use case
++- AND the user uses explicit creation keywords: write, create, generate, make, give me,
++  build, draft, come up with, produce
++- AND no existing prompt text is supplied for improvement
++
++## Edge Cases (resolve ambiguity)
++
++- "Write a better prompt for data extraction" → CREATE (describes need, no existing prompt)
++- "Make this prompt better: [text]" → OPTIMIZE (existing text to improve is present)
++- "Help me with a prompt to summarize PDFs" → CREATE (describing need, nothing to improve)
++- "Can you improve: 'Summarize this document in 3 bullet points'" → OPTIMIZE
++- "[Just a raw prompt with no meta-instruction]" → OPTIMIZE (assume user wants it optimized)
++- "I need a prompt that does X" → CREATE (expressing need, not providing a prompt)
++- "Rewrite this for me: [text]" → OPTIMIZE
++
++## Output Format
++
++Respond with exactly one word — no punctuation, no explanation, no markdown:
++
++OPTIMIZE
++or
++CREATE
+diff --git a/qa-chatbot/prompts/prompt_advisory.md b/qa-chatbot/prompts/prompt_advisory.md
+new file mode 100644
+index 0000000..78a333d
+--- /dev/null
++++ b/qa-chatbot/prompts/prompt_advisory.md
+@@ -0,0 +1,56 @@
++You are a senior prompt engineer providing a detailed advisory review of an AI prompt.
++Your goal is to give the author an honest, actionable report: what is already working well,
++what is holding the prompt back, and exactly how to fix it.
++
++## Review Approach
++
++Read the prompt carefully and evaluate it holistically. Think about:
++- What would a model actually produce given this prompt?
++- Where might it go wrong or produce mediocre output?
++- What elements are well-crafted and should be preserved?
++- What is the single most impactful change the author could make?
++
++## Output Format
++
++Return ONLY a valid JSON object — no preamble, no markdown fences, no trailing text.
++
++```
++{
++  "strengths": [
++    "<specific strength 1 — reference the actual prompt text>",
++    "<specific strength 2>",
++    ...
++  ],
++  "weaknesses": [
++    "<specific weakness 1 — what is missing or poorly expressed>",
++    "<specific weakness 2>",
++    ...
++  ],
++  "improvements": [
++    "<actionable improvement 1 — tell the author exactly what to add, remove, or rewrite>",
++    "<actionable improvement 2>",
++    ...
++  ],
++  "overall_assessment": "<2–3 sentences: the prompt's current effectiveness, its biggest single issue, and what transformation would unlock the best results>"
++}
++```
++
++## Rules
++
++- **Strengths**: At least 1, at most 5. Each must reference something specific in the prompt —
++  never generic praise like "the prompt is clear." Explain *why* it works.
++
++- **Weaknesses**: At least 1, at most 6. Name what is missing or wrong concretely.
++  If the prompt has no role/persona, say so. If the output format is undefined, say so.
++  Do NOT repeat weaknesses as disguised improvements.
++
++- **Improvements**: At least 1, at most 6. Each must be a direct, executable instruction to
++  the author — "Add a role line such as: 'You are a…'", "Replace 'handle' with 'return a
++  bulleted list of…'", "Remove the redundant sentence starting with…".
++  Improvements must map 1-to-1 to weaknesses.
++
++- **Overall assessment**: Synthesise into a frank 2–3 sentence verdict. Lead with the prompt's
++  current effectiveness (high / moderate / low and why), name the single biggest blocker, and
++  close with what one change would have the greatest positive impact.
++
++Be direct. Avoid hedging language ("might", "could perhaps", "you may want to consider").
+diff --git a/qa-chatbot/prompts/prompt_health_score.md b/qa-chatbot/prompts/prompt_health_score.md
+new file mode 100644
+index 0000000..c7ac1d0
+--- /dev/null
++++ b/qa-chatbot/prompts/prompt_health_score.md
+@@ -0,0 +1,70 @@
++You are an expert prompt quality evaluator. Your job is to rigorously score an AI prompt across
++eight quality dimensions and return a structured JSON report.
++
++## Scoring Dimensions
++
++Score each dimension from 1 to 10. Be honest and critical — a score of 10 should be rare.
++
++1. **Clarity** (1–10)
++   How clear and unambiguous is the instruction? Could a capable model misinterpret it in a
++   plausible way? Penalise vague verbs ("handle", "deal with"), pronouns with unclear referents,
++   and dual readings of the same sentence.
++
++2. **Specificity** (1–10)
++   How precise are the constraints, scope, and deliverables? Does the prompt say exactly what it
++   wants — format, length, depth, perspective — or does it leave too much to the model's
++   discretion?
++
++3. **Completeness** (1–10)
++   Does the prompt supply all the context a model needs to respond excellently? Consider: role /
++   persona, task definition, relevant background, output format, edge-case handling, and worked
++   examples where appropriate. Penalise missing elements that would meaningfully hurt output
++   quality.
++
++4. **Conciseness** (1–10)
++   Is every sentence earning its place? Penalise filler phrases ("please", "I would like you to"),
++   redundant restatements, and over-explanation of obvious things. A shorter prompt that says the
++   same thing scores higher.
++
++5. **Tone Appropriateness** (1–10)
++   Is the register (formal, technical, conversational, creative) suited to the task? Mismatches
++   — e.g., overly casual language for a legal analysis task — reduce the score.
++
++6. **Actionability** (1–10)
++   Can a model execute this prompt immediately without needing to ask clarifying questions? Does
++   it have enough grounding to start producing output right now? Penalise prompts that require
++   extensive back-and-forth to define success.
++
++7. **Context Richness** (1–10)
++   How well does the prompt situate the task? Does it explain why the task exists, who the
++   audience is, or what prior state is assumed? Rich context reduces hallucination and grounds
++   the response.
++
++8. **Goal Alignment** (1–10)
++   Is the stated or implied goal of the prompt internally consistent? Do the instructions, the
++   constraints, and the desired output all point in the same direction, without conflicting asks?
++
++## Overall Score
++
++Compute `overall_score` as the mean of all eight dimension scores, rounded to one decimal place.
++
++## Output Format
++
++Return ONLY a valid JSON object — no preamble, no markdown fences, no trailing text.
++
++```
++{
++  "clarity":           { "score": <1–10 int>, "rationale": "<one sentence>" },
++  "specificity":       { "score": <1–10 int>, "rationale": "<one sentence>" },
++  "completeness":      { "score": <1–10 int>, "rationale": "<one sentence>" },
++  "conciseness":       { "score": <1–10 int>, "rationale": "<one sentence>" },
++  "tone":              { "score": <1–10 int>, "rationale": "<one sentence>" },
++  "actionability":     { "score": <1–10 int>, "rationale": "<one sentence>" },
++  "context_richness":  { "score": <1–10 int>, "rationale": "<one sentence>" },
++  "goal_alignment":    { "score": <1–10 int>, "rationale": "<one sentence>" },
++  "overall_score":     <float, one decimal>
++}
++```
++
++Each rationale must be a single, specific sentence that justifies the score — reference the
++actual text of the prompt, not generic observations.
+diff --git a/qa-chatbot/prompts/synthesize_best.md b/qa-chatbot/prompts/synthesize_best.md
+new file mode 100644
+index 0000000..44083fe
+--- /dev/null
++++ b/qa-chatbot/prompts/synthesize_best.md
+@@ -0,0 +1,60 @@
++You are a master prompt engineer acting as final judge and synthesizer.
++
++You will receive an original prompt and multiple independently optimized versions of it, each
++produced by a different AI model using a different optimization strategy. Your job is to produce
++the single best possible optimized prompt by thoughtfully evaluating and synthesizing them.
++
++## Evaluation Criteria (in priority order)
++
++1. Intent Preservation — Does the optimized prompt still accomplish exactly what the original
++   asked? Any version that shifts scope, adds unwanted tasks, or changes the goal fails here.
++
++2. Clarity — Is the task unambiguous? Could a capable AI model misinterpret this prompt in
++   a plausible way? If yes, the prompt needs tightening.
++
++3. Completeness — Does the prompt include all elements necessary for an excellent response?
++   Consider: role/persona, task specification, relevant context, output format, constraints.
++   Include only elements the task genuinely requires — not all prompts need all elements.
++
++4. Conciseness — No padding, no redundancy, no elements that don't earn their place.
++   Between two equally effective prompts, the shorter one wins.
++
++5. Reasoning Guidance — For complex or multi-step tasks, does the prompt activate systematic
++   thinking? (e.g., "think step by step", "consider multiple approaches first")
++
++## Synthesis Process
++
++Step 1 — Score each proposal mentally on the five criteria above. Note which handles each
++dimension best.
++
++Step 2 — Identify the strongest overall base. Which proposal has the best structure and
++most faithfully preserves the original intent? This becomes your foundation.
++
++Step 3 — Extract superior elements. For each other proposal, identify specific phrases,
++additions, or framings that are clearly better than what's in your chosen foundation.
++Only extract what genuinely improves the result.
++
++Step 4 — Integrate selectively. Add those superior elements to the foundation. Rewrite
++for coherence — the result must read as a single, unified prompt, not a stitched-together
++patchwork.
++
++Step 5 — Final check. Read the synthesized prompt as a whole:
++- Is it immediately usable without further editing?
++- Does it clearly outperform the original?
++- Is it free of redundancy and internal contradictions?
++- If one proposal was simply the best with no improvements needed, use it — do not add for
++  the sake of appearing to synthesize.
++
++## Output Rules
++
++Return ONLY the final optimized prompt — nothing else.
++
++Do NOT include:
++- "Here is the best version:"
++- "I've synthesized..."
++- Scoring tables or explanations
++- Markdown headers (unless the prompt itself uses headers as part of its structure)
++- Any meta-commentary about the optimization process
++
++The output should be immediately copy-pasteable and usable as an AI system prompt or user
++instruction — exactly as written.
+diff --git a/qa-chatbot/src/app/api/deps.py b/qa-chatbot/src/app/api/deps.py
+index e41498e..8ae888b 100644
+--- a/qa-chatbot/src/app/api/deps.py
++++ b/qa-chatbot/src/app/api/deps.py
+@@ -12,6 +12,7 @@ from app.repositories.user_repo import UserRepository
+
+ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+
++
+ async def get_current_user(
+     token: Annotated[str, Depends(oauth2_scheme)],
+     db: Annotated[AsyncSession, Depends(get_async_session)],
+@@ -32,6 +33,7 @@ async def get_current_user(
+         raise credentials_exception
+     return user
+
++
+ async def get_current_active_user(
+     current_user: Annotated[User, Depends(get_current_user)],
+ ) -> User:
+diff --git a/qa-chatbot/src/app/api/router.py b/qa-chatbot/src/app/api/router.py
+index d8a8c2c..86558fb 100644
+--- a/qa-chatbot/src/app/api/router.py
++++ b/qa-chatbot/src/app/api/router.py
+@@ -1,10 +1,6 @@
+ from fastapi import APIRouter
+
+-from app.api.v1 import chat
+-from app.api.v1 import health
+-from app.api.v1 import prompts
+-from app.api.v1 import auth
+-from app.api.v1 import users
++from app.api.v1 import auth, chat, health, prompts, users
+
+ api_router = APIRouter()
+
+@@ -12,4 +8,4 @@ api_router.include_router(health.router)
+ api_router.include_router(chat.router)
+ api_router.include_router(prompts.router)
+ api_router.include_router(auth.router)
+-api_router.include_router(users.router)
+\ No newline at end of file
++api_router.include_router(users.router)
+diff --git a/qa-chatbot/src/app/api/types/error_codes.py b/qa-chatbot/src/app/api/types/error_codes.py
+index 833fe21..9c08298 100644
+--- a/qa-chatbot/src/app/api/types/error_codes.py
++++ b/qa-chatbot/src/app/api/types/error_codes.py
+@@ -1,17 +1,13 @@
+-
+ from typing import Any
+-from typing import Dict
+-from typing import Optional
+
+ from fastapi import status
+-from pydantic import BaseModel
+-from pydantic import Field
++from pydantic import BaseModel, Field
+
+
+ class Error(BaseModel):
+     code: int = Field(..., description="Error code")
+     description: str = Field(..., description="Error description")
+-    message: Optional[str] = Field(None, description="Custom Error message")
++    message: str | None = Field(None, description="Custom Error message")
+
+
+ class InternalServerError(Error):
+@@ -44,7 +40,7 @@ class ForbiddenError(Error):
+     description: str = "Forbidden"
+
+
+-fastAPIErrorResponseModels: Dict[int | str, Dict[str, Any]] = {
++fastAPIErrorResponseModels: dict[int | str, dict[str, Any]] = {
+     status.HTTP_404_NOT_FOUND: {"model": NotFoundError},
+     status.HTTP_400_BAD_REQUEST: {"model": BadRequestError},
+     status.HTTP_500_INTERNAL_SERVER_ERROR: {"model": Error},
+diff --git a/qa-chatbot/src/app/api/types/response.py b/qa-chatbot/src/app/api/types/response.py
+index f9676dd..a295ea8 100644
+--- a/qa-chatbot/src/app/api/types/response.py
++++ b/qa-chatbot/src/app/api/types/response.py
+@@ -1,8 +1,6 @@
+-from typing import Generic
+-from typing import TypeVar
++from typing import Generic, TypeVar
+
+-from pydantic import BaseModel
+-from pydantic import Field
++from pydantic import BaseModel, Field
+
+ from .error_codes import Error
+
+@@ -25,4 +23,4 @@ class ErrorResponse(Exception):
+         self.error = error
+
+     def __str__(self):
+-        return f"[Error {self.error.code}]: {self.error.description}"
+\ No newline at end of file
++        return f"[Error {self.error.code}]: {self.error.description}"
+diff --git a/qa-chatbot/src/app/api/v1/auth.py b/qa-chatbot/src/app/api/v1/auth.py
+index f0cb579..5315986 100644
+--- a/qa-chatbot/src/app/api/v1/auth.py
++++ b/qa-chatbot/src/app/api/v1/auth.py
+@@ -1,28 +1,20 @@
+ from typing import Annotated
+-from fastapi import status
+-from fastapi import Depends
+-from fastapi import HTTPException
+-from fastapi import APIRouter
++
++from fastapi import APIRouter, Depends, HTTPException
+ from fastapi.security import OAuth2PasswordRequestForm
+ from sqlalchemy.ext.asyncio import AsyncSession
+-from app.core.security import create_access_token
+-from app.core.security import hash_password
+-from app.core.security import verify_password
++
++from app.api.types.response import SuccessResponse
++from app.core.security import create_access_token, hash_password, verify_password
+ from app.db.session import get_async_session
+-from app.models.user import User
+ from app.repositories.user_repo import UserRepository
+-from app.schemas.auth import Token
+-from app.schemas.auth import UserCreate
+-from app.schemas.auth import UserResponse
+-from app.api.types.response import SuccessResponse
++from app.schemas.auth import Token, UserCreate, UserResponse
+
+ router = APIRouter(prefix="/auth", tags=["auth"])
+
++
+ @router.post("/register", response_model=SuccessResponse[UserResponse])
+-async def register(
+-    user_in: UserCreate,
+-    db: Annotated[AsyncSession, Depends(get_async_session)]
+-):
++async def register(user_in: UserCreate, db: Annotated[AsyncSession, Depends(get_async_session)]):
+     user_repo = UserRepository(db)
+     user = await user_repo.get_by_email(email=user_in.email)
+     if user:
+@@ -30,22 +22,23 @@ async def register(
+             status_code=400,
+             detail="The user with this username already exists in the system.",
+         )
+-
++
+     hashed_password = hash_password(user_in.password)
+     new_user = await user_repo.create(
+         email=user_in.email,
+         hashed_password=hashed_password,
+         full_name=user_in.full_name,
+     )
+-
++
+     await db.commit()
+-
++
+     return SuccessResponse(data=UserResponse.model_validate(new_user))
+
++
+ @router.post("/login", response_model=SuccessResponse[Token])
+ async def login_access_token(
+     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
+-    db: Annotated[AsyncSession, Depends(get_async_session)]
++    db: Annotated[AsyncSession, Depends(get_async_session)],
+ ):
+     user_repo = UserRepository(db)
+     user = await user_repo.get_by_email(email=form_data.username)
+@@ -55,9 +48,6 @@ async def login_access_token(
+         raise HTTPException(status_code=400, detail="Incorrect email or password")
+     if not user.is_active:
+         raise HTTPException(status_code=400, detail="Inactive user")
+-
++
+     access_token = create_access_token(subject=str(user.id))
+-    return SuccessResponse(data=Token(
+-        access_token=access_token,
+-        token_type="bearer"
+-    ))
++    return SuccessResponse(data=Token(access_token=access_token, token_type="bearer"))
+diff --git a/qa-chatbot/src/app/api/v1/chat.py b/qa-chatbot/src/app/api/v1/chat.py
+index 5a2725b..1001d43 100644
+--- a/qa-chatbot/src/app/api/v1/chat.py
++++ b/qa-chatbot/src/app/api/v1/chat.py
+@@ -1,16 +1,14 @@
+ import uuid
+-from fastapi import APIRouter
+-from fastapi import Depends
+-from fastapi import HTTPException
+-from fastapi.responses import StreamingResponse
++from typing import Annotated, Any
++
++from fastapi import APIRouter, Depends, HTTPException
+ from sqlalchemy.ext.asyncio import AsyncSession
+-from app.dependencies import get_db
+-from app.dependencies import get_current_user
+-from app.dependencies import get_graph
+-from app.schemas.chat import ChatRequest
+-from app.schemas.chat import ChatResponse
+-from app.services.chat_service import ChatService
++
+ from app.api.types.response import SuccessResponse
++from app.dependencies import get_current_user, get_db, get_graph
++from app.models.user import User
++from app.schemas.chat import ChatRequest, ChatResponse
++from app.services.chat_service import ChatService
+
+ router = APIRouter(prefix="/chat", tags=["chat"])
+
+@@ -18,12 +16,15 @@ router = APIRouter(prefix="/chat", tags=["chat"])
+ @router.post("/", response_model=SuccessResponse[ChatResponse])
+ async def create_chat(
+     request: ChatRequest,
+-    db: AsyncSession = Depends(get_db),
+-    current_user = Depends(get_current_user),
+-    graph = Depends(get_graph),
+-):
++    db: Annotated[AsyncSession, Depends(get_db)],
++    current_user: Annotated[User, Depends(get_current_user)],
++    graph: Annotated[Any, Depends(get_graph)],  # noqa: ANN401
++) -> SuccessResponse[ChatResponse]:
+     if current_user.credits < 10:
+-        raise HTTPException(status_code=402, detail="Insufficient credits. 10 credits required per run.")
++        raise HTTPException(
++            status_code=402,
++            detail="Insufficient credits. 10 credits required per run.",
++        )
+     current_user.credits -= 10
+
+     service = ChatService(db=db, graph=graph)
+@@ -31,29 +32,6 @@ async def create_chat(
+         user_id=str(current_user.id),
+         raw_prompt=request.prompt,
+         session_id=str(request.session_id) if request.session_id else str(uuid.uuid4()),
++        feedback=request.feedback,
+     )
+     return SuccessResponse(data=ChatResponse(**result))
+-
+-
+-@router.post("/stream")
+-async def stream_chat(
+-    request: ChatRequest,
+-    db: AsyncSession = Depends(get_db),
+-    current_user = Depends(get_current_user),
+-    graph = Depends(get_graph),
+-):
+-    if current_user.credits < 10:
+-        raise HTTPException(status_code=402, detail="Insufficient credits. 10 credits required per run.")
+-    current_user.credits -= 10
+-
+-    service = ChatService(db=db, graph=graph)
+-
+-    async def event_stream():
+-        async for chunk in service.stream(
+-            user_id=str(current_user.id),
+-            raw_prompt=request.prompt,
+-            session_id=str(request.session_id) if request.session_id else str(uuid.uuid4()),
+-        ):
+-            yield f"data: {chunk}\n\n"
+-
+-    return StreamingResponse(event_stream(), media_type="text/event-stream")
+\ No newline at end of file
+diff --git a/qa-chatbot/src/app/api/v1/health.py b/qa-chatbot/src/app/api/v1/health.py
+index a1b7772..e190519 100644
+--- a/qa-chatbot/src/app/api/v1/health.py
++++ b/qa-chatbot/src/app/api/v1/health.py
+@@ -1,13 +1,11 @@
+-from fastapi import APIRouter
+-from fastapi import Depends
++from fastapi import APIRouter, Depends
+ from sqlalchemy import text
+ from sqlalchemy.ext.asyncio import AsyncSession
+
+ from app.api.types.response import SuccessResponse
+ from app.db.redis import get_redis_client
+ from app.dependencies import get_db
+-from app.schemas.health import HealthResponse
+-from app.schemas.health import ReadinessResponse
++from app.schemas.health import HealthResponse, ReadinessResponse
+
+ router = APIRouter(tags=["health"])
+
+@@ -38,7 +36,6 @@ async def readiness(db: AsyncSession = Depends(get_db)):
+         checks["redis"] = f"error: {e}"
+
+     all_ok = all(v == "ok" for v in checks.values())
+-    return SuccessResponse(data=ReadinessResponse(
+-        status="ready" if all_ok else "degraded",
+-        checks=checks
+-    ))
+\ No newline at end of file
++    return SuccessResponse(
++        data=ReadinessResponse(status="ready" if all_ok else "degraded", checks=checks)
++    )
+diff --git a/qa-chatbot/src/app/api/v1/prompts.py b/qa-chatbot/src/app/api/v1/prompts.py
+index 764ecfe..ab87c27 100644
+--- a/qa-chatbot/src/app/api/v1/prompts.py
++++ b/qa-chatbot/src/app/api/v1/prompts.py
+@@ -1,35 +1,161 @@
+-from fastapi import APIRouter
+-from fastapi import Depends
+-from fastapi import HTTPException
++import uuid
++from typing import Annotated, Any
++
++from fastapi import APIRouter, Depends, HTTPException
+ from sqlalchemy.ext.asyncio import AsyncSession
+-from app.dependencies import get_current_user
+-from app.dependencies import get_db
+-from app.models.user import User
+-from app.schemas.prompt import PromptEnhanceResponse
+-from app.schemas.prompt import PromptEnhanceRequest
+-from app.services.prompt_service import PromptService
++
+ from app.api.types.response import SuccessResponse
++from app.dependencies import get_current_user, get_db, get_graph
++from app.models.user import User
++from app.schemas.prompt import (
++    PromptAdvisoryRequest,
++    PromptAdvisoryResponse,
++    PromptHealthScoreRequest,
++    PromptHealthScoreResponse,
++    PromptVersionCreateRequest,
++    PromptVersionCreateResponse,
++    PromptVersionListResponse,
++    PromptVersionOptimizeRequest,
++    PromptVersionOptimizeResponse,
++)
++from app.services.prompt_service import PromptService, PromptVersioningService
+
+ router = APIRouter(prefix="/prompts", tags=["prompts"])
+
+
+-@router.post("/enhance", response_model=SuccessResponse[PromptEnhanceResponse])
+-async def enhance_prompt(
+-    request: PromptEnhanceRequest,
+-    db: AsyncSession = Depends(get_db),
+-    current_user: User = Depends(get_current_user),
+-) -> SuccessResponse[PromptEnhanceResponse]:
++# ---------------------------------------------------------------------------
++# Analysis endpoints
++# ---------------------------------------------------------------------------
++
++
++@router.post("/health-score", response_model=SuccessResponse[PromptHealthScoreResponse])
++async def prompt_health_score(
++    request: PromptHealthScoreRequest,
++    db: Annotated[AsyncSession, Depends(get_db)],
++    current_user: Annotated[User, Depends(get_current_user)],
++) -> SuccessResponse[PromptHealthScoreResponse]:
++    """
++    Score a prompt across eight quality dimensions: clarity, specificity, completeness,
++    conciseness, tone, actionability, context richness, and goal alignment.
++    Returns a 1–10 score with a rationale for each dimension plus an overall score.
++    """
++    if current_user.credits < 5:
++        raise HTTPException(
++            status_code=402,
++            detail="Insufficient credits. 5 credits required per run.",
++        )
++    current_user.credits -= 5
++
++    service = PromptService(db=db)
++    result = await service.health_score(
++        prompt=request.prompt,
++        user_id=str(current_user.id),
++    )
++    return SuccessResponse(data=PromptHealthScoreResponse(**result))
++
++
++@router.post("/advisory", response_model=SuccessResponse[PromptAdvisoryResponse])
++async def prompt_advisory(
++    request: PromptAdvisoryRequest,
++    db: Annotated[AsyncSession, Depends(get_db)],
++    current_user: Annotated[User, Depends(get_current_user)],
++) -> SuccessResponse[PromptAdvisoryResponse]:
++    """
++    Get a detailed advisory review of a prompt.
++    Returns specific strengths, weaknesses, actionable improvements,
++    and an overall assessment of the prompt's effectiveness.
++    """
++    if current_user.credits < 5:
++        raise HTTPException(
++            status_code=402,
++            detail="Insufficient credits. 5 credits required per run.",
++        )
++    current_user.credits -= 5
++
++    service = PromptService(db=db)
++    result = await service.advisory(
++        prompt=request.prompt,
++        user_id=str(current_user.id),
++    )
++    return SuccessResponse(data=PromptAdvisoryResponse(**result))
++
++
++# ---------------------------------------------------------------------------
++# Versioning endpoints
++# ---------------------------------------------------------------------------
++
++
++@router.post("/versions", response_model=SuccessResponse[PromptVersionCreateResponse])
++async def create_prompt_version(
++    request: PromptVersionCreateRequest,
++    db: Annotated[AsyncSession, Depends(get_db)],
++    current_user: Annotated[User, Depends(get_current_user)],
++) -> SuccessResponse[PromptVersionCreateResponse]:
+     """
+-    Standalone prompt enhancement.
+-    Runs guardrails + LLM enhancement only — no council vote, no session persistence.
++    Register a named prompt and save it as version 1.
++    Returns a `prompt_id` that uniquely identifies this prompt family
++    across all future versions.
++    """
++    service = PromptVersioningService(db=db)
++    result = await service.create(
++        name=request.name,
++        content=request.prompt,
++        user_id=str(current_user.id),
++    )
++    return SuccessResponse(data=PromptVersionCreateResponse(**result))
++
++
++@router.post(
++    "/versions/{prompt_id}/optimize",
++    response_model=SuccessResponse[PromptVersionOptimizeResponse],
++)
++async def optimize_prompt_version(
++    prompt_id: uuid.UUID,
++    request: PromptVersionOptimizeRequest,
++    db: Annotated[AsyncSession, Depends(get_db)],
++    current_user: Annotated[User, Depends(get_current_user)],
++    graph: Annotated[Any, Depends(get_graph)],  # noqa: ANN401
++) -> SuccessResponse[PromptVersionOptimizeResponse]:
++    """
++    Optimize the latest version of a named prompt through the full council pipeline
++    and save the result as the next version (v1→v2, v2→v3, …).
++
++    Optionally supply `feedback` to steer how the council optimizes the prompt
++    (e.g. "keep it under 50 words", "add a JSON output format").
++    Costs 10 credits — same as a standard optimization run.
+     """
+     if current_user.credits < 10:
+-        raise HTTPException(status_code=402, detail="Insufficient credits. 10 credits required per run.")
++        raise HTTPException(
++            status_code=402,
++            detail="Insufficient credits. 10 credits required per run.",
++        )
+     current_user.credits -= 10
+
+-    service = PromptService(db=db)
+-    result = await service.enhance(
+-        raw_prompt=request.raw_prompt,
++    service = PromptVersioningService(db=db)
++    result = await service.optimize(
++        prompt_id=prompt_id,
++        user_id=str(current_user.id),
++        feedback=request.feedback,
++        graph=graph,
++    )
++    return SuccessResponse(data=PromptVersionOptimizeResponse(**result))
++
++
++@router.get(
++    "/versions/{prompt_id}",
++    response_model=SuccessResponse[PromptVersionListResponse],
++)
++async def list_prompt_versions(
++    prompt_id: uuid.UUID,
++    db: Annotated[AsyncSession, Depends(get_db)],
++    current_user: Annotated[User, Depends(get_current_user)],
++) -> SuccessResponse[PromptVersionListResponse]:
++    """
++    List all versions of a named prompt in ascending order (v1, v2, v3, …).
++    """
++    service = PromptVersioningService(db=db)
++    result = await service.list_versions(
++        prompt_id=prompt_id,
+         user_id=str(current_user.id),
+     )
+-    return SuccessResponse(data=PromptEnhanceResponse(**result))
+\ No newline at end of file
++    return SuccessResponse(data=PromptVersionListResponse(**result))
+diff --git a/qa-chatbot/src/app/api/v1/users.py b/qa-chatbot/src/app/api/v1/users.py
+index c78af3b..27eecc6 100644
+--- a/qa-chatbot/src/app/api/v1/users.py
++++ b/qa-chatbot/src/app/api/v1/users.py
+@@ -1,29 +1,31 @@
+-from fastapi import APIRouter
+-from fastapi import Depends
+-from pydantic import BaseModel
++from fastapi import APIRouter, Depends
+ from sqlalchemy.ext.asyncio import AsyncSession
+-from app.dependencies import get_db, get_current_user
++
++from app.api.types.response import SuccessResponse
++from app.dependencies import get_current_user, get_db
+ from app.models.user import User
+ from app.schemas.user import AddCreditRequest, CreditResponse, UserResponse
+-from app.api.types.response import SuccessResponse
+
+ router = APIRouter(prefix="/users", tags=["users"])
+
++
+ @router.get("/me", response_model=SuccessResponse[UserResponse])
+ async def get_me(current_user: User = Depends(get_current_user)):
+     """Get the currently logged in user information."""
+     return SuccessResponse(data=UserResponse.model_validate(current_user))
+
++
+ @router.get("/credits", response_model=SuccessResponse[CreditResponse])
+ async def get_credits(current_user: User = Depends(get_current_user)):
+     """Get the current number of credits the user has left."""
+     return SuccessResponse(data=CreditResponse(credits=current_user.credits))
+
++
+ @router.post("/credits/add", response_model=SuccessResponse[CreditResponse])
+ async def add_credits(
+     request: AddCreditRequest,
+     current_user: User = Depends(get_current_user),
+-    db: AsyncSession = Depends(get_db)
++    db: AsyncSession = Depends(get_db),
+ ):
+     """Add more credits to the current user."""
+     current_user.credits += request.amount
+diff --git a/qa-chatbot/src/app/config/app.py b/qa-chatbot/src/app/config/app.py
+index 652cb89..5014248 100644
+--- a/qa-chatbot/src/app/config/app.py
++++ b/qa-chatbot/src/app/config/app.py
+@@ -1,7 +1,7 @@
+-from typing import List
+ from functools import lru_cache
+-from pydantic_settings import BaseSettings
+-from pydantic_settings import SettingsConfigDict
++
++from pydantic_settings import BaseSettings, SettingsConfigDict
++
+
+ class AppSettings(BaseSettings):
+     model_config = SettingsConfigDict(
+@@ -14,8 +14,9 @@ class AppSettings(BaseSettings):
+     ENVIRONMENT: str = "development"
+     DEBUG: bool = False
+     API_V1_PREFIX: str = "/api/v1"
+-    CORS_ORIGIN: List[str] = ["http://localhost:3000", "*"]
+-
++    CORS_ORIGIN: list[str] = ["http://localhost:3000", "*"]
++
++
+ @lru_cache
+ def get_app_settings() -> AppSettings:
+     return AppSettings()
+diff --git a/qa-chatbot/src/app/config/auth.py b/qa-chatbot/src/app/config/auth.py
+index 587a77b..458eaea 100644
+--- a/qa-chatbot/src/app/config/auth.py
++++ b/qa-chatbot/src/app/config/auth.py
+@@ -1,7 +1,8 @@
+ from functools import lru_cache
++
+ from pydantic import SecretStr
+-from pydantic_settings import BaseSettings
+-from pydantic_settings import SettingsConfigDict
++from pydantic_settings import BaseSettings, SettingsConfigDict
++
+
+ class AuthSettings(BaseSettings):
+     model_config = SettingsConfigDict(
+@@ -14,6 +15,7 @@ class AuthSettings(BaseSettings):
+     ALGORITHM: str = "HS256"
+     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+
++
+ @lru_cache
+ def get_auth_settings() -> AuthSettings:
+     return AuthSettings()
+diff --git a/qa-chatbot/src/app/config/database.py b/qa-chatbot/src/app/config/database.py
+index b5277c4..fe7c309 100644
+--- a/qa-chatbot/src/app/config/database.py
++++ b/qa-chatbot/src/app/config/database.py
+@@ -1,7 +1,8 @@
+ from functools import lru_cache
++
+ from pydantic import PostgresDsn
+-from pydantic_settings import BaseSettings
+-from pydantic_settings import SettingsConfigDict
++from pydantic_settings import BaseSettings, SettingsConfigDict
++
+
+ class DatabaseSettings(BaseSettings):
+     model_config = SettingsConfigDict(
+@@ -11,9 +12,10 @@ class DatabaseSettings(BaseSettings):
+         extra="ignore",
+     )
+     DATABASE_URL: PostgresDsn
+-    DATABASE_POOL_SIZE: int = 20
++    DATABASE_POOL_SIZE: int = 20
+     DATABASE_MAX_OVERFLOW: int = 40
+
++
+ @lru_cache
+ def get_database_settings() -> DatabaseSettings:
+     return DatabaseSettings()
+diff --git a/qa-chatbot/src/app/config/env.py b/qa-chatbot/src/app/config/env.py
+index 8b13789..635ece8 100644
+--- a/qa-chatbot/src/app/config/env.py
++++ b/qa-chatbot/src/app/config/env.py
+@@ -1 +1,22 @@
++from functools import lru_cache
+
++from pydantic_settings import BaseSettings, SettingsConfigDict
++
++
++class EnvSettings(BaseSettings):
++    model_config = SettingsConfigDict(
++        env_file=".env",
++        env_file_encoding="utf-8",
++        case_sensitive=False,
++        extra="ignore",
++    )
++
++    # Set to True in production to enforce JWT / API-key authentication on every
++    # protected endpoint.  False (default) lets all requests through without a token —
++    # useful for local development and integration testing.
++    AUTH_ENABLED: bool = False
++
++
++@lru_cache
++def get_env_settings() -> EnvSettings:
++    return EnvSettings()
+diff --git a/qa-chatbot/src/app/config/llm.py b/qa-chatbot/src/app/config/llm.py
+index 512d8cd..c9263ca 100644
+--- a/qa-chatbot/src/app/config/llm.py
++++ b/qa-chatbot/src/app/config/llm.py
+@@ -1,8 +1,8 @@
+-from typing import List
+ from functools import lru_cache
++
+ from pydantic import SecretStr
+-from pydantic_settings import BaseSettings
+-from pydantic_settings import SettingsConfigDict
++from pydantic_settings import BaseSettings, SettingsConfigDict
++
+
+ class LLMSettings(BaseSettings):
+     model_config = SettingsConfigDict(
+@@ -18,6 +18,7 @@ class LLMSettings(BaseSettings):
+         "openai/gpt-4o-mini",
+     ]
+
++
+ @lru_cache
+ def get_llm_settings() -> LLMSettings:
+     return LLMSettings()
+diff --git a/qa-chatbot/src/app/config/rate_limit.py b/qa-chatbot/src/app/config/rate_limit.py
+index 5494012..43e9b63 100644
+--- a/qa-chatbot/src/app/config/rate_limit.py
++++ b/qa-chatbot/src/app/config/rate_limit.py
+@@ -1,6 +1,7 @@
+ from functools import lru_cache
+-from pydantic_settings import BaseSettings
+-from pydantic_settings import SettingsConfigDict
++
++from pydantic_settings import BaseSettings, SettingsConfigDict
++
+
+ class RateLimitSettings(BaseSettings):
+     model_config = SettingsConfigDict(
+@@ -12,6 +13,7 @@ class RateLimitSettings(BaseSettings):
+     RATE_LIMIT_REQUESTS: int = 100
+     RATE_LIMIT_WINDOW_SECONDS: int = 60
+
++
+ @lru_cache
+ def get_rate_limit_settings() -> RateLimitSettings:
+     return RateLimitSettings()
+diff --git a/qa-chatbot/src/app/config/redis.py b/qa-chatbot/src/app/config/redis.py
+index 4a2464e..e8fee98 100644
+--- a/qa-chatbot/src/app/config/redis.py
++++ b/qa-chatbot/src/app/config/redis.py
+@@ -1,7 +1,8 @@
+ from functools import lru_cache
++
+ from pydantic import RedisDsn
+-from pydantic_settings import BaseSettings
+-from pydantic_settings import SettingsConfigDict
++from pydantic_settings import BaseSettings, SettingsConfigDict
++
+
+ class RedisSettings(BaseSettings):
+     model_config = SettingsConfigDict(
+@@ -13,6 +14,7 @@ class RedisSettings(BaseSettings):
+     REDIS_URL: RedisDsn = "redis://localhost:6379/0"  # type: ignore
+     REDIS_TTL_SECONDS: int = 3600
+
++
+ @lru_cache
+ def get_redis_settings() -> RedisSettings:
+     return RedisSettings()
+diff --git a/qa-chatbot/src/app/core/exceptions.py b/qa-chatbot/src/app/core/exceptions.py
+index dcdabb7..3a56c49 100644
+--- a/qa-chatbot/src/app/core/exceptions.py
++++ b/qa-chatbot/src/app/core/exceptions.py
+@@ -1,5 +1,4 @@
+-from fastapi import status
+-from fastapi import HTTPException
++from fastapi import HTTPException, status
+
+
+ class NotFoundException(HTTPException):
+@@ -33,4 +32,4 @@ class GuardrailException(HTTPException):
+
+ class LLMException(HTTPException):
+     def __init__(self, detail: str = "LLM service error"):
+-        super().__init__(status_code=status.HTTP_502_BAD_GATEWAY, detail=detail)
+\ No newline at end of file
++        super().__init__(status_code=status.HTTP_502_BAD_GATEWAY, detail=detail)
+diff --git a/qa-chatbot/src/app/core/middleware.py b/qa-chatbot/src/app/core/middleware.py
+index d74b665..5a92773 100644
+--- a/qa-chatbot/src/app/core/middleware.py
++++ b/qa-chatbot/src/app/core/middleware.py
+@@ -1,5 +1,6 @@
+ import time
+ import uuid
++
+ from fastapi import Request
+ from fastapi.responses import JSONResponse
+ from starlette.middleware.base import BaseHTTPMiddleware
+@@ -23,28 +24,24 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
+
+     async def dispatch(self, request: Request, call_next):
+         settings = get_rate_limit_settings()
+-
++
+         # Simple in-memory rate limiting based on client IP
+         client_ip = request.client.host if request.client else "unknown"
+         now = time.time()
+-
++
+         if client_ip not in self.rate_limits:
+             self.rate_limits[client_ip] = []
+-
++
+         # Clean old requests
+         self.rate_limits[client_ip] = [
+-            t for t in self.rate_limits[client_ip]
+-            if now - t < settings.RATE_LIMIT_WINDOW_SECONDS
++            t for t in self.rate_limits[client_ip] if now - t < settings.RATE_LIMIT_WINDOW_SECONDS
+         ]
+-
++
+         # Check limit
+         if len(self.rate_limits[client_ip]) >= settings.RATE_LIMIT_REQUESTS:
+-            return JSONResponse(
+-                status_code=429,
+-                content={"detail": "Rate limit exceeded"}
+-            )
+-
++            return JSONResponse(status_code=429, content={"detail": "Rate limit exceeded"})
++
+         # Add current request
+         self.rate_limits[client_ip].append(now)
+-
+-        return await call_next(request)
+\ No newline at end of file
++
++        return await call_next(request)
+diff --git a/qa-chatbot/src/app/core/security.py b/qa-chatbot/src/app/core/security.py
+index 35818b1..53de79b 100644
+--- a/qa-chatbot/src/app/core/security.py
++++ b/qa-chatbot/src/app/core/security.py
+@@ -1,8 +1,8 @@
+ import hashlib
+ import secrets
+-import bcrypt
+-from datetime import datetime, timedelta, timezone
++from datetime import UTC, datetime, timedelta
+
++import bcrypt
+ from jose import JWTError, jwt
+
+ from app.config.auth import get_auth_settings
+@@ -11,23 +11,26 @@ auth_settings = get_auth_settings()
+
+ # ── Passwords ─────────────────────────────────────────────────
+
++
+ def hash_password(plain: str) -> str:
+-    pwd_bytes = plain.encode('utf-8')
++    pwd_bytes = plain.encode("utf-8")
+     salt = bcrypt.gensalt()
+-    return bcrypt.hashpw(pwd_bytes, salt).decode('utf-8')
++    return bcrypt.hashpw(pwd_bytes, salt).decode("utf-8")
++
+
+ def verify_password(plain: str, hashed: str) -> bool:
+-    pwd_bytes = plain.encode('utf-8')
+-    return bcrypt.checkpw(pwd_bytes, hashed.encode('utf-8'))
++    pwd_bytes = plain.encode("utf-8")
++    return bcrypt.checkpw(pwd_bytes, hashed.encode("utf-8"))
+
+
+ # ── JWT ───────────────────────────────────────────────────────
+
++
+ def create_access_token(subject: str, expires_delta: timedelta | None = None) -> str:
+-    expire = datetime.now(timezone.utc) + (
++    expire = datetime.now(UTC) + (
+         expires_delta or timedelta(minutes=auth_settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+     )
+-    payload = {"sub": subject, "exp": expire, "iat": datetime.now(timezone.utc)}
++    payload = {"sub": subject, "exp": expire, "iat": datetime.now(UTC)}
+     return jwt.encode(
+         payload,
+         auth_settings.SECRET_KEY.get_secret_value(),
+@@ -50,6 +53,7 @@ def decode_access_token(token: str) -> str:
+
+ # ── API Keys ──────────────────────────────────────────────────
+
++
+ def generate_api_key() -> tuple[str, str]:
+     """
+     Returns (raw_key, hashed_key).
+@@ -61,4 +65,4 @@ def generate_api_key() -> tuple[str, str]:
+
+
+ def hash_api_key(raw: str) -> str:
+-    return hashlib.sha256(raw.encode()).hexdigest()
+\ No newline at end of file
++    return hashlib.sha256(raw.encode()).hexdigest()
+diff --git a/qa-chatbot/src/app/db/redis.py b/qa-chatbot/src/app/db/redis.py
+index 5e79b46..819637a 100644
+--- a/qa-chatbot/src/app/db/redis.py
++++ b/qa-chatbot/src/app/db/redis.py
+@@ -1,5 +1,5 @@
+-from redis.asyncio import Redis
+-from redis.asyncio import ConnectionPool
++from redis.asyncio import ConnectionPool, Redis
++
+ from app.config.redis import get_redis_settings
+
+ redis_settings = get_redis_settings()
+@@ -19,4 +19,4 @@ def get_connection_pool() -> ConnectionPool:
+
+
+ async def get_redis_client() -> Redis:
+-    return Redis(connection_pool=get_connection_pool())
+\ No newline at end of file
++    return Redis(connection_pool=get_connection_pool())
+diff --git a/qa-chatbot/src/app/db/session.py b/qa-chatbot/src/app/db/session.py
+index 55b12e3..5215ee4 100644
+--- a/qa-chatbot/src/app/db/session.py
++++ b/qa-chatbot/src/app/db/session.py
+@@ -1,9 +1,9 @@
+ from collections.abc import AsyncGenerator
+-from sqlalchemy.ext.asyncio import AsyncSession
+-from sqlalchemy.ext.asyncio import async_sessionmaker
+-from sqlalchemy.ext.asyncio import create_async_engine
+-from app.config.database import get_database_settings
++
++from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
++
+ from app.config.app import get_app_settings
++from app.config.database import get_database_settings
+
+ db_settings = get_database_settings()
+ app_settings = get_app_settings()
+@@ -16,9 +16,7 @@ engine = create_async_engine(
+     echo=app_settings.DEBUG,
+ )
+
+-AsyncSessionLocal = async_sessionmaker(
+-    engine, class_=AsyncSession, expire_on_commit=False
+-)
++AsyncSessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+
+ async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
+@@ -28,4 +26,4 @@ async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
+             await session.commit()
+         except Exception:
+             await session.rollback()
+-            raise
+\ No newline at end of file
++            raise
+diff --git a/qa-chatbot/src/app/dependencies.py b/qa-chatbot/src/app/dependencies.py
+index 31890cc..c40b663 100644
+--- a/qa-chatbot/src/app/dependencies.py
++++ b/qa-chatbot/src/app/dependencies.py
+@@ -1,41 +1,55 @@
++import uuid
+ from collections.abc import AsyncGenerator
++from typing import Annotated, Any
+ from uuid import UUID
+-from fastapi import Depends
+-from fastapi import Request
+-from fastapi.security import HTTPAuthorizationCredentials
++
++from fastapi import Depends, Request
+ from fastapi.security import OAuth2PasswordBearer
+ from jose import JWTError
+ from sqlalchemy.ext.asyncio import AsyncSession
+
++from app.config.env import get_env_settings
+ from app.core.exceptions import UnauthorizedException
+-from app.core.security import decode_access_token
+-from app.core.security import hash_api_key
++from app.core.security import decode_access_token, hash_api_key
+ from app.db.session import get_async_session
+ from app.models.user import User
+ from app.repositories.user_repo import UserRepository
+
+ bearer_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
+
++# Stable stub used when AUTH_ENABLED=False — never persisted to the DB
++_ANONYMOUS_USER = User(
++    id=uuid.UUID("00000000-0000-0000-0000-000000000000"),
++    email="anonymous@local",
++    credits=999999,
++    is_active=True,
++    is_superuser=False,
++)
++
+
+ async def get_db() -> AsyncGenerator[AsyncSession, None]:
+     async for session in get_async_session():
+         yield session
+
+
+-async def get_graph(request: Request):
++async def get_graph(request: Request) -> Any:  # noqa: ANN401
+     """Returns the compiled LangGraph instance from app state."""
+     return request.app.state.graph
+
+
+ async def get_current_user(
+-    token: str | None = Depends(bearer_scheme),
+-    db: AsyncSession = Depends(get_db),
++    token: Annotated[str | None, Depends(bearer_scheme)],
++    db: Annotated[AsyncSession, Depends(get_db)],
+ ) -> User:
+     """
+-    Supports both JWT Bearer tokens and raw API keys.
+-    JWT:     Authorization: Bearer <jwt>
+-    API Key: Authorization: Bearer qac_<key>
++    Resolves the current user from a JWT Bearer token or a qac_-prefixed API key.
++
++    When AUTH_ENABLED=False (default) the check is skipped entirely and a
++    fixed anonymous user is returned — useful for local development.
+     """
++    if not get_env_settings().AUTH_ENABLED:
++        return _ANONYMOUS_USER
++
+     if not token:
+         raise UnauthorizedException()
+
+@@ -57,4 +71,4 @@ async def get_current_user(
+             raise UnauthorizedException(detail="User not found or inactive")
+         return user
+     except (JWTError, ValueError) as e:
+-        raise UnauthorizedException(detail="Invalid token") from e
+\ No newline at end of file
++        raise UnauthorizedException(detail="Invalid token") from e
+diff --git a/qa-chatbot/src/app/graph/builder.py b/qa-chatbot/src/app/graph/builder.py
+index 90a8983..848de27 100644
+--- a/qa-chatbot/src/app/graph/builder.py
++++ b/qa-chatbot/src/app/graph/builder.py
+@@ -1,42 +1,61 @@
+-from langgraph.graph import StateGraph
+-from langgraph.graph import END
++from typing import Any
++
+ from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
++from langgraph.graph import END, StateGraph
+
+-from app.graph.state import GraphState
+-from app.graph.nodes.guardrails import guardrails_node
+-from app.graph.nodes.enhance_prompt import enhance_prompt_node
+ from app.graph.nodes.council_vote import council_vote_node
++from app.graph.nodes.guardrails import guardrails_node
++from app.graph.nodes.intent_classifier import intent_classifier_node
+ from app.graph.nodes.synthesize import synthesize_node
++from app.graph.state import GraphState
++
++
++def _route_intent(state: GraphState) -> str:
++    """After intent_classifier: block CREATE requests, proceed with OPTIMIZE."""
++    if state.get("intent") == "create":
++        return "blocked"
++    return "proceed"
+
+
+ def _should_continue(state: GraphState) -> str:
+-    """Edge condition: abort graph if guardrails set an error."""
++    """After guardrails: abort if a safety error was set, otherwise continue."""
+     if state.get("error"):
+         return "abort"
+     return "continue"
+
+
+-async def compile_graph(checkpointer: AsyncPostgresSaver):
++async def compile_graph(checkpointer: AsyncPostgresSaver) -> Any:  # noqa: ANN401
+     builder = StateGraph(GraphState)
+
++    builder.add_node("intent_classifier", intent_classifier_node)
+     builder.add_node("guardrails", guardrails_node)
+-    builder.add_node("enhance_prompt", enhance_prompt_node)
+     builder.add_node("council_vote", council_vote_node)
+     builder.add_node("synthesize", synthesize_node)
+
+-    builder.set_entry_point("guardrails")
++    # Entry point: classify intent first
++    builder.set_entry_point("intent_classifier")
++
++    # Gate 1: CREATE requests end here with a rejection message
++    builder.add_conditional_edges(
++        "intent_classifier",
++        _route_intent,
++        {
++            "blocked": END,
++            "proceed": "guardrails",
++        },
++    )
+
++    # Gate 2: safety checks — abort on violation, otherwise run the council
+     builder.add_conditional_edges(
+         "guardrails",
+         _should_continue,
+         {
+-            "continue": "enhance_prompt",
+             "abort": END,
++            "continue": "council_vote",
+         },
+     )
+
+-    builder.add_edge("enhance_prompt", "council_vote")
+     builder.add_edge("council_vote", "synthesize")
+     builder.add_edge("synthesize", END)
+
+-    return builder.compile(checkpointer=checkpointer)
+\ No newline at end of file
++    return builder.compile(checkpointer=checkpointer)
+diff --git a/qa-chatbot/src/app/graph/checkpointer.py b/qa-chatbot/src/app/graph/checkpointer.py
+index e14030b..0145501 100644
+--- a/qa-chatbot/src/app/graph/checkpointer.py
++++ b/qa-chatbot/src/app/graph/checkpointer.py
+@@ -1,5 +1,5 @@
+-from contextlib import asynccontextmanager
+ from collections.abc import AsyncGenerator
++from contextlib import asynccontextmanager
+
+ from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+
+@@ -26,4 +26,4 @@ async def get_checkpointer() -> AsyncGenerator[AsyncPostgresSaver, None]:
+     async with AsyncPostgresSaver.from_conn_string(conn_string) as checkpointer:
+         # Creates langgraph internal checkpoint tables if they don't exist
+         await checkpointer.setup()
+-        yield checkpointer
+\ No newline at end of file
++        yield checkpointer
+diff --git a/qa-chatbot/src/app/graph/nodes/council_vote.py b/qa-chatbot/src/app/graph/nodes/council_vote.py
+index de4453b..aadbadf 100644
+--- a/qa-chatbot/src/app/graph/nodes/council_vote.py
++++ b/qa-chatbot/src/app/graph/nodes/council_vote.py
+@@ -1,38 +1,95 @@
++"""
++Council Vote node — each model independently optimizes the raw prompt.
++
++Each council member uses a different optimization strategy (loaded from prompts/):
++  - Index 0 → analytical: precision, constraints, output format
++  - Index 1 → creative: context, persona depth, exemplars, reasoning activation
++  - Index N → falls back to analytical for any additional models
++
++The diversity of optimization angles gives the synthesizer meaningful variation to work with,
++closer to the spirit of the original llm-council paper (Karpathy).
++"""
++
+ import asyncio
++
+ from langchain_openai import ChatOpenAI
++
+ from app.config.llm import get_llm_settings
++from app.graph.prompts import load_prompt
+ from app.graph.state import GraphState
+
+ llm_settings = get_llm_settings()
+
+-def _build_models() -> list:
+-    models = []
+-    for m in llm_settings.COUNCIL_MODELS:
+-        models.append(ChatOpenAI(
++# Load optimization strategy prompts at module startup (file I/O once)
++_STRATEGY_PROMPTS = [
++    load_prompt("council_optimizer_analytical"),
++    load_prompt("council_optimizer_creative"),
++]
++
++
++def _get_strategy(idx: int) -> str:
++    """Return the optimization strategy prompt for a given council member index."""
++    if idx < len(_STRATEGY_PROMPTS):
++        return _STRATEGY_PROMPTS[idx]
++    return _STRATEGY_PROMPTS[0]  # analytical as fallback
++
++
++def _build_models() -> list[ChatOpenAI]:
++    return [
++        ChatOpenAI(
+             model=m,
+             openai_api_base="https://openrouter.ai/api/v1",
+-            openai_api_key=llm_settings.OPENROUTER_API_KEY.get_secret_value()
+-        ))
+-    return models
++            openai_api_key=llm_settings.OPENROUTER_API_KEY.get_secret_value(),
++        )
++        for m in llm_settings.COUNCIL_MODELS
++    ]
++
+
+ _council_models = _build_models()
+
+
++def _build_user_message(raw_prompt: str, feedback: str | None) -> str:
++    """Combine the raw prompt with optional user feedback into the council user message."""
++    if not feedback:
++        return raw_prompt
++    return (
++        f"{raw_prompt}\n\n"
++        f"---\n"
++        f"Optimization Feedback "
++        f"(high-priority directive — override general heuristics if needed):\n"
++        f"{feedback}"
++    )
++
++
+ async def council_vote_node(state: GraphState) -> dict:
+-    prompt = state["enhanced_prompt"]
++    """
++    LangGraph node. Sends the raw prompt to every council model in parallel.
++    Each model independently produces its own optimized version of the prompt.
++
++    Returns:
++        {"council_responses": [{model, optimized_prompt, usage}]}
++    """
++    raw_prompt = state["raw_prompt"]
++    feedback = state.get("feedback")
+
+-    async def query_model(model, idx: int) -> dict:
+-        response = await model.ainvoke([{"role": "user", "content": prompt}])
++    async def optimize(model: ChatOpenAI, idx: int) -> dict:
++        system = _get_strategy(idx)
++        response = await model.ainvoke(
++            [
++                {"role": "system", "content": system},
++                {"role": "user", "content": _build_user_message(raw_prompt, feedback)},
++            ]
++        )
+         return {
+             "model": llm_settings.COUNCIL_MODELS[idx],
+-            "response": response.content,
++            "optimized_prompt": response.content.strip(),
+             "usage": getattr(response, "usage_metadata", {}),
+         }
+
+-    responses = await asyncio.gather(
+-        *[query_model(m, i) for i, m in enumerate(_council_models)],
++    results = await asyncio.gather(
++        *[optimize(m, i) for i, m in enumerate(_council_models)],
+         return_exceptions=True,
+     )
+
+-    valid = [r for r in responses if isinstance(r, dict)]
+-    return {"council_responses": valid}
+\ No newline at end of file
++    valid = [r for r in results if isinstance(r, dict)]
++    return {"council_responses": valid}
+diff --git a/qa-chatbot/src/app/graph/nodes/enhance_prompt.py b/qa-chatbot/src/app/graph/nodes/enhance_prompt.py
+index 04466b0..b98d7d6 100644
+--- a/qa-chatbot/src/app/graph/nodes/enhance_prompt.py
++++ b/qa-chatbot/src/app/graph/nodes/enhance_prompt.py
+@@ -1,4 +1,5 @@
+ from langchain_openai import ChatOpenAI
++
+ from app.config.llm import get_llm_settings
+ from app.graph.state import GraphState
+
+@@ -19,8 +20,10 @@ Return ONLY the enhanced prompt, nothing else."""
+
+
+ async def enhance_prompt_node(state: GraphState) -> dict:
+-    response = await _enhancer.ainvoke([
+-        {"role": "system", "content": ENHANCE_SYSTEM},
+-        {"role": "user", "content": state["raw_prompt"]},
+-    ])
+-    return {"enhanced_prompt": response.content}
+\ No newline at end of file
++    response = await _enhancer.ainvoke(
++        [
++            {"role": "system", "content": ENHANCE_SYSTEM},
++            {"role": "user", "content": state["raw_prompt"]},
++        ]
++    )
++    return {"enhanced_prompt": response.content}
+diff --git a/qa-chatbot/src/app/graph/nodes/guardrails.py b/qa-chatbot/src/app/graph/nodes/guardrails.py
+index 916587f..1b4c2c2 100644
+--- a/qa-chatbot/src/app/graph/nodes/guardrails.py
++++ b/qa-chatbot/src/app/graph/nodes/guardrails.py
+@@ -8,7 +8,9 @@ Checks for:
+
+ Returns an error in state to short-circuit the graph if triggered.
+ """
++
+ import re
++
+ from app.graph.state import GraphState
+
+ # Max characters allowed in a raw prompt
+@@ -17,22 +19,24 @@ MAX_PROMPT_LENGTH = 8_000
+ # Simple regex patterns for obvious prompt injection attempts
+ INJECTION_PATTERNS = [
+     r"ignore\s+(all\s+)?(previous|prior|above)\s+instructions",
+-    r"you\s+are\s+now\s+(?!a\s+QA)",          # "you are now DAN / evil AI"
++    r"you\s+are\s+now\s+(?!a\s+QA)",  # "you are now DAN / evil AI"
+     r"disregard\s+(your\s+)?(system|safety)",
+     r"act\s+as\s+if\s+you\s+have\s+no\s+restrictions",
+     r"jailbreak",
+-    r"<\s*script\s*>",                          # XSS attempt in prompt
++    r"<\s*script\s*>",  # XSS attempt in prompt
+ ]
+
+ COMPILED_PATTERNS = [re.compile(p, re.IGNORECASE) for p in INJECTION_PATTERNS]
+
+ # Blocked keywords (extend as needed)
+-BLOCKED_KEYWORDS = frozenset([
+-    "how to make a bomb",
+-    "synthesize drugs",
+-    "child pornography",
+-    "self-harm instructions",
+-])
++BLOCKED_KEYWORDS = frozenset(
++    [
++        "how to make a bomb",
++        "synthesize drugs",
++        "child pornography",
++        "self-harm instructions",
++    ]
++)
+
+
+ def _check_empty(prompt: str) -> str | None:
+@@ -86,4 +90,4 @@ async def guardrails_node(state: GraphState) -> dict:
+         if reason:
+             return {"error": reason, "final_response": reason}
+
+-    return {"error": None}
+\ No newline at end of file
++    return {"error": None}
+diff --git a/qa-chatbot/src/app/graph/nodes/intent_classifier.py b/qa-chatbot/src/app/graph/nodes/intent_classifier.py
+new file mode 100644
+index 0000000..b073500
+--- /dev/null
++++ b/qa-chatbot/src/app/graph/nodes/intent_classifier.py
+@@ -0,0 +1,66 @@
++"""
++Intent Classifier node — runs FIRST in the graph, before guardrails.
++
++Determines whether the user wants to:
++  - OPTIMIZE an existing prompt  → continue pipeline
++  - CREATE a new prompt          → reject with explanation, short-circuit to END
++
++This is a binary gate: creation requests are out of scope for this service.
++"""
++
++from langchain_openai import ChatOpenAI
++
++from app.config.llm import get_llm_settings
++from app.graph.prompts import load_prompt
++from app.graph.state import GraphState
++
++llm_settings = get_llm_settings()
++
++_REJECTION_MESSAGE = (
++    "This service optimizes existing prompts — it does not write new prompts from scratch.\n\n"
++    "To use it: paste a prompt you already have (even a rough draft) and it will be run "
++    "through a multi-model optimization pipeline to make it clearer, more specific, and "
++    "more effective.\n\n"
++    "Example: submit 'Summarize this article' and receive a fully engineered version "
++    "with role definition, output format, and precise constraints."
++)
++
++_classifier = ChatOpenAI(
++    model=llm_settings.DEFAULT_MODEL,
++    openai_api_base="https://openrouter.ai/api/v1",
++    openai_api_key=llm_settings.OPENROUTER_API_KEY.get_secret_value(),
++    max_tokens=5,
++    temperature=0,  # deterministic — this is classification, not generation
++)
++
++_SYSTEM_PROMPT = load_prompt("intent_classifier")
++
++
++async def intent_classifier_node(state: GraphState) -> dict:
++    """
++    LangGraph node. Classifies whether the user wants to OPTIMIZE or CREATE a prompt.
++
++    Returns:
++        {"intent": "optimize"} to continue the pipeline, or
++        {"intent": "create", "error": <message>, "final_response": <message>} to abort.
++    """
++    raw = state.get("raw_prompt", "").strip()
++
++    response = await _classifier.ainvoke(
++        [
++            {"role": "system", "content": _SYSTEM_PROMPT},
++            {"role": "user", "content": raw},
++        ]
++    )
++
++    verdict = response.content.strip().upper()
++
++    if verdict == "CREATE":
++        return {
++            "intent": "create",
++            "error": _REJECTION_MESSAGE,
++            "final_response": _REJECTION_MESSAGE,
++        }
++
++    # Default to optimize even if the model returns something unexpected
++    return {"intent": "optimize"}
+diff --git a/qa-chatbot/src/app/graph/nodes/synthesize.py b/qa-chatbot/src/app/graph/nodes/synthesize.py
+index 11588eb..f92c942 100644
+--- a/qa-chatbot/src/app/graph/nodes/synthesize.py
++++ b/qa-chatbot/src/app/graph/nodes/synthesize.py
+@@ -1,5 +1,14 @@
++"""
++Synthesize node — evaluates all council proposals and produces the single best optimized prompt.
++
++The synthesizer acts as a meta-judge: it does not simply pick one proposal, but intelligently
++combines the strongest elements from each council member's independently optimized version.
++"""
++
+ from langchain_openai import ChatOpenAI
++
+ from app.config.llm import get_llm_settings
++from app.graph.prompts import load_prompt
+ from app.graph.state import GraphState
+
+ llm_settings = get_llm_settings()
+@@ -10,22 +19,36 @@ _synthesizer = ChatOpenAI(
+     openai_api_key=llm_settings.OPENROUTER_API_KEY.get_secret_value(),
+ )
+
+-SYNTH_SYSTEM = """You are a synthesis engine. Given multiple AI responses to the same question,
+-produce a single best, consolidated answer that preserves the most accurate and useful information."""
++_SYSTEM_PROMPT = load_prompt("synthesize_best")
++
++
++def _build_user_message(state: GraphState) -> str:
++    proposals = "\n\n".join(
++        f"[Proposal from {r['model']}]:\n{r['optimized_prompt']}"
++        for r in state["council_responses"]
++    )
++    return f"Original prompt:\n{state['raw_prompt']}\n\nCouncil proposals:\n{proposals}"
+
+
+ async def synthesize_node(state: GraphState) -> dict:
+-    council_text = "\n\n".join(
+-        f"[{r['model']}]: {r['response']}" for r in state["council_responses"]
++    """
++    LangGraph node. Synthesizes the best optimized prompt from all council proposals.
++
++    Returns:
++        {"final_response": <best_optimized_prompt>, "token_usage": {"total_tokens": N}}
++    """
++    response = await _synthesizer.ainvoke(
++        [
++            {"role": "system", "content": _SYSTEM_PROMPT},
++            {"role": "user", "content": _build_user_message(state)},
++        ]
+     )
+-    response = await _synthesizer.ainvoke([
+-        {"role": "system", "content": SYNTH_SYSTEM},
+-        {"role": "user", "content": f"Question: {state['enhanced_prompt']}\n\nResponses:\n{council_text}"},
+-    ])
++
+     total_tokens = sum(
+         r.get("usage", {}).get("total_tokens", 0) for r in state["council_responses"]
+     )
++
+     return {
+-        "final_response": response.content,
++        "final_response": response.content.strip(),
+         "token_usage": {"total_tokens": total_tokens},
+-    }
+\ No newline at end of file
++    }
+diff --git a/qa-chatbot/src/app/graph/prompts.py b/qa-chatbot/src/app/graph/prompts.py
+new file mode 100644
+index 0000000..2384bf5
+--- /dev/null
++++ b/qa-chatbot/src/app/graph/prompts.py
+@@ -0,0 +1,16 @@
++from pathlib import Path
++
++# Project root is 3 levels up from src/app/graph/
++_PROMPTS_DIR = Path(__file__).parents[3] / "prompts"
++
++
++def load_prompt(name: str) -> str:
++    """Load a system prompt from the prompts/ directory at the project root.
++
++    Args:
++        name: Filename without the .md extension (e.g. "intent_classifier")
++
++    Returns:
++        The prompt text, stripped of leading/trailing whitespace.
++    """
++    return (_PROMPTS_DIR / f"{name}.md").read_text(encoding="utf-8").strip()
+diff --git a/qa-chatbot/src/app/graph/state.py b/qa-chatbot/src/app/graph/state.py
+index f48f10f..b4f4614 100644
+--- a/qa-chatbot/src/app/graph/state.py
++++ b/qa-chatbot/src/app/graph/state.py
+@@ -1,4 +1,5 @@
+ from typing import Annotated
++
+ from langgraph.graph.message import add_messages
+ from typing_extensions import TypedDict
+
+@@ -9,12 +10,20 @@ class GraphState(TypedDict):
+     session_id: str
+     user_id: str
+
++    # Optional user guidance that shapes how the council optimizes the prompt.
++    # When set, it is injected into the council message as a high-priority directive.
++    feedback: str | None
++
++    # Intent classification result: "optimize" | "create"
++    intent: str | None
++
+     # Pipeline stages
+-    enhanced_prompt: str
+-    council_responses: list[dict]  # [{model, response, score}]
+-    final_response: str
++    # council_responses: each model's independently optimized version of raw_prompt
++    #   shape: [{model: str, optimized_prompt: str, usage: dict}]
++    council_responses: list[dict]
++    final_response: str  # synthesized best optimized prompt
+
+     # Metadata
+     messages: Annotated[list, add_messages]
+     token_usage: dict
+-    error: str | None
+\ No newline at end of file
++    error: str | None
+diff --git a/qa-chatbot/src/app/main.py b/qa-chatbot/src/app/main.py
+index b64f0c7..01e5828 100644
+--- a/qa-chatbot/src/app/main.py
++++ b/qa-chatbot/src/app/main.py
+@@ -8,17 +8,47 @@ from fastapi.responses import JSONResponse
+ from app.api.router import api_router
+ from app.api.types.response import ErrorResponse
+ from app.config.app import get_app_settings
++from app.config.env import get_env_settings
+ from app.core.logging import setup_logging
+ from app.core.middleware import CorrelationIdMiddleware, RateLimitMiddleware
++from app.db.session import AsyncSessionLocal
++from app.dependencies import _ANONYMOUS_USER
+ from app.graph.builder import compile_graph
+ from app.graph.checkpointer import get_checkpointer
+
+ app_settings = get_app_settings()
+
+
++async def _seed_anonymous_user() -> None:
++    """
++    Ensure the anonymous dev user exists in the DB.
++    Called on startup only when AUTH_ENABLED=False so that FK constraints
++    (e.g. prompt_versions.user_id → users.id) are satisfied without a real login.
++    """
++    async with AsyncSessionLocal() as session:
++        from sqlalchemy import select
++
++        from app.models.user import User
++
++        existing = await session.execute(select(User).where(User.id == _ANONYMOUS_USER.id))
++        if existing.scalar_one_or_none() is None:
++            session.add(
++                User(
++                    id=_ANONYMOUS_USER.id,
++                    email=_ANONYMOUS_USER.email,
++                    credits=_ANONYMOUS_USER.credits,
++                    is_active=True,
++                    is_superuser=False,
++                )
++            )
++            await session.commit()
++
++
+ @asynccontextmanager
+ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+     setup_logging(debug=app_settings.DEBUG)
++    if not get_env_settings().AUTH_ENABLED:
++        await _seed_anonymous_user()
+     async with get_checkpointer() as checkpointer:
+         app.state.graph = await compile_graph(checkpointer)
+         yield
+diff --git a/qa-chatbot/src/app/migrations/env.py b/qa-chatbot/src/app/migrations/env.py
+index d4e3509..fcd9dc3 100644
+--- a/qa-chatbot/src/app/migrations/env.py
++++ b/qa-chatbot/src/app/migrations/env.py
+@@ -1,17 +1,15 @@
+ import asyncio
+ from logging.config import fileConfig
++from typing import Any
+
++from alembic import context
+ from sqlalchemy import pool
+ from sqlalchemy.ext.asyncio import async_engine_from_config
+
+-from alembic import context
+-
+ from app.config.database import get_database_settings
+ from app.models.base import Base
++
+ # Import all models so they are registered with Base.metadata before autogenerate
+-from app.models.user import User
+-from app.models.session import ChatSession
+-from app.models.message import Message
+
+ # this is the Alembic Config object
+ config = context.config
+@@ -22,6 +20,7 @@ if config.config_file_name is not None:
+
+ target_metadata = Base.metadata
+
++
+ def run_migrations_offline() -> None:
+     db_settings = get_database_settings()
+     url = str(db_settings.DATABASE_URL)
+@@ -35,11 +34,13 @@ def run_migrations_offline() -> None:
+     with context.begin_transaction():
+         context.run_migrations()
+
+-def do_run_migrations(connection) -> None:
++
++def do_run_migrations(connection: Any) -> None:  # noqa: ANN401
+     context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
+     with context.begin_transaction():
+         context.run_migrations()
+
++
+ async def run_async_migrations() -> None:
+     db_settings = get_database_settings()
+     configuration = config.get_section(config.config_ini_section, {})
+@@ -56,9 +57,11 @@ async def run_async_migrations() -> None:
+
+     await connectable.dispose()
+
++
+ def run_migrations_online() -> None:
+     asyncio.run(run_async_migrations())
+
++
+ if context.is_offline_mode():
+     run_migrations_offline()
+ else:
+diff --git a/qa-chatbot/src/app/migrations/versions/62fc31f121cc_initial_schema.py b/qa-chatbot/src/app/migrations/versions/62fc31f121cc_initial_schema.py
+index 423db4f..bfc0f9a 100644
+--- a/qa-chatbot/src/app/migrations/versions/62fc31f121cc_initial_schema.py
++++ b/qa-chatbot/src/app/migrations/versions/62fc31f121cc_initial_schema.py
+@@ -1,81 +1,123 @@
+ """initial_schema
+
+ Revision ID: 62fc31f121cc
+-Revises:
++Revises:
+ Create Date: 2026-04-04 13:35:30.788100
+
+ """
+-from typing import Sequence, Union
+
+-from alembic import op
+-import sqlalchemy as sa
++# ruff: noqa: E501
++from collections.abc import Sequence
+
++import sqlalchemy as sa
++from alembic import op
+
+ # revision identifiers, used by Alembic.
+-revision: str = '62fc31f121cc'
+-down_revision: Union[str, Sequence[str], None] = None
+-branch_labels: Union[str, Sequence[str], None] = None
+-depends_on: Union[str, Sequence[str], None] = None
++revision: str = "62fc31f121cc"
++down_revision: str | Sequence[str] | None = None
++branch_labels: str | Sequence[str] | None = None
++depends_on: str | Sequence[str] | None = None
+
+
+ def upgrade() -> None:
+     """Upgrade schema."""
+     # ### commands auto generated by Alembic - please adjust! ###
+-    op.create_table('users',
+-    sa.Column('email', sa.String(length=255), nullable=False),
+-    sa.Column('hashed_password', sa.String(length=255), nullable=True),
+-    sa.Column('api_key_hash', sa.String(length=255), nullable=True),
+-    sa.Column('full_name', sa.String(length=255), nullable=True),
+-    sa.Column('is_active', sa.Boolean(), nullable=False),
+-    sa.Column('is_superuser', sa.Boolean(), nullable=False),
+-    sa.Column('last_login_at', sa.DateTime(timezone=True), nullable=True),
+-    sa.Column('id', sa.Uuid(), nullable=False),
+-    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+-    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+-    sa.PrimaryKeyConstraint('id')
++    op.create_table(
++        "users",
++        sa.Column("email", sa.String(length=255), nullable=False),
++        sa.Column("hashed_password", sa.String(length=255), nullable=True),
++        sa.Column("api_key_hash", sa.String(length=255), nullable=True),
++        sa.Column("full_name", sa.String(length=255), nullable=True),
++        sa.Column("is_active", sa.Boolean(), nullable=False),
++        sa.Column("is_superuser", sa.Boolean(), nullable=False),
++        sa.Column("last_login_at", sa.DateTime(timezone=True), nullable=True),
++        sa.Column("id", sa.Uuid(), nullable=False),
++        sa.Column(
++            "created_at",
++            sa.DateTime(timezone=True),
++            server_default=sa.text("now()"),
++            nullable=False,
++        ),
++        sa.Column(
++            "updated_at",
++            sa.DateTime(timezone=True),
++            server_default=sa.text("now()"),
++            nullable=False,
++        ),
++        sa.PrimaryKeyConstraint("id"),
++    )
++    op.create_index(op.f("ix_users_api_key_hash"), "users", ["api_key_hash"], unique=False)
++    op.create_index(op.f("ix_users_email"), "users", ["email"], unique=True)
++    op.create_table(
++        "chat_sessions",
++        sa.Column("user_id", sa.Uuid(), nullable=False),
++        sa.Column("title", sa.String(length=255), nullable=True),
++        sa.Column("graph_thread_id", sa.String(length=255), nullable=False),
++        sa.Column("id", sa.Uuid(), nullable=False),
++        sa.Column(
++            "created_at",
++            sa.DateTime(timezone=True),
++            server_default=sa.text("now()"),
++            nullable=False,
++        ),
++        sa.Column(
++            "updated_at",
++            sa.DateTime(timezone=True),
++            server_default=sa.text("now()"),
++            nullable=False,
++        ),
++        sa.ForeignKeyConstraint(
++            ["user_id"],
++            ["users.id"],
++        ),
++        sa.PrimaryKeyConstraint("id"),
+     )
+-    op.create_index(op.f('ix_users_api_key_hash'), 'users', ['api_key_hash'], unique=False)
+-    op.create_index(op.f('ix_users_email'), 'users', ['email'], unique=True)
+-    op.create_table('chat_sessions',
+-    sa.Column('user_id', sa.Uuid(), nullable=False),
+-    sa.Column('title', sa.String(length=255), nullable=True),
+-    sa.Column('graph_thread_id', sa.String(length=255), nullable=False),
+-    sa.Column('id', sa.Uuid(), nullable=False),
+-    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+-    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+-    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
+-    sa.PrimaryKeyConstraint('id')
++    op.create_index(
++        op.f("ix_chat_sessions_graph_thread_id"), "chat_sessions", ["graph_thread_id"], unique=True
+     )
+-    op.create_index(op.f('ix_chat_sessions_graph_thread_id'), 'chat_sessions', ['graph_thread_id'], unique=True)
+-    op.create_index(op.f('ix_chat_sessions_user_id'), 'chat_sessions', ['user_id'], unique=False)
+-    op.create_table('messages',
+-    sa.Column('session_id', sa.Uuid(), nullable=False),
+-    sa.Column('role', sa.String(length=20), nullable=False),
+-    sa.Column('raw_prompt', sa.Text(), nullable=True),
+-    sa.Column('enhanced_prompt', sa.Text(), nullable=True),
+-    sa.Column('response', sa.Text(), nullable=True),
+-    sa.Column('council_votes', sa.JSON(), nullable=True),
+-    sa.Column('model_used', sa.String(length=100), nullable=True),
+-    sa.Column('token_usage', sa.JSON(), nullable=True),
+-    sa.Column('id', sa.Uuid(), nullable=False),
+-    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+-    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+-    sa.ForeignKeyConstraint(['session_id'], ['chat_sessions.id'], ),
+-    sa.PrimaryKeyConstraint('id')
++    op.create_index(op.f("ix_chat_sessions_user_id"), "chat_sessions", ["user_id"], unique=False)
++    op.create_table(
++        "messages",
++        sa.Column("session_id", sa.Uuid(), nullable=False),
++        sa.Column("role", sa.String(length=20), nullable=False),
++        sa.Column("raw_prompt", sa.Text(), nullable=True),
++        sa.Column("enhanced_prompt", sa.Text(), nullable=True),
++        sa.Column("response", sa.Text(), nullable=True),
++        sa.Column("council_votes", sa.JSON(), nullable=True),
++        sa.Column("model_used", sa.String(length=100), nullable=True),
++        sa.Column("token_usage", sa.JSON(), nullable=True),
++        sa.Column("id", sa.Uuid(), nullable=False),
++        sa.Column(
++            "created_at",
++            sa.DateTime(timezone=True),
++            server_default=sa.text("now()"),
++            nullable=False,
++        ),
++        sa.Column(
++            "updated_at",
++            sa.DateTime(timezone=True),
++            server_default=sa.text("now()"),
++            nullable=False,
++        ),
++        sa.ForeignKeyConstraint(
++            ["session_id"],
++            ["chat_sessions.id"],
++        ),
++        sa.PrimaryKeyConstraint("id"),
+     )
+-    op.create_index(op.f('ix_messages_session_id'), 'messages', ['session_id'], unique=False)
++    op.create_index(op.f("ix_messages_session_id"), "messages", ["session_id"], unique=False)
+     # ### end Alembic commands ###
+
+
+ def downgrade() -> None:
+     """Downgrade schema."""
+     # ### commands auto generated by Alembic - please adjust! ###
+-    op.drop_index(op.f('ix_messages_session_id'), table_name='messages')
+-    op.drop_table('messages')
+-    op.drop_index(op.f('ix_chat_sessions_user_id'), table_name='chat_sessions')
+-    op.drop_index(op.f('ix_chat_sessions_graph_thread_id'), table_name='chat_sessions')
+-    op.drop_table('chat_sessions')
+-    op.drop_index(op.f('ix_users_email'), table_name='users')
+-    op.drop_index(op.f('ix_users_api_key_hash'), table_name='users')
+-    op.drop_table('users')
++    op.drop_index(op.f("ix_messages_session_id"), table_name="messages")
++    op.drop_table("messages")
++    op.drop_index(op.f("ix_chat_sessions_user_id"), table_name="chat_sessions")
++    op.drop_index(op.f("ix_chat_sessions_graph_thread_id"), table_name="chat_sessions")
++    op.drop_table("chat_sessions")
++    op.drop_index(op.f("ix_users_email"), table_name="users")
++    op.drop_index(op.f("ix_users_api_key_hash"), table_name="users")
++    op.drop_table("users")
+     # ### end Alembic commands ###
+diff --git a/qa-chatbot/src/app/migrations/versions/a3f9c12e4b57_add_prompt_versions.py b/qa-chatbot/src/app/migrations/versions/a3f9c12e4b57_add_prompt_versions.py
+new file mode 100644
+index 0000000..b751bfd
+--- /dev/null
++++ b/qa-chatbot/src/app/migrations/versions/a3f9c12e4b57_add_prompt_versions.py
+@@ -0,0 +1,56 @@
++"""add prompt_versions table
++
++Revision ID: a3f9c12e4b57
++Revises: d81af2998be3
++Create Date: 2026-04-11 00:00:00.000000
++
++"""
++
++from collections.abc import Sequence
++
++import sqlalchemy as sa
++from alembic import op
++
++# revision identifiers, used by Alembic.
++revision: str = "a3f9c12e4b57"
++down_revision: str | Sequence[str] | None = "d81af2998be3"
++branch_labels: str | Sequence[str] | None = None
++depends_on: str | Sequence[str] | None = None
++
++
++def upgrade() -> None:
++    op.create_table(
++        "prompt_versions",
++        sa.Column("id", sa.Uuid(), nullable=False),
++        sa.Column("prompt_id", sa.Uuid(), nullable=False),
++        sa.Column("user_id", sa.Uuid(), nullable=False),
++        sa.Column("name", sa.String(length=255), nullable=False),
++        sa.Column("version", sa.Integer(), nullable=False),
++        sa.Column("content", sa.Text(), nullable=False),
++        sa.Column(
++            "created_at",
++            sa.DateTime(timezone=True),
++            server_default=sa.text("now()"),
++            nullable=False,
++        ),
++        sa.Column(
++            "updated_at",
++            sa.DateTime(timezone=True),
++            server_default=sa.text("now()"),
++            nullable=False,
++        ),
++        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
++        sa.PrimaryKeyConstraint("id"),
++    )
++    op.create_index(
++        op.f("ix_prompt_versions_prompt_id"), "prompt_versions", ["prompt_id"], unique=False
++    )
++    op.create_index(
++        op.f("ix_prompt_versions_user_id"), "prompt_versions", ["user_id"], unique=False
++    )
++
++
++def downgrade() -> None:
++    op.drop_index(op.f("ix_prompt_versions_user_id"), table_name="prompt_versions")
++    op.drop_index(op.f("ix_prompt_versions_prompt_id"), table_name="prompt_versions")
++    op.drop_table("prompt_versions")
+diff --git a/qa-chatbot/src/app/migrations/versions/d81af2998be3_add_credits_to_user.py b/qa-chatbot/src/app/migrations/versions/d81af2998be3_add_credits_to_user.py
+index 9d53703..c4e773a 100644
+--- a/qa-chatbot/src/app/migrations/versions/d81af2998be3_add_credits_to_user.py
++++ b/qa-chatbot/src/app/migrations/versions/d81af2998be3_add_credits_to_user.py
+@@ -5,28 +5,28 @@ Revises: 62fc31f121cc
+ Create Date: 2026-04-04 19:02:55.203158
+
+ """
+-from typing import Sequence, Union
+
+-from alembic import op
++from collections.abc import Sequence
++
+ import sqlalchemy as sa
+-from sqlalchemy.dialects import postgresql
++from alembic import op
+
+ # revision identifiers, used by Alembic.
+-revision: str = 'd81af2998be3'
+-down_revision: Union[str, Sequence[str], None] = '62fc31f121cc'
+-branch_labels: Union[str, Sequence[str], None] = None
+-depends_on: Union[str, Sequence[str], None] = None
++revision: str = "d81af2998be3"
++down_revision: str | Sequence[str] | None = "62fc31f121cc"
++branch_labels: str | Sequence[str] | None = None
++depends_on: str | Sequence[str] | None = None
+
+
+ def upgrade() -> None:
+     """Upgrade schema."""
+     # ### commands auto generated by Alembic - please adjust! ###
+-    op.add_column('users', sa.Column('credits', sa.Integer(), server_default='100', nullable=False))
++    op.add_column("users", sa.Column("credits", sa.Integer(), server_default="100", nullable=False))
+     # ### end Alembic commands ###
+
+
+ def downgrade() -> None:
+     """Downgrade schema."""
+     # ### commands auto generated by Alembic - please adjust! ###
+-    op.drop_column('users', 'credits')
++    op.drop_column("users", "credits")
+     # ### end Alembic commands ###
+diff --git a/qa-chatbot/src/app/models/__init__.py b/qa-chatbot/src/app/models/__init__.py
+index e69de29..1f21e53 100644
+--- a/qa-chatbot/src/app/models/__init__.py
++++ b/qa-chatbot/src/app/models/__init__.py
+@@ -0,0 +1,11 @@
++# Import all ORM models here so SQLAlchemy's mapper registry has every class
++# available before any relationship string-reference is resolved.
++#
++# Ordering matters: Base classes (no FKs pointing to others) first,
++# then dependent tables.
++from app.models.message import Message
++from app.models.prompt_version import PromptVersion
++from app.models.session import ChatSession
++from app.models.user import User
++
++__all__ = ["User", "ChatSession", "Message", "PromptVersion"]
+diff --git a/qa-chatbot/src/app/models/base.py b/qa-chatbot/src/app/models/base.py
+index cfa45a4..48eec2d 100644
+--- a/qa-chatbot/src/app/models/base.py
++++ b/qa-chatbot/src/app/models/base.py
+@@ -1,25 +1,20 @@
+ import uuid
+ from datetime import datetime
+-from sqlalchemy import func
+-from sqlalchemy import DateTime
+-from sqlalchemy.orm import Mapped
+-from sqlalchemy.orm import mapped_column
+-from sqlalchemy.orm import DeclarativeBase
++
++from sqlalchemy import DateTime, func
++from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
++
+
+ class Base(DeclarativeBase):
+     pass
+
+
+ class TimestampMixin:
+-    created_at: Mapped[datetime] = mapped_column(
+-        DateTime(timezone=True), server_default=func.now()
+-    )
++    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+     updated_at: Mapped[datetime] = mapped_column(
+         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+     )
+
+
+ class UUIDMixin:
+-    id: Mapped[uuid.UUID] = mapped_column(
+-        primary_key=True, default=uuid.uuid4
+-    )
+\ No newline at end of file
++    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+diff --git a/qa-chatbot/src/app/models/message.py b/qa-chatbot/src/app/models/message.py
+index fd3df94..5896876 100644
+--- a/qa-chatbot/src/app/models/message.py
++++ b/qa-chatbot/src/app/models/message.py
+@@ -1,28 +1,27 @@
++from __future__ import annotations
++
+ import uuid
+-from .base import Base
+-from .base import TimestampMixin
+-from .base import UUIDMixin
+-from sqlalchemy import Text
+-from sqlalchemy import JSON
+-from sqlalchemy import String
+-from sqlalchemy import ForeignKey
+-from sqlalchemy.orm import Mapped
+-from sqlalchemy.orm import mapped_column
+-from sqlalchemy.orm import relationship
++from typing import TYPE_CHECKING
++
++from sqlalchemy import JSON, ForeignKey, String, Text
++from sqlalchemy.orm import Mapped, mapped_column, relationship
++
++from .base import Base, TimestampMixin, UUIDMixin
++
++if TYPE_CHECKING:
++    from .session import ChatSession
+
+
+ class Message(Base, UUIDMixin, TimestampMixin):
+     __tablename__ = "messages"
+
+-    session_id: Mapped[uuid.UUID] = mapped_column(
+-        ForeignKey("chat_sessions.id"), index=True
+-    )
+-    role: Mapped[str] = mapped_column(String(20))          # user | assistant
+-    raw_prompt: Mapped[str | None] = mapped_column(Text)   # original user input
++    session_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("chat_sessions.id"), index=True)
++    role: Mapped[str] = mapped_column(String(20))  # user | assistant
++    raw_prompt: Mapped[str | None] = mapped_column(Text)  # original user input
+     enhanced_prompt: Mapped[str | None] = mapped_column(Text)
+     response: Mapped[str | None] = mapped_column(Text)
+     council_votes: Mapped[dict | None] = mapped_column(JSON)
+     model_used: Mapped[str | None] = mapped_column(String(100))
+     token_usage: Mapped[dict | None] = mapped_column(JSON)
+
+-    session: Mapped["ChatSession"] = relationship(back_populates="messages")
+\ No newline at end of file
++    session: Mapped[ChatSession] = relationship(back_populates="messages")
+diff --git a/qa-chatbot/src/app/models/prompt_version.py b/qa-chatbot/src/app/models/prompt_version.py
+new file mode 100644
+index 0000000..a04e698
+--- /dev/null
++++ b/qa-chatbot/src/app/models/prompt_version.py
+@@ -0,0 +1,45 @@
++from __future__ import annotations
++
++import uuid
++from typing import TYPE_CHECKING
++
++from sqlalchemy import ForeignKey, Integer, String, Text
++from sqlalchemy.orm import Mapped, mapped_column, relationship
++
++from .base import Base, TimestampMixin, UUIDMixin
++
++if TYPE_CHECKING:
++    from .user import User
++
++
++class PromptVersion(Base, UUIDMixin, TimestampMixin):
++    """
++    Stores named, versioned prompts.
++
++    All versions of a prompt share the same `prompt_id` (a stable UUID generated
++    when the prompt family is first created). `version` starts at 1 and increments
++    each time the user runs an optimization cycle on that prompt.
++
++    Flow:
++        POST /prompts/versions          → version=1, new prompt_id
++        POST /prompts/versions/{id}/optimize → version=2  (optimized from v1)
++        POST /prompts/versions/{id}/optimize → version=3  (optimized from v2)
++    """
++
++    __tablename__ = "prompt_versions"
++
++    # Groups all versions of the same named prompt together
++    prompt_id: Mapped[uuid.UUID] = mapped_column(index=True)
++
++    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), index=True)
++
++    # Human-readable name the user assigned (e.g. "my-email-draft")
++    name: Mapped[str] = mapped_column(String(255))
++
++    # 1-based sequential version number within the prompt family
++    version: Mapped[int] = mapped_column(Integer)
++
++    # The actual prompt text at this version
++    content: Mapped[str] = mapped_column(Text)
++
++    user: Mapped[User] = relationship(back_populates="prompt_versions")
+diff --git a/qa-chatbot/src/app/models/session.py b/qa-chatbot/src/app/models/session.py
+index 8c5a236..675b44f 100644
+--- a/qa-chatbot/src/app/models/session.py
++++ b/qa-chatbot/src/app/models/session.py
+@@ -1,13 +1,16 @@
++from __future__ import annotations
++
+ import uuid
+-from .base import Base
+-from .base import TimestampMixin
+-from .base import UUIDMixin
+-from sqlalchemy import Text
+-from sqlalchemy import String
+-from sqlalchemy import ForeignKey
+-from sqlalchemy.orm import Mapped
+-from sqlalchemy.orm import mapped_column
+-from sqlalchemy.orm import relationship
++from typing import TYPE_CHECKING
++
++from sqlalchemy import ForeignKey, String
++from sqlalchemy.orm import Mapped, mapped_column, relationship
++
++from .base import Base, TimestampMixin, UUIDMixin
++
++if TYPE_CHECKING:
++    from .message import Message
++    from .user import User
+
+
+ class ChatSession(Base, UUIDMixin, TimestampMixin):
+@@ -17,5 +20,5 @@ class ChatSession(Base, UUIDMixin, TimestampMixin):
+     title: Mapped[str | None] = mapped_column(String(255))
+     graph_thread_id: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+
+-    user: Mapped["User"] = relationship(back_populates="sessions")
+-    messages: Mapped[list["Message"]] = relationship(back_populates="session")
+\ No newline at end of file
++    user: Mapped[User] = relationship(back_populates="sessions")
++    messages: Mapped[list[Message]] = relationship(back_populates="session")
+diff --git a/qa-chatbot/src/app/models/user.py b/qa-chatbot/src/app/models/user.py
+index 81f45ff..df8b2e6 100644
+--- a/qa-chatbot/src/app/models/user.py
++++ b/qa-chatbot/src/app/models/user.py
+@@ -1,14 +1,15 @@
+-import uuid
+-from .base import Base
+-from .base import TimestampMixin
+-from .base import UUIDMixin
+-from sqlalchemy import String
+-from sqlalchemy import Boolean
+-from sqlalchemy import DateTime
+-from sqlalchemy import Integer
+-from sqlalchemy.orm import Mapped
+-from sqlalchemy.orm import mapped_column
+-from sqlalchemy.orm import relationship
++from __future__ import annotations
++
++from typing import TYPE_CHECKING
++
++from sqlalchemy import Boolean, DateTime, Integer, String
++from sqlalchemy.orm import Mapped, mapped_column, relationship
++
++from .base import Base, TimestampMixin, UUIDMixin
++
++if TYPE_CHECKING:
++    from .prompt_version import PromptVersion
++    from .session import ChatSession
+
+
+ class User(Base, UUIDMixin, TimestampMixin):
+@@ -23,9 +24,12 @@ class User(Base, UUIDMixin, TimestampMixin):
+     last_login_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+     credits: Mapped[int] = mapped_column(Integer, default=100, server_default="100", nullable=False)
+
+-    sessions: Mapped[list["ChatSession"]] = relationship(  # noqa: F821
++    sessions: Mapped[list[ChatSession]] = relationship(
++        back_populates="user", cascade="all, delete-orphan"
++    )
++    prompt_versions: Mapped[list[PromptVersion]] = relationship(
+         back_populates="user", cascade="all, delete-orphan"
+     )
+
+     def __repr__(self) -> str:
+-        return f"<User id={self.id} email={self.email}>"
+\ No newline at end of file
++        return f"<User id={self.id} email={self.email}>"
+diff --git a/qa-chatbot/src/app/repositories/base.py b/qa-chatbot/src/app/repositories/base.py
+index 00e1734..01cc0a9 100644
+--- a/qa-chatbot/src/app/repositories/base.py
++++ b/qa-chatbot/src/app/repositories/base.py
+@@ -1,7 +1,7 @@
+ from typing import Any, Generic, TypeVar
+ from uuid import UUID
+
+-from sqlalchemy import select, func
++from sqlalchemy import func, select
+ from sqlalchemy.ext.asyncio import AsyncSession
+
+ from app.models.base import Base
+@@ -9,7 +9,7 @@ from app.models.base import Base
+ ModelT = TypeVar("ModelT", bound=Base)
+
+
+-class BaseRepository(Generic[ModelT]):
++class BaseRepository(Generic[ModelT]):  # noqa: UP046
+     """
+     Generic async repository providing common CRUD operations.
+     All domain repositories inherit from this.
+@@ -27,19 +27,17 @@ class BaseRepository(Generic[ModelT]):
+         return result.scalar_one_or_none()
+
+     async def get_all(self, *, limit: int = 100, offset: int = 0) -> list[ModelT]:
+-        result = await self.db.execute(
+-            select(self.model).limit(limit).offset(offset)
+-        )
++        result = await self.db.execute(select(self.model).limit(limit).offset(offset))
+         return list(result.scalars().all())
+
+-    async def create(self, **kwargs: Any) -> ModelT:
++    async def create(self, **kwargs: Any) -> ModelT:  # noqa: ANN401
+         instance = self.model(**kwargs)
+         self.db.add(instance)
+-        await self.db.flush()   # flush to get DB-generated values (id, timestamps)
++        await self.db.flush()  # flush to get DB-generated values (id, timestamps)
+         await self.db.refresh(instance)
+         return instance
+
+-    async def update(self, instance: ModelT, **kwargs: Any) -> ModelT:
++    async def update(self, instance: ModelT, **kwargs: Any) -> ModelT:  # noqa: ANN401
+         for key, value in kwargs.items():
+             setattr(instance, key, value)
+         self.db.add(instance)
+@@ -52,7 +50,5 @@ class BaseRepository(Generic[ModelT]):
+         await self.db.flush()
+
+     async def count(self) -> int:
+-        result = await self.db.execute(
+-            select(func.count()).select_from(self.model)
+-        )
+-        return result.scalar_one()
+\ No newline at end of file
++        result = await self.db.execute(select(func.count()).select_from(self.model))
++        return result.scalar_one()
+diff --git a/qa-chatbot/src/app/repositories/message_repo.py b/qa-chatbot/src/app/repositories/message_repo.py
+index 869e032..f398aaf 100644
+--- a/qa-chatbot/src/app/repositories/message_repo.py
++++ b/qa-chatbot/src/app/repositories/message_repo.py
+@@ -29,4 +29,4 @@ class MessageRepository(BaseRepository[Message]):
+             .limit(n)
+         )
+         # Return in chronological order
+-        return list(reversed(result.scalars().all()))
+\ No newline at end of file
++        return list(reversed(result.scalars().all()))
+diff --git a/qa-chatbot/src/app/repositories/prompt_version_repo.py b/qa-chatbot/src/app/repositories/prompt_version_repo.py
+new file mode 100644
+index 0000000..6e25896
+--- /dev/null
++++ b/qa-chatbot/src/app/repositories/prompt_version_repo.py
+@@ -0,0 +1,78 @@
++import uuid
++from uuid import UUID
++
++from sqlalchemy import select
++
++from app.models.prompt_version import PromptVersion
++from app.repositories.base import BaseRepository
++
++
++class PromptVersionRepository(BaseRepository[PromptVersion]):
++    model = PromptVersion
++
++    async def get_all_by_prompt_id(self, prompt_id: UUID, user_id: UUID) -> list[PromptVersion]:
++        """Return all versions of a prompt in ascending version order."""
++        result = await self.db.execute(
++            select(PromptVersion)
++            .where(
++                PromptVersion.prompt_id == prompt_id,
++                PromptVersion.user_id == user_id,
++            )
++            .order_by(PromptVersion.version.asc())
++        )
++        return list(result.scalars().all())
++
++    async def get_latest_by_prompt_id(self, prompt_id: UUID, user_id: UUID) -> PromptVersion | None:
++        """Return the highest-version record for a given prompt_id."""
++        result = await self.db.execute(
++            select(PromptVersion)
++            .where(
++                PromptVersion.prompt_id == prompt_id,
++                PromptVersion.user_id == user_id,
++            )
++            .order_by(PromptVersion.version.desc())
++            .limit(1)
++        )
++        return result.scalar_one_or_none()
++
++    async def get_next_version_number(self, prompt_id: UUID) -> int:
++        """Return the next version number (latest + 1) for a prompt family."""
++        latest = await self.db.execute(
++            select(PromptVersion.version)
++            .where(PromptVersion.prompt_id == prompt_id)
++            .order_by(PromptVersion.version.desc())
++            .limit(1)
++        )
++        current = latest.scalar_one_or_none()
++        return (current or 0) + 1
++
++    async def get_latest_by_name(self, name: str, user_id: UUID) -> PromptVersion | None:
++        """Return the highest-version record for a given (name, user_id) pair."""
++        result = await self.db.execute(
++            select(PromptVersion)
++            .where(
++                PromptVersion.name == name,
++                PromptVersion.user_id == user_id,
++            )
++            .order_by(PromptVersion.version.desc())
++            .limit(1)
++        )
++        return result.scalar_one_or_none()
++
++    async def create_version(
++        self,
++        *,
++        prompt_id: UUID,
++        user_id: UUID,
++        name: str,
++        version: int,
++        content: str,
++    ) -> PromptVersion:
++        return await self.create(
++            id=uuid.uuid4(),
++            prompt_id=prompt_id,
++            user_id=user_id,
++            name=name,
++            version=version,
++            content=content,
++        )
+diff --git a/qa-chatbot/src/app/repositories/session_repo.py b/qa-chatbot/src/app/repositories/session_repo.py
+index 8008d41..6eeb371 100644
+--- a/qa-chatbot/src/app/repositories/session_repo.py
++++ b/qa-chatbot/src/app/repositories/session_repo.py
+@@ -59,4 +59,4 @@ class SessionRepository(BaseRepository[ChatSession]):
+             graph_thread_id=graph_thread_id,
+             title=title,
+         )
+-        return session, True
+\ No newline at end of file
++        return session, True
+diff --git a/qa-chatbot/src/app/repositories/user_repo.py b/qa-chatbot/src/app/repositories/user_repo.py
+index 399d206..f739e5d 100644
+--- a/qa-chatbot/src/app/repositories/user_repo.py
++++ b/qa-chatbot/src/app/repositories/user_repo.py
+@@ -8,19 +8,15 @@ class UserRepository(BaseRepository[User]):
+     model = User
+
+     async def get_by_email(self, email: str) -> User | None:
+-        result = await self.db.execute(
+-            select(User).where(User.email == email)
+-        )
++        result = await self.db.execute(select(User).where(User.email == email))
+         return result.scalar_one_or_none()
+
+     async def get_by_api_key_hash(self, api_key_hash: str) -> User | None:
+-        result = await self.db.execute(
+-            select(User).where(User.api_key_hash == api_key_hash)
+-        )
++        result = await self.db.execute(select(User).where(User.api_key_hash == api_key_hash))
+         return result.scalar_one_or_none()
+
+     async def get_active_by_email(self, email: str) -> User | None:
+         result = await self.db.execute(
+             select(User).where(User.email == email, User.is_active == True)  # noqa: E712
+         )
+-        return result.scalar_one_or_none()
+\ No newline at end of file
++        return result.scalar_one_or_none()
+diff --git a/qa-chatbot/src/app/schemas/auth.py b/qa-chatbot/src/app/schemas/auth.py
+index cc12059..f683b89 100644
+--- a/qa-chatbot/src/app/schemas/auth.py
++++ b/qa-chatbot/src/app/schemas/auth.py
+@@ -1,11 +1,14 @@
+-from pydantic import BaseModel, EmailStr
+ from uuid import UUID
+
++from pydantic import BaseModel, EmailStr
++
++
+ class UserCreate(BaseModel):
+     email: EmailStr
+     password: str
+     full_name: str | None = None
+
++
+ class UserResponse(BaseModel):
+     id: UUID
+     email: EmailStr
+@@ -14,6 +17,7 @@ class UserResponse(BaseModel):
+
+     model_config = {"from_attributes": True}
+
++
+ class Token(BaseModel):
+     access_token: str
+     token_type: str
+diff --git a/qa-chatbot/src/app/schemas/chat.py b/qa-chatbot/src/app/schemas/chat.py
+index c1e6bdf..e7a8720 100644
+--- a/qa-chatbot/src/app/schemas/chat.py
++++ b/qa-chatbot/src/app/schemas/chat.py
+@@ -1,33 +1,42 @@
+ import uuid
+-from pydantic import BaseModel
+-from pydantic import Field
+
+-
+-class ChatRequest(BaseModel):
+-    prompt: str = Field(..., min_length=1, max_length=8000, description="Raw user prompt")
+-    session_id: uuid.UUID | None = Field(default=None, description="Existing session UUID to continue")
++from pydantic import BaseModel, Field
+
+
+-class CouncilVote(BaseModel):
++class ChatRequest(BaseModel):
++    prompt: str = Field(..., min_length=1, max_length=8000, description="Prompt to optimize")
++    session_id: uuid.UUID | None = Field(
++        default=None, description="Existing session UUID to continue"
++    )
++    feedback: str | None = Field(
++        default=None,
++        max_length=2000,
++        description=(
++            "Optional guidance that shapes how the prompt is optimized"
++            " (e.g. 'keep it under 50 words', 'focus on tone')"
++        ),
++    )
++
++
++class CouncilProposal(BaseModel):
+     model: str
+-    response: str
++    optimized_prompt: str
+     usage: dict
+
+
+ class ChatResponse(BaseModel):
+     session_id: str
+-    enhanced_prompt: str
+-    response: str
++    original_prompt: str
++    optimized_prompt: str  # final synthesized best prompt
++    council_proposals: list[CouncilProposal] | None = None
+     token_usage: dict
+-    council_votes: list[CouncilVote] | None = None
+
+
+ class MessageOut(BaseModel):
+     id: uuid.UUID
+     role: str
+     raw_prompt: str | None
+-    enhanced_prompt: str | None
+     response: str | None
+     created_at: str
+
+-    model_config = {"from_attributes": True}
+\ No newline at end of file
++    model_config = {"from_attributes": True}
+diff --git a/qa-chatbot/src/app/schemas/health.py b/qa-chatbot/src/app/schemas/health.py
+index 1df26cc..233fb37 100644
+--- a/qa-chatbot/src/app/schemas/health.py
++++ b/qa-chatbot/src/app/schemas/health.py
+@@ -1,8 +1,10 @@
+ from pydantic import BaseModel
+
++
+ class HealthResponse(BaseModel):
+     status: str
+
++
+ class ReadinessResponse(BaseModel):
+     status: str
+     checks: dict
+diff --git a/qa-chatbot/src/app/schemas/prompt.py b/qa-chatbot/src/app/schemas/prompt.py
+index c75aa02..8e4eea3 100644
+--- a/qa-chatbot/src/app/schemas/prompt.py
++++ b/qa-chatbot/src/app/schemas/prompt.py
+@@ -1,5 +1,4 @@
+-from pydantic import BaseModel
+-from pydantic import Field
++from pydantic import BaseModel, Field
+
+
+ class PromptEnhanceRequest(BaseModel):
+@@ -8,4 +7,92 @@ class PromptEnhanceRequest(BaseModel):
+
+ class PromptEnhanceResponse(BaseModel):
+     raw_prompt: str
+-    enhanced_prompt: str
+\ No newline at end of file
++    enhanced_prompt: str
++
++
++# --- Health Score ---
++
++
++class MetricScore(BaseModel):
++    score: int = Field(..., ge=1, le=10)
++    rationale: str
++
++
++class PromptHealthScoreRequest(BaseModel):
++    prompt: str = Field(..., min_length=1, max_length=8000)
++
++
++class PromptHealthScoreResponse(BaseModel):
++    prompt: str
++    clarity: MetricScore
++    specificity: MetricScore
++    completeness: MetricScore
++    conciseness: MetricScore
++    tone: MetricScore
++    actionability: MetricScore
++    context_richness: MetricScore
++    goal_alignment: MetricScore
++    overall_score: float
++
++
++# --- Prompt Versioning ---
++
++
++class PromptVersionCreateRequest(BaseModel):
++    name: str = Field(
++        ..., min_length=1, max_length=255, description="Human-readable name for this prompt family"
++    )
++    prompt: str = Field(
++        ..., min_length=1, max_length=8000, description="The initial prompt text (becomes v1)"
++    )
++
++
++class PromptVersionOptimizeRequest(BaseModel):
++    feedback: str | None = Field(
++        default=None,
++        max_length=2000,
++        description="Optional guidance that shapes how the council optimizes this version",
++    )
++
++
++class PromptVersionOut(BaseModel):
++    version_id: str
++    prompt_id: str
++    name: str
++    version: int
++    content: str
++    created_at: str
++
++    model_config = {"from_attributes": True}
++
++
++class PromptVersionCreateResponse(BaseModel):
++    prompt_id: str
++    version: PromptVersionOut
++
++
++class PromptVersionOptimizeResponse(BaseModel):
++    prompt_id: str
++    original: PromptVersionOut
++    optimized: PromptVersionOut
++
++
++class PromptVersionListResponse(BaseModel):
++    prompt_id: str
++    name: str
++    versions: list[PromptVersionOut]
++
++
++# --- Advisory ---
++
++
++class PromptAdvisoryRequest(BaseModel):
++    prompt: str = Field(..., min_length=1, max_length=8000)
++
++
++class PromptAdvisoryResponse(BaseModel):
++    prompt: str
++    strengths: list[str]
++    weaknesses: list[str]
++    improvements: list[str]
++    overall_assessment: str
+diff --git a/qa-chatbot/src/app/schemas/user.py b/qa-chatbot/src/app/schemas/user.py
+index 6e75f57..6d4e57d 100644
+--- a/qa-chatbot/src/app/schemas/user.py
++++ b/qa-chatbot/src/app/schemas/user.py
+@@ -1,14 +1,17 @@
+-import uuid
+ import datetime
+-from pydantic import BaseModel
+-from pydantic import ConfigDict
++import uuid
++
++from pydantic import BaseModel, ConfigDict
++
+
+ class CreditResponse(BaseModel):
+     credits: int
+
++
+ class AddCreditRequest(BaseModel):
+     amount: int
+
++
+ class UserResponse(BaseModel):
+     id: uuid.UUID
+     email: str
+@@ -16,5 +19,5 @@ class UserResponse(BaseModel):
+     is_active: bool
+     credits: int
+     last_login_at: datetime.datetime | None = None
+-
++
+     model_config = ConfigDict(from_attributes=True)
+diff --git a/qa-chatbot/src/app/services/chat_service.py b/qa-chatbot/src/app/services/chat_service.py
+index b105b28..8036b70 100644
+--- a/qa-chatbot/src/app/services/chat_service.py
++++ b/qa-chatbot/src/app/services/chat_service.py
+@@ -1,19 +1,24 @@
+ import uuid
++from collections.abc import AsyncGenerator
++from typing import Any
++
+ from sqlalchemy.ext.asyncio import AsyncSession
++
+ from app.graph.state import GraphState
+ from app.repositories.message_repo import MessageRepository
+ from app.repositories.session_repo import SessionRepository
+
+
+ class ChatService:
+-    def __init__(self, db: AsyncSession, graph):
++    def __init__(self, db: AsyncSession, graph: Any) -> None:  # noqa: ANN401
+         self.db = db
+         self.graph = graph
+         self.msg_repo = MessageRepository(db)
+         self.session_repo = SessionRepository(db)
+
+-    async def process(self, user_id: str, raw_prompt: str, session_id: str) -> dict:
+-        # Ensure session exists
++    async def process(
++        self, user_id: str, raw_prompt: str, session_id: str, feedback: str | None = None
++    ) -> dict:
+         await self.session_repo.get_or_create(
+             session_id=session_id,
+             user_id=user_id,
+@@ -25,7 +30,8 @@ class ChatService:
+             "raw_prompt": raw_prompt,
+             "session_id": session_id,
+             "user_id": user_id,
+-            "enhanced_prompt": "",
++            "feedback": feedback,
++            "intent": None,
+             "council_responses": [],
+             "final_response": "",
+             "messages": [],
+@@ -35,31 +41,34 @@ class ChatService:
+
+         result = await self.graph.ainvoke(initial_state, config=config)
+
+-        # Persist
++        # Persist the exchange (response = final optimized prompt)
+         await self.msg_repo.create(
+             session_id=uuid.UUID(session_id),
+             role="user",
+             raw_prompt=raw_prompt,
+-            enhanced_prompt=result["enhanced_prompt"],
++            enhanced_prompt=None,
+             response=result["final_response"],
+             council_votes=result["council_responses"],
+-            token_usage=result["token_usage"],
++            token_usage=result.get("token_usage", {}),
+         )
+
+         return {
+             "session_id": session_id,
+-            "enhanced_prompt": result["enhanced_prompt"],
+-            "response": result["final_response"],
+-            "token_usage": result["token_usage"],
++            "original_prompt": raw_prompt,
++            "optimized_prompt": result["final_response"],
++            "council_proposals": result["council_responses"],
++            "token_usage": result.get("token_usage", {}),
+         }
+
+-    async def stream(self, user_id: str, raw_prompt: str, session_id: str):
++    async def stream(
++        self, user_id: str, raw_prompt: str, session_id: str
++    ) -> AsyncGenerator[str, None]:
+         config = {"configurable": {"thread_id": session_id}}
+         initial_state: GraphState = {
+             "raw_prompt": raw_prompt,
+             "session_id": session_id,
+             "user_id": user_id,
+-            "enhanced_prompt": "",
++            "intent": None,
+             "council_responses": [],
+             "final_response": "",
+             "messages": [],
+@@ -70,4 +79,4 @@ class ChatService:
+             if event["event"] == "on_chat_model_stream":
+                 chunk = event["data"]["chunk"].content
+                 if chunk:
+-                    yield chunk
+\ No newline at end of file
++                    yield chunk
+diff --git a/qa-chatbot/src/app/services/prompt_service.py b/qa-chatbot/src/app/services/prompt_service.py
+index a388df8..c2b380c 100644
+--- a/qa-chatbot/src/app/services/prompt_service.py
++++ b/qa-chatbot/src/app/services/prompt_service.py
+@@ -1,53 +1,258 @@
++from __future__ import annotations
++
++import json
++import re
++import uuid
++from typing import Any
++from uuid import UUID
++
++from langchain_openai import ChatOpenAI
+ from sqlalchemy.ext.asyncio import AsyncSession
+
++from app.config.llm import get_llm_settings
++from app.core.exceptions import GuardrailException, NotFoundException
+ from app.graph.nodes.enhance_prompt import enhance_prompt_node
+ from app.graph.nodes.guardrails import guardrails_node
++from app.graph.prompts import load_prompt
+ from app.graph.state import GraphState
+-from app.core.exceptions import GuardrailException
++from app.repositories.prompt_version_repo import PromptVersionRepository
++
++llm_settings = get_llm_settings()
++
++_health_score_prompt = load_prompt("prompt_health_score")
++_advisory_prompt = load_prompt("prompt_advisory")
++
++_analyser = ChatOpenAI(
++    model=llm_settings.DEFAULT_MODEL,
++    openai_api_base="https://openrouter.ai/api/v1",
++    openai_api_key=llm_settings.OPENROUTER_API_KEY.get_secret_value(),
++)
++
++
++def _extract_json(raw: str) -> str:
++    """
++    Extract a JSON object from a model response that may be wrapped in markdown fences.
++
++    Strategy:
++      1. If the response contains ```...``` fences, pull the content from inside them.
++      2. Otherwise, find the first '{' and last '}' and return that slice.
++      3. Fall back to returning the stripped string as-is so json.loads surfaces
++         a clear parse error rather than a confusing empty-string error.
++    """
++    # 1. Strip markdown fences (```json ... ``` or ``` ... ```)
++    fence_match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", raw)
++    if fence_match:
++        return fence_match.group(1).strip()
++
++    # 2. Find the outermost { ... } in case the model added preamble text
++    brace_start = raw.find("{")
++    brace_end = raw.rfind("}")
++    if brace_start != -1 and brace_end > brace_start:
++        return raw[brace_start : brace_end + 1]
++
++    # 3. Return stripped string — json.loads will raise a clear JSONDecodeError
++    return raw.strip()
+
+
+ class PromptService:
+     """
+-    Handles standalone prompt enhancement — no council vote, no DB persistence.
+-    Used by the /prompts/enhance endpoint for quick one-shot enhancement.
++    Handles standalone prompt analysis — no council vote, no DB persistence.
++    Used by the /prompts/health-score and /prompts/advisory endpoints.
+     """
+
+     def __init__(self, db: AsyncSession) -> None:
+         self.db = db
+
++    async def _run_guardrails(self, raw_prompt: str, user_id: str) -> GraphState:
++        state: GraphState = {
++            "raw_prompt": raw_prompt,
++            "session_id": "",
++            "user_id": user_id,
++            "feedback": None,
++            "intent": None,
++            "council_responses": [],
++            "final_response": "",
++            "messages": [],
++            "token_usage": {},
++            "error": None,
++        }
++        result = await guardrails_node(state)
++        if result.get("error"):
++            raise GuardrailException(detail=result["error"])
++        state.update(result)  # type: ignore[typeddict-item]
++        return state
++
+     async def enhance(self, raw_prompt: str, user_id: str) -> dict:
++        state = await self._run_guardrails(raw_prompt, user_id)
++        enhance_result = await enhance_prompt_node(state)
++        return {
++            "raw_prompt": raw_prompt,
++            "enhanced_prompt": enhance_result["enhanced_prompt"],
++        }
++
++    async def health_score(self, prompt: str, user_id: str) -> dict:
++        await self._run_guardrails(prompt, user_id)
++
++        response = await _analyser.ainvoke(
++            [
++                {"role": "system", "content": _health_score_prompt},
++                {"role": "user", "content": prompt},
++            ]
++        )
++
++        scores = json.loads(_extract_json(response.content.strip()))
++        return {"prompt": prompt, **scores}
++
++    async def advisory(self, prompt: str, user_id: str) -> dict:
++        await self._run_guardrails(prompt, user_id)
++
++        response = await _analyser.ainvoke(
++            [
++                {"role": "system", "content": _advisory_prompt},
++                {"role": "user", "content": prompt},
++            ]
++        )
++
++        advice = json.loads(_extract_json(response.content.strip()))
++        return {"prompt": prompt, **advice}
++
++
++class PromptVersioningService:
++    """
++    Manages named, versioned prompts.
++
++    Each prompt family shares a stable `prompt_id`. Versions start at 1 (the raw
++    user input) and increment each time the user optimizes through the LangGraph
++    council pipeline.
++    """
++
++    def __init__(self, db: AsyncSession) -> None:
++        self.db = db
++        self.repo = PromptVersionRepository(db)
++
++    @staticmethod
++    def _fmt(v: Any) -> dict:  # noqa: ANN401
++        return {
++            "version_id": str(v.id),
++            "prompt_id": str(v.prompt_id),
++            "name": v.name,
++            "version": v.version,
++            "content": v.content,
++            "created_at": v.created_at.isoformat(),
++        }
++
++    async def create(self, name: str, content: str, user_id: str) -> dict:
+         """
+-        Runs guardrails → enhance_prompt nodes and returns the result.
++        Save a prompt under a given name.
++
++        - If the name is new for this user → issues a fresh prompt_id and starts at v1.
++        - If the name already exists → reuses the same prompt_id and appends the next
++          version number, so repeated submissions with the same name always continue
++          the same version lineage (v1 → v2 → v3 …).
+
+-        Returns:
+-            dict with keys: raw_prompt, enhanced_prompt
+         Raises:
+-            GuardrailException if the prompt fails safety checks
++            GuardrailException if the content fails safety checks.
+         """
+         state: GraphState = {
+-            "raw_prompt": raw_prompt,
++            "raw_prompt": content,
+             "session_id": "",
+             "user_id": user_id,
+-            "enhanced_prompt": "",
++            "feedback": None,
++            "intent": None,
+             "council_responses": [],
+             "final_response": "",
+             "messages": [],
+             "token_usage": {},
+             "error": None,
+         }
+-
+-        # Run guardrails first
+         guardrail_result = await guardrails_node(state)
+         if guardrail_result.get("error"):
+             raise GuardrailException(detail=guardrail_result["error"])
+
+-        # Merge guardrail result into state
+-        state.update(guardrail_result)  # type: ignore[typeddict-item]
++        # Look up whether this name already has a version history for this user
++        existing = await self.repo.get_latest_by_name(name, UUID(user_id))
++        if existing:
++            prompt_id = existing.prompt_id
++            next_version = existing.version + 1
++        else:
++            prompt_id = uuid.uuid4()
++            next_version = 1
+
+-        # Enhance the prompt
+-        enhance_result = await enhance_prompt_node(state)
++        v = await self.repo.create_version(
++            prompt_id=prompt_id,
++            user_id=UUID(user_id),
++            name=name,
++            version=next_version,
++            content=content,
++        )
++        return {"prompt_id": str(prompt_id), "version": self._fmt(v)}
++
++    async def optimize(
++        self,
++        prompt_id: UUID,
++        user_id: str,
++        feedback: str | None,
++        graph: Any,  # noqa: ANN401
++    ) -> dict:
++        """
++        Optimize the latest version of a prompt through the full LangGraph council
++        pipeline and save the result as the next version.
++
++        Raises:
++            NotFoundException if prompt_id does not exist or belongs to another user.
++            GuardrailException / LLMException propagated from the graph.
++        """
++        latest = await self.repo.get_latest_by_prompt_id(prompt_id, UUID(user_id))
++        if latest is None:
++            raise NotFoundException(detail="Prompt not found.")
++
++        thread_id = str(uuid.uuid4())
++        initial_state: GraphState = {
++            "raw_prompt": latest.content,
++            "session_id": thread_id,
++            "user_id": user_id,
++            "feedback": feedback,
++            "intent": None,
++            "council_responses": [],
++            "final_response": "",
++            "messages": [],
++            "token_usage": {},
++            "error": None,
++        }
++        result = await graph.ainvoke(
++            initial_state, config={"configurable": {"thread_id": thread_id}}
++        )
++
++        if result.get("error"):
++            raise GuardrailException(detail=result["error"])
++
++        next_version = await self.repo.create_version(
++            prompt_id=prompt_id,
++            user_id=UUID(user_id),
++            name=latest.name,
++            version=latest.version + 1,
++            content=result["final_response"],
++        )
+
+         return {
+-            "raw_prompt": raw_prompt,
+-            "enhanced_prompt": enhance_result["enhanced_prompt"],
+-        }
+\ No newline at end of file
++            "prompt_id": str(prompt_id),
++            "original": self._fmt(latest),
++            "optimized": self._fmt(next_version),
++        }
++
++    async def list_versions(self, prompt_id: UUID, user_id: str) -> dict:
++        """
++        Return all versions of a prompt in ascending order.
++
++        Raises:
++            NotFoundException if prompt_id does not exist or belongs to another user.
++        """
++        versions = await self.repo.get_all_by_prompt_id(prompt_id, UUID(user_id))
++        if not versions:
++            raise NotFoundException(detail="Prompt not found.")
++
++        return {
++            "prompt_id": str(prompt_id),
++            "name": versions[0].name,
++            "versions": [self._fmt(v) for v in versions],
++        }
+diff --git a/qa-chatbot/src/app/workers/celery_app.py b/qa-chatbot/src/app/workers/celery_app.py
+index 42e96d1..48cb610 100644
+--- a/qa-chatbot/src/app/workers/celery_app.py
++++ b/qa-chatbot/src/app/workers/celery_app.py
+@@ -1,4 +1,5 @@
+ from celery import Celery
++
+ from app.config.redis import get_redis_settings
+
+ redis_settings = get_redis_settings()
+@@ -17,6 +18,6 @@ celery_app.conf.update(
+     timezone="UTC",
+     enable_utc=True,
+     task_track_started=True,
+-    task_acks_late=True,           # re-queue on worker crash
++    task_acks_late=True,  # re-queue on worker crash
+     worker_prefetch_multiplier=1,  # fair task distribution
+-)
+\ No newline at end of file
++)
+diff --git a/qa-chatbot/src/app/workers/tasks.py b/qa-chatbot/src/app/workers/tasks.py
+index 874c723..d099343 100644
+--- a/qa-chatbot/src/app/workers/tasks.py
++++ b/qa-chatbot/src/app/workers/tasks.py
+@@ -1,19 +1,26 @@
+ import asyncio
++from typing import Any
++
+ from app.workers.celery_app import celery_app
+
+
+ @celery_app.task(bind=True, max_retries=3, default_retry_delay=5)
+-def process_chat_async(self, user_id: str, raw_prompt: str, session_id: str):
++def process_chat_async(
++    self: Any,
++    user_id: str,
++    raw_prompt: str,
++    session_id: str,  # noqa: ANN401
++) -> dict:
+     """
+     Background task for non-streaming council processing.
+     Useful for fire-and-forget jobs or webhook-based flows.
+     """
+     try:
+-        from app.services.chat_service import ChatService
+         from app.db.session import AsyncSessionLocal
+         from app.main import app
++        from app.services.chat_service import ChatService
+
+-        async def _run():
++        async def _run() -> dict:
+             async with AsyncSessionLocal() as db:
+                 graph = app.state.graph
+                 service = ChatService(db=db, graph=graph)
+@@ -25,4 +32,4 @@ def process_chat_async(self, user_id: str, raw_prompt: str, session_id: str):
+
+         return asyncio.run(_run())
+     except Exception as exc:
+-        raise self.retry(exc=exc)
+\ No newline at end of file
++        raise self.retry(exc=exc) from exc

@@ -9,7 +9,7 @@ from app.models.base import Base
 ModelT = TypeVar("ModelT", bound=Base)
 
 
-class BaseRepository(Generic[ModelT]):
+class BaseRepository(Generic[ModelT]):  # noqa: UP046
     """
     Generic async repository providing common CRUD operations.
     All domain repositories inherit from this.

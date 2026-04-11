@@ -5,7 +5,12 @@ from app.workers.celery_app import celery_app
 
 
 @celery_app.task(bind=True, max_retries=3, default_retry_delay=5)
-def process_chat_async(self: Any, user_id: str, raw_prompt: str, session_id: str) -> dict:
+def process_chat_async(
+    self: Any,
+    user_id: str,
+    raw_prompt: str,
+    session_id: str,
+) -> dict:
     """
     Background task for non-streaming council processing.
     Useful for fire-and-forget jobs or webhook-based flows.

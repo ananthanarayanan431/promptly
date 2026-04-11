@@ -8,6 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .base import Base, TimestampMixin, UUIDMixin
 
 if TYPE_CHECKING:
+    from .prompt_version import PromptVersion
     from .session import ChatSession
 
 
@@ -24,6 +25,9 @@ class User(Base, UUIDMixin, TimestampMixin):
     credits: Mapped[int] = mapped_column(Integer, default=100, server_default="100", nullable=False)
 
     sessions: Mapped[list[ChatSession]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    prompt_versions: Mapped[list[PromptVersion]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
 

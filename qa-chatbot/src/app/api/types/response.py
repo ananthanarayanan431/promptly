@@ -7,7 +7,7 @@ from .error_codes import Error
 DataT = TypeVar("DataT", bound=BaseModel)
 
 
-class Response(BaseModel, Generic[DataT]):
+class Response(BaseModel, Generic[DataT]):  # noqa: UP046
     success: bool = Field(..., description="Whether the request was successful")
     data: DataT | None = Field(..., description="The data of the response")
 
@@ -17,7 +17,7 @@ class SuccessResponse(Response[DataT]):
     data: DataT = Field(..., description="The data of the response")
 
 
-class ErrorResponse(Exception):  # noqa: N818
+class ResponseError(Exception):
     def __init__(self, error: Error) -> None:
         super().__init__(error.message)
         self.error = error

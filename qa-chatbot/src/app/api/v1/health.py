@@ -1,3 +1,5 @@
+from typing import Annotated
+
 from fastapi import APIRouter, Depends
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,7 +18,9 @@ async def health() -> SuccessResponse[HealthResponse]:
 
 
 @router.get("/ready", response_model=SuccessResponse[ReadinessResponse])
-async def readiness(db: AsyncSession = Depends(get_db)) -> SuccessResponse[ReadinessResponse]:
+async def readiness(
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> SuccessResponse[ReadinessResponse]:
     """Checks DB and Redis connectivity — used by container orchestrators."""
     checks: dict = {}
 

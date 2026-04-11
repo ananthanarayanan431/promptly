@@ -40,7 +40,7 @@ class ForbiddenError(Error):
     description: str = "Forbidden"
 
 
-FASTAPI_ERROR_RESPONSE_MODELS: dict[int | str, dict[str, Any]] = {
+FAST_API_ERROR_RESPONSE_MODELS: dict[int | str, dict[str, Any]] = {
     status.HTTP_404_NOT_FOUND: {"model": NotFoundError},
     status.HTTP_400_BAD_REQUEST: {"model": BadRequestError},
     status.HTTP_500_INTERNAL_SERVER_ERROR: {"model": Error},

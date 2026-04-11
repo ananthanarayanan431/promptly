@@ -6,19 +6,49 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.router import api_router
-from app.api.types.response import ErrorResponse
+from app.api.types.response import ResponseError
 from app.config.app import get_app_settings
+from app.config.env import get_env_settings
 from app.core.logging import setup_logging
 from app.core.middleware import CorrelationIdMiddleware, RateLimitMiddleware
+from app.db.session import AsyncSessionLocal
+from app.dependencies import _ANONYMOUS_USER
 from app.graph.builder import compile_graph
 from app.graph.checkpointer import get_checkpointer
 
 app_settings = get_app_settings()
 
 
+async def _seed_anonymous_user() -> None:
+    """
+    Ensure the anonymous dev user exists in the DB.
+    Called on startup only when AUTH_ENABLED=False so that FK constraints
+    (e.g. prompt_versions.user_id → users.id) are satisfied without a real login.
+    """
+    async with AsyncSessionLocal() as session:
+        from sqlalchemy import select
+
+        from app.models.user import User
+
+        existing = await session.execute(select(User).where(User.id == _ANONYMOUS_USER.id))
+        if existing.scalar_one_or_none() is None:
+            session.add(
+                User(
+                    id=_ANONYMOUS_USER.id,
+                    email=_ANONYMOUS_USER.email,
+                    credits=_ANONYMOUS_USER.credits,
+                    is_active=True,
+                    is_superuser=False,
+                )
+            )
+            await session.commit()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     setup_logging(debug=app_settings.DEBUG)
+    if not get_env_settings().AUTH_ENABLED:
+        await _seed_anonymous_user()
     async with get_checkpointer() as checkpointer:
         app.state.graph = await compile_graph(checkpointer)
         yield
@@ -43,8 +73,8 @@ def create_app() -> FastAPI:
     app.add_middleware(RateLimitMiddleware)
     app.include_router(api_router, prefix=app_settings.API_V1_PREFIX)
 
-    @app.exception_handler(ErrorResponse)
-    async def global_error_response_handler(request: Request, exc: ErrorResponse) -> JSONResponse:
+    @app.exception_handler(ResponseError)
+    async def global_error_response_handler(request: Request, exc: ResponseError) -> JSONResponse:
         return JSONResponse(
             status_code=exc.error.code,
             content={
