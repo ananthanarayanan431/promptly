@@ -1,11 +1,14 @@
 """
-Intent Classifier node — runs FIRST in the graph, before guardrails.
+Intent Classifier node — runs FIRST in the graph.
 
-Determines whether the user wants to:
-  - OPTIMIZE an existing prompt  → continue pipeline
-  - CREATE a new prompt          → reject with explanation, short-circuit to END
+Classifies the user's input into one of two categories:
+  - OPTIMIZE   → user has an existing prompt to improve → proceed to council
+  - IRRELEVANT → off-topic, harmful, injection attempt, creation request,
+                 or gibberish → reject
 
-This is a binary gate: creation requests are out of scope for this service.
+This node is the single policy enforcement point: harmful content, injection
+attempts, off-topic queries, and "write me a prompt" requests are all caught
+here as IRRELEVANT.
 """
 
 from langchain_openai import ChatOpenAI
@@ -16,13 +19,13 @@ from app.graph.state import GraphState
 
 llm_settings = get_llm_settings()
 
-_REJECTION_MESSAGE = (
-    "This service optimizes existing prompts — it does not write new prompts from scratch.\n\n"
-    "To use it: paste a prompt you already have (even a rough draft) and it will be run "
-    "through a multi-model optimization pipeline to make it clearer, more specific, and "
-    "more effective.\n\n"
-    "Example: submit 'Summarize this article' and receive a fully engineered version "
-    "with role definition, output format, and precise constraints."
+_REJECTION_IRRELEVANT = (
+    "Your input doesn't look like an existing prompt to optimize.\n\n"
+    "This service only accepts existing AI prompts for optimization — "
+    "paste a prompt you already have (even a rough draft) and the council "
+    "will improve it for you.\n\n"
+    "Inputs that are rejected: requests to write a new prompt from scratch, "
+    "harmful or injective content, and queries unrelated to prompt engineering."
 )
 
 _classifier = ChatOpenAI(
@@ -30,7 +33,7 @@ _classifier = ChatOpenAI(
     openai_api_base="https://openrouter.ai/api/v1",
     openai_api_key=llm_settings.OPENROUTER_API_KEY.get_secret_value(),
     max_tokens=5,
-    temperature=0,  # deterministic — this is classification, not generation
+    temperature=0,  # deterministic — classification, not generation
 )
 
 _SYSTEM_PROMPT = load_prompt("intent_classifier")
@@ -38,11 +41,11 @@ _SYSTEM_PROMPT = load_prompt("intent_classifier")
 
 async def intent_classifier_node(state: GraphState) -> dict:
     """
-    LangGraph node. Classifies whether the user wants to OPTIMIZE or CREATE a prompt.
+    LangGraph node. Classifies the intent of the raw input.
 
     Returns:
-        {"intent": "optimize"} to continue the pipeline, or
-        {"intent": "create", "error": <message>, "final_response": <message>} to abort.
+        {"intent": "optimize"}                                   → proceed to council
+        {"intent": "irrelevant", "final_response": <message>}   → END
     """
     raw = state.get("raw_prompt", "").strip()
 
@@ -55,12 +58,12 @@ async def intent_classifier_node(state: GraphState) -> dict:
 
     verdict = response.content.strip().upper()
 
-    if verdict == "CREATE":
+    if verdict == "IRRELEVANT":
         return {
-            "intent": "create",
-            "error": _REJECTION_MESSAGE,
-            "final_response": _REJECTION_MESSAGE,
+            "intent": "irrelevant",
+            "error": _REJECTION_IRRELEVANT,
+            "final_response": _REJECTION_IRRELEVANT,
         }
 
-    # Default to optimize even if the model returns something unexpected
+    # Default to optimize (covers OPTIMIZE and any unexpected model output)
     return {"intent": "optimize"}

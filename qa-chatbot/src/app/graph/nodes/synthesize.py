@@ -1,8 +1,9 @@
 """
-Synthesize node — evaluates all council proposals and produces the single best optimized prompt.
+Synthesize node — Round 3: The Chairman.
 
-The synthesizer acts as a meta-judge: it does not simply pick one proposal, but intelligently
-combines the strongest elements from each council member's independently optimized version.
+Receives all 4 council proposals AND all 4 peer critiques (rankings + weakness analysis).
+Uses the critique consensus to identify the strongest base proposal, patch confirmed
+weaknesses, and produce the single definitive optimized prompt.
 """
 
 from langchain_openai import ChatOpenAI
@@ -23,16 +24,46 @@ _SYSTEM_PROMPT = load_prompt("synthesize_best")
 
 
 def _build_user_message(state: GraphState) -> str:
-    proposals = "\n\n".join(
+    # --- Round 1: council proposals ---
+    proposals_block = "\n\n".join(
         f"[Proposal from {r['model']}]:\n{r['optimized_prompt']}"
         for r in state["council_responses"]
     )
-    return f"Original prompt:\n{state['raw_prompt']}\n\nCouncil proposals:\n{proposals}"
+
+    # --- Round 2: critic reviews ---
+    critic_responses = state.get("critic_responses") or []
+    if critic_responses:
+        reviews = []
+        for cr in critic_responses:
+            ranking = ", ".join(cr.get("ranking", []))
+            critiques = cr.get("critiques", {})
+            critique_lines = "\n".join(f"  {label}: {text}" for label, text in critiques.items())
+            rationale = cr.get("ranking_rationale", "")
+            reviews.append(
+                f"[Critic: {cr['reviewer_model']}]\n"
+                f"Ranking: {ranking}\n"
+                f"Critiques:\n{critique_lines}\n"
+                f"Rationale: {rationale}"
+            )
+        critiques_block = "\n\n".join(reviews)
+    else:
+        critiques_block = "(No critic reviews available — synthesize from proposals only.)"
+
+    return (
+        f"Original prompt:\n{state['raw_prompt']}\n\n"
+        f"---\n\n"
+        f"Round 1 — Council proposals:\n\n{proposals_block}\n\n"
+        f"---\n\n"
+        f"Round 2 — Peer critiques:\n\n{critiques_block}"
+    )
 
 
 async def synthesize_node(state: GraphState) -> dict:
     """
-    LangGraph node. Synthesizes the best optimized prompt from all council proposals.
+    LangGraph node — Round 3 (Chairman).
+
+    Synthesizes the final optimized prompt using all council proposals and
+    all peer critique data.
 
     Returns:
         {"final_response": <best_optimized_prompt>, "token_usage": {"total_tokens": N}}

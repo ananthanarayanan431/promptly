@@ -28,4 +28,5 @@ repos:
         additional_dependencies:
           - pydantic
           - sqlalchemy
+          - types-redis
         args: ["--ignore-missing-imports"]
