@@ -18,10 +18,15 @@ class GraphState(TypedDict):
     intent: str | None
 
     # Pipeline stages
-    # council_responses: each model's independently optimized version of raw_prompt
+    # Round 1 — council_responses: each model's independently optimized version of raw_prompt
     #   shape: [{model: str, optimized_prompt: str, usage: dict}]
     council_responses: list[dict]
-    final_response: str  # synthesized best optimized prompt
+
+    # Round 2 — critic_responses: each model's blind peer review of the other 3 proposals
+    #   shape: [{reviewer_model: str, ranking: list[str], critiques: dict, ranking_rationale: str}]
+    critic_responses: list[dict]
+
+    final_response: str  # synthesized best optimized prompt (chairman output)
 
     # Metadata
     messages: Annotated[list, add_messages]

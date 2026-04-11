@@ -14,7 +14,7 @@ import re
 from app.graph.state import GraphState
 
 # Max characters allowed in a raw prompt
-MAX_PROMPT_LENGTH = 8_000
+MAX_PROMPT_LENGTH = 8_000_000
 
 # Simple regex patterns for obvious prompt injection attempts
 INJECTION_PATTERNS = [
