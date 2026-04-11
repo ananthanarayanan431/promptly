@@ -1,6 +1,7 @@
 from functools import lru_cache
-from pydantic_settings import BaseSettings
-from pydantic_settings import SettingsConfigDict
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
 
 class RateLimitSettings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -11,6 +12,7 @@ class RateLimitSettings(BaseSettings):
     )
     RATE_LIMIT_REQUESTS: int = 100
     RATE_LIMIT_WINDOW_SECONDS: int = 60
+
 
 @lru_cache
 def get_rate_limit_settings() -> RateLimitSettings:

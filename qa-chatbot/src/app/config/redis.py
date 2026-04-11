@@ -1,7 +1,8 @@
 from functools import lru_cache
+
 from pydantic import RedisDsn
-from pydantic_settings import BaseSettings
-from pydantic_settings import SettingsConfigDict
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
 
 class RedisSettings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -12,6 +13,7 @@ class RedisSettings(BaseSettings):
     )
     REDIS_URL: RedisDsn = "redis://localhost:6379/0"  # type: ignore
     REDIS_TTL_SECONDS: int = 3600
+
 
 @lru_cache
 def get_redis_settings() -> RedisSettings:

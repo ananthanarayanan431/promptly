@@ -1,4 +1,5 @@
 from celery import Celery
+
 from app.config.redis import get_redis_settings
 
 redis_settings = get_redis_settings()
@@ -17,6 +18,6 @@ celery_app.conf.update(
     timezone="UTC",
     enable_utc=True,
     task_track_started=True,
-    task_acks_late=True,           # re-queue on worker crash
+    task_acks_late=True,  # re-queue on worker crash
     worker_prefetch_multiplier=1,  # fair task distribution
 )

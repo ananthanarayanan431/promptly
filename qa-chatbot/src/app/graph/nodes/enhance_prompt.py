@@ -1,4 +1,5 @@
 from langchain_openai import ChatOpenAI
+
 from app.config.llm import get_llm_settings
 from app.graph.state import GraphState
 
@@ -11,16 +12,21 @@ _enhancer = ChatOpenAI(
     max_tokens=1000,
 )
 
-ENHANCE_SYSTEM = """You are an expert prompt engineer. 
-Rewrite the user's raw question into the absolute best possible version of that prompt.
-Ensure the new prompt is clear, specific, well-structured, incorporates edge cases, formatting constraints, 
-and necessary context to elicit the most accurate and comprehensive response from an AI model.
-Return ONLY the enhanced prompt, nothing else."""
+ENHANCE_SYSTEM = (
+    "You are an expert prompt engineer.\n"
+    "Rewrite the user's raw question into the absolute best possible version of that prompt.\n"
+    "Ensure the new prompt is clear, specific, well-structured, incorporates edge cases, "
+    "formatting constraints, and necessary context to elicit the most accurate and "
+    "comprehensive response from an AI model.\n"
+    "Return ONLY the enhanced prompt, nothing else."
+)
 
 
 async def enhance_prompt_node(state: GraphState) -> dict:
-    response = await _enhancer.ainvoke([
-        {"role": "system", "content": ENHANCE_SYSTEM},
-        {"role": "user", "content": state["raw_prompt"]},
-    ])
+    response = await _enhancer.ainvoke(
+        [
+            {"role": "system", "content": ENHANCE_SYSTEM},
+            {"role": "user", "content": state["raw_prompt"]},
+        ]
+    )
     return {"enhanced_prompt": response.content}

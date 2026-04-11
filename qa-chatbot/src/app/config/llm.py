@@ -1,8 +1,8 @@
-from typing import List
 from functools import lru_cache
+
 from pydantic import SecretStr
-from pydantic_settings import BaseSettings
-from pydantic_settings import SettingsConfigDict
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
 
 class LLMSettings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -17,6 +17,7 @@ class LLMSettings(BaseSettings):
         "anthropic/claude-3.5-haiku",
         "openai/gpt-4o-mini",
     ]
+
 
 @lru_cache
 def get_llm_settings() -> LLMSettings:

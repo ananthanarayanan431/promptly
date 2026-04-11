@@ -1,10 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1 import chat
-from app.api.v1 import health
-from app.api.v1 import prompts
-from app.api.v1 import auth
-from app.api.v1 import users
+from app.api.v1 import auth, chat, health, prompts, users
 
 api_router = APIRouter()
 

@@ -53,6 +53,11 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "ANN", "S", "B"]
+ignore = [
+    "ANN401",  # Dynamically typed expressions (Any) are fine for **kwargs, graph, etc.
+    "B008",    # Depends() in function defaults is standard FastAPI pattern
+    "S106",    # False positive on token_type="bearer"
+]
 
 [tool.mypy]
 python_version = "3.12"

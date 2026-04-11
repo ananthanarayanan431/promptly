@@ -8,7 +8,9 @@ Checks for:
 
 Returns an error in state to short-circuit the graph if triggered.
 """
+
 import re
+
 from app.graph.state import GraphState
 
 # Max characters allowed in a raw prompt
@@ -17,22 +19,24 @@ MAX_PROMPT_LENGTH = 8_000
 # Simple regex patterns for obvious prompt injection attempts
 INJECTION_PATTERNS = [
     r"ignore\s+(all\s+)?(previous|prior|above)\s+instructions",
-    r"you\s+are\s+now\s+(?!a\s+QA)",          # "you are now DAN / evil AI"
+    r"you\s+are\s+now\s+(?!a\s+QA)",  # "you are now DAN / evil AI"
     r"disregard\s+(your\s+)?(system|safety)",
     r"act\s+as\s+if\s+you\s+have\s+no\s+restrictions",
     r"jailbreak",
-    r"<\s*script\s*>",                          # XSS attempt in prompt
+    r"<\s*script\s*>",  # XSS attempt in prompt
 ]
 
 COMPILED_PATTERNS = [re.compile(p, re.IGNORECASE) for p in INJECTION_PATTERNS]
 
 # Blocked keywords (extend as needed)
-BLOCKED_KEYWORDS = frozenset([
-    "how to make a bomb",
-    "synthesize drugs",
-    "child pornography",
-    "self-harm instructions",
-])
+BLOCKED_KEYWORDS = frozenset(
+    [
+        "how to make a bomb",
+        "synthesize drugs",
+        "child pornography",
+        "self-harm instructions",
+    ]
+)
 
 
 def _check_empty(prompt: str) -> str | None:

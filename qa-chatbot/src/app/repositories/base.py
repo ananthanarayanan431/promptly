@@ -1,7 +1,7 @@
 from typing import Any, Generic, TypeVar
 from uuid import UUID
 
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.base import Base
@@ -9,7 +9,7 @@ from app.models.base import Base
 ModelT = TypeVar("ModelT", bound=Base)
 
 
-class BaseRepository(Generic[ModelT]):
+class BaseRepository(Generic[ModelT]):  # noqa: UP046
     """
     Generic async repository providing common CRUD operations.
     All domain repositories inherit from this.
@@ -27,19 +27,17 @@ class BaseRepository(Generic[ModelT]):
         return result.scalar_one_or_none()
 
     async def get_all(self, *, limit: int = 100, offset: int = 0) -> list[ModelT]:
-        result = await self.db.execute(
-            select(self.model).limit(limit).offset(offset)
-        )
+        result = await self.db.execute(select(self.model).limit(limit).offset(offset))
         return list(result.scalars().all())
 
-    async def create(self, **kwargs: Any) -> ModelT:
+    async def create(self, **kwargs: Any) -> ModelT:  # noqa: ANN401
         instance = self.model(**kwargs)
         self.db.add(instance)
-        await self.db.flush()   # flush to get DB-generated values (id, timestamps)
+        await self.db.flush()  # flush to get DB-generated values (id, timestamps)
         await self.db.refresh(instance)
         return instance
 
-    async def update(self, instance: ModelT, **kwargs: Any) -> ModelT:
+    async def update(self, instance: ModelT, **kwargs: Any) -> ModelT:  # noqa: ANN401
         for key, value in kwargs.items():
             setattr(instance, key, value)
         self.db.add(instance)
@@ -52,7 +50,5 @@ class BaseRepository(Generic[ModelT]):
         await self.db.flush()
 
     async def count(self) -> int:
-        result = await self.db.execute(
-            select(func.count()).select_from(self.model)
-        )
+        result = await self.db.execute(select(func.count()).select_from(self.model))
         return result.scalar_one()

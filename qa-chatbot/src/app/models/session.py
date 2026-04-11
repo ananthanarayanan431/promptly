@@ -1,13 +1,16 @@
+from __future__ import annotations
+
 import uuid
-from .base import Base
-from .base import TimestampMixin
-from .base import UUIDMixin
-from sqlalchemy import Text
-from sqlalchemy import String
-from sqlalchemy import ForeignKey
-from sqlalchemy.orm import Mapped
-from sqlalchemy.orm import mapped_column
-from sqlalchemy.orm import relationship
+from typing import TYPE_CHECKING
+
+from sqlalchemy import ForeignKey, String
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from .base import Base, TimestampMixin, UUIDMixin
+
+if TYPE_CHECKING:
+    from .message import Message
+    from .user import User
 
 
 class ChatSession(Base, UUIDMixin, TimestampMixin):
@@ -17,5 +20,5 @@ class ChatSession(Base, UUIDMixin, TimestampMixin):
     title: Mapped[str | None] = mapped_column(String(255))
     graph_thread_id: Mapped[str] = mapped_column(String(255), unique=True, index=True)
 
-    user: Mapped["User"] = relationship(back_populates="sessions")
-    messages: Mapped[list["Message"]] = relationship(back_populates="session")
+    user: Mapped[User] = relationship(back_populates="sessions")
+    messages: Mapped[list[Message]] = relationship(back_populates="session")

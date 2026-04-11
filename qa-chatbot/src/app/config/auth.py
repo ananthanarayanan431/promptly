@@ -1,7 +1,8 @@
 from functools import lru_cache
+
 from pydantic import SecretStr
-from pydantic_settings import BaseSettings
-from pydantic_settings import SettingsConfigDict
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
 
 class AuthSettings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -13,6 +14,7 @@ class AuthSettings(BaseSettings):
     SECRET_KEY: SecretStr
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+
 
 @lru_cache
 def get_auth_settings() -> AuthSettings:
