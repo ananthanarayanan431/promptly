@@ -1,17 +1,13 @@
-
 from typing import Any
-from typing import Dict
-from typing import Optional
 
 from fastapi import status
-from pydantic import BaseModel
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 
 class Error(BaseModel):
     code: int = Field(..., description="Error code")
     description: str = Field(..., description="Error description")
-    message: Optional[str] = Field(None, description="Custom Error message")
+    message: str | None = Field(None, description="Custom Error message")
 
 
 class InternalServerError(Error):
@@ -44,7 +40,7 @@ class ForbiddenError(Error):
     description: str = "Forbidden"
 
 
-fastAPIErrorResponseModels: Dict[int | str, Dict[str, Any]] = {
+FASTAPI_ERROR_RESPONSE_MODELS: dict[int | str, dict[str, Any]] = {
     status.HTTP_404_NOT_FOUND: {"model": NotFoundError},
     status.HTTP_400_BAD_REQUEST: {"model": BadRequestError},
     status.HTTP_500_INTERNAL_SERVER_ERROR: {"model": Error},

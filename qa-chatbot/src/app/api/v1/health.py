@@ -1,24 +1,22 @@
-from fastapi import APIRouter
-from fastapi import Depends
+from fastapi import APIRouter, Depends
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.types.response import SuccessResponse
 from app.db.redis import get_redis_client
 from app.dependencies import get_db
-from app.schemas.health import HealthResponse
-from app.schemas.health import ReadinessResponse
+from app.schemas.health import HealthResponse, ReadinessResponse
 
 router = APIRouter(tags=["health"])
 
 
 @router.get("/health", response_model=SuccessResponse[HealthResponse])
-async def health():
+async def health() -> SuccessResponse[HealthResponse]:
     return SuccessResponse(data=HealthResponse(status="ok"))
 
 
 @router.get("/ready", response_model=SuccessResponse[ReadinessResponse])
-async def readiness(db: AsyncSession = Depends(get_db)):
+async def readiness(db: AsyncSession = Depends(get_db)) -> SuccessResponse[ReadinessResponse]:
     """Checks DB and Redis connectivity — used by container orchestrators."""
     checks: dict = {}
 
@@ -38,7 +36,6 @@ async def readiness(db: AsyncSession = Depends(get_db)):
         checks["redis"] = f"error: {e}"
 
     all_ok = all(v == "ok" for v in checks.values())
-    return SuccessResponse(data=ReadinessResponse(
-        status="ready" if all_ok else "degraded",
-        checks=checks
-    ))
+    return SuccessResponse(
+        data=ReadinessResponse(status="ready" if all_ok else "degraded", checks=checks)
+    )

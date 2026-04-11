@@ -12,6 +12,7 @@ from app.repositories.user_repo import UserRepository
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
+
 async def get_current_user(
     token: Annotated[str, Depends(oauth2_scheme)],
     db: Annotated[AsyncSession, Depends(get_async_session)],
@@ -23,14 +24,15 @@ async def get_current_user(
     )
     try:
         user_id = decode_access_token(token)
-    except JWTError:
-        raise credentials_exception
+    except JWTError as exc:
+        raise credentials_exception from exc
 
     user_repo = UserRepository(db)
     user = await user_repo.get(user_id)
     if user is None:
         raise credentials_exception
     return user
+
 
 async def get_current_active_user(
     current_user: Annotated[User, Depends(get_current_user)],

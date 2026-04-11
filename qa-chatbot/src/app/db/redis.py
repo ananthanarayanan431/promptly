@@ -1,5 +1,5 @@
-from redis.asyncio import Redis
-from redis.asyncio import ConnectionPool
+from redis.asyncio import ConnectionPool, Redis
+
 from app.config.redis import get_redis_settings
 
 redis_settings = get_redis_settings()

@@ -1,14 +1,11 @@
-from fastapi import APIRouter
-from fastapi import Depends
-from fastapi import HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.dependencies import get_current_user
-from app.dependencies import get_db
-from app.models.user import User
-from app.schemas.prompt import PromptEnhanceResponse
-from app.schemas.prompt import PromptEnhanceRequest
-from app.services.prompt_service import PromptService
+
 from app.api.types.response import SuccessResponse
+from app.dependencies import get_current_user, get_db
+from app.models.user import User
+from app.schemas.prompt import PromptEnhanceRequest, PromptEnhanceResponse
+from app.services.prompt_service import PromptService
 
 router = APIRouter(prefix="/prompts", tags=["prompts"])
 
@@ -24,7 +21,9 @@ async def enhance_prompt(
     Runs guardrails + LLM enhancement only — no council vote, no session persistence.
     """
     if current_user.credits < 10:
-        raise HTTPException(status_code=402, detail="Insufficient credits. 10 credits required per run.")
+        raise HTTPException(
+            status_code=402, detail="Insufficient credits. 10 credits required per run."
+        )
     current_user.credits -= 10
 
     service = PromptService(db=db)

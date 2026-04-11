@@ -1,12 +1,16 @@
 import uuid
+from collections.abc import AsyncGenerator
+from typing import Any
+
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.graph.state import GraphState
 from app.repositories.message_repo import MessageRepository
 from app.repositories.session_repo import SessionRepository
 
 
 class ChatService:
-    def __init__(self, db: AsyncSession, graph):
+    def __init__(self, db: AsyncSession, graph: Any) -> None:
         self.db = db
         self.graph = graph
         self.msg_repo = MessageRepository(db)
@@ -53,7 +57,9 @@ class ChatService:
             "token_usage": result["token_usage"],
         }
 
-    async def stream(self, user_id: str, raw_prompt: str, session_id: str):
+    async def stream(
+        self, user_id: str, raw_prompt: str, session_id: str
+    ) -> AsyncGenerator[str, None]:
         config = {"configurable": {"thread_id": session_id}}
         initial_state: GraphState = {
             "raw_prompt": raw_prompt,

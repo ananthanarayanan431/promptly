@@ -1,19 +1,26 @@
 import asyncio
+from typing import Any
+
 from langchain_openai import ChatOpenAI
+
 from app.config.llm import get_llm_settings
 from app.graph.state import GraphState
 
 llm_settings = get_llm_settings()
 
+
 def _build_models() -> list:
     models = []
     for m in llm_settings.COUNCIL_MODELS:
-        models.append(ChatOpenAI(
-            model=m,
-            openai_api_base="https://openrouter.ai/api/v1",
-            openai_api_key=llm_settings.OPENROUTER_API_KEY.get_secret_value()
-        ))
+        models.append(
+            ChatOpenAI(
+                model=m,
+                openai_api_base="https://openrouter.ai/api/v1",
+                openai_api_key=llm_settings.OPENROUTER_API_KEY.get_secret_value(),
+            )
+        )
     return models
+
 
 _council_models = _build_models()
 
@@ -21,7 +28,7 @@ _council_models = _build_models()
 async def council_vote_node(state: GraphState) -> dict:
     prompt = state["enhanced_prompt"]
 
-    async def query_model(model, idx: int) -> dict:
+    async def query_model(model: Any, idx: int) -> dict:
         response = await model.ainvoke([{"role": "user", "content": prompt}])
         return {
             "model": llm_settings.COUNCIL_MODELS[idx],

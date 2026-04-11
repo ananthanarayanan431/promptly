@@ -1,12 +1,13 @@
-from langgraph.graph import StateGraph
-from langgraph.graph import END
-from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from typing import Any
 
-from app.graph.state import GraphState
-from app.graph.nodes.guardrails import guardrails_node
-from app.graph.nodes.enhance_prompt import enhance_prompt_node
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from langgraph.graph import END, StateGraph
+
 from app.graph.nodes.council_vote import council_vote_node
+from app.graph.nodes.enhance_prompt import enhance_prompt_node
+from app.graph.nodes.guardrails import guardrails_node
 from app.graph.nodes.synthesize import synthesize_node
+from app.graph.state import GraphState
 
 
 def _should_continue(state: GraphState) -> str:
@@ -16,7 +17,7 @@ def _should_continue(state: GraphState) -> str:
     return "continue"
 
 
-async def compile_graph(checkpointer: AsyncPostgresSaver):
+async def compile_graph(checkpointer: AsyncPostgresSaver) -> Any:
     builder = StateGraph(GraphState)
 
     builder.add_node("guardrails", guardrails_node)

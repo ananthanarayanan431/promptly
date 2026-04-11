@@ -1,15 +1,14 @@
 from collections.abc import AsyncGenerator
+from typing import Any
 from uuid import UUID
-from fastapi import Depends
-from fastapi import Request
-from fastapi.security import HTTPAuthorizationCredentials
+
+from fastapi import Depends, Request
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import UnauthorizedException
-from app.core.security import decode_access_token
-from app.core.security import hash_api_key
+from app.core.security import decode_access_token, hash_api_key
 from app.db.session import get_async_session
 from app.models.user import User
 from app.repositories.user_repo import UserRepository
@@ -22,7 +21,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
         yield session
 
 
-async def get_graph(request: Request):
+async def get_graph(request: Request) -> Any:  # noqa: ANN401
     """Returns the compiled LangGraph instance from app state."""
     return request.app.state.graph
 

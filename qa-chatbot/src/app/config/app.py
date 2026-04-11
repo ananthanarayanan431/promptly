@@ -1,7 +1,7 @@
-from typing import List
 from functools import lru_cache
-from pydantic_settings import BaseSettings
-from pydantic_settings import SettingsConfigDict
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
 
 class AppSettings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -14,8 +14,9 @@ class AppSettings(BaseSettings):
     ENVIRONMENT: str = "development"
     DEBUG: bool = False
     API_V1_PREFIX: str = "/api/v1"
-    CORS_ORIGIN: List[str] = ["http://localhost:3000", "*"]
-    
+    CORS_ORIGIN: list[str] = ["http://localhost:3000", "*"]
+
+
 @lru_cache
 def get_app_settings() -> AppSettings:
     return AppSettings()

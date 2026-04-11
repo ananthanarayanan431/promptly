@@ -1,14 +1,14 @@
-import uuid
-from .base import Base
-from .base import TimestampMixin
-from .base import UUIDMixin
-from sqlalchemy import String
-from sqlalchemy import Boolean
-from sqlalchemy import DateTime
-from sqlalchemy import Integer
-from sqlalchemy.orm import Mapped
-from sqlalchemy.orm import mapped_column
-from sqlalchemy.orm import relationship
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from sqlalchemy import Boolean, DateTime, Integer, String
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from .base import Base, TimestampMixin, UUIDMixin
+
+if TYPE_CHECKING:
+    from .session import ChatSession
 
 
 class User(Base, UUIDMixin, TimestampMixin):
@@ -23,7 +23,7 @@ class User(Base, UUIDMixin, TimestampMixin):
     last_login_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     credits: Mapped[int] = mapped_column(Integer, default=100, server_default="100", nullable=False)
 
-    sessions: Mapped[list["ChatSession"]] = relationship(  # noqa: F821
+    sessions: Mapped[list[ChatSession]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
 

@@ -1,8 +1,8 @@
 import hashlib
 import secrets
-import bcrypt
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
+import bcrypt
 from jose import JWTError, jwt
 
 from app.config.auth import get_auth_settings
@@ -11,23 +11,26 @@ auth_settings = get_auth_settings()
 
 # ── Passwords ─────────────────────────────────────────────────
 
+
 def hash_password(plain: str) -> str:
-    pwd_bytes = plain.encode('utf-8')
+    pwd_bytes = plain.encode("utf-8")
     salt = bcrypt.gensalt()
-    return bcrypt.hashpw(pwd_bytes, salt).decode('utf-8')
+    return bcrypt.hashpw(pwd_bytes, salt).decode("utf-8")
+
 
 def verify_password(plain: str, hashed: str) -> bool:
-    pwd_bytes = plain.encode('utf-8')
-    return bcrypt.checkpw(pwd_bytes, hashed.encode('utf-8'))
+    pwd_bytes = plain.encode("utf-8")
+    return bcrypt.checkpw(pwd_bytes, hashed.encode("utf-8"))
 
 
 # ── JWT ───────────────────────────────────────────────────────
 
+
 def create_access_token(subject: str, expires_delta: timedelta | None = None) -> str:
-    expire = datetime.now(timezone.utc) + (
+    expire = datetime.now(UTC) + (
         expires_delta or timedelta(minutes=auth_settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     )
-    payload = {"sub": subject, "exp": expire, "iat": datetime.now(timezone.utc)}
+    payload = {"sub": subject, "exp": expire, "iat": datetime.now(UTC)}
     return jwt.encode(
         payload,
         auth_settings.SECRET_KEY.get_secret_value(),
@@ -49,6 +52,7 @@ def decode_access_token(token: str) -> str:
 
 
 # ── API Keys ──────────────────────────────────────────────────
+
 
 def generate_api_key() -> tuple[str, str]:
     """
