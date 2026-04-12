@@ -32,6 +32,7 @@ api.interceptors.response.use(
 
       // Log out
       useAuthStore.getState().logout();
+      await fetch('/api/auth', { method: 'DELETE' }); // Clear the cookie synchronously
       window.location.href = '/login';
       return Promise.reject(error);
     }

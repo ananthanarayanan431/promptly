@@ -50,7 +50,7 @@ def _build_review_message(
         for label, p in zip(labels, others, strict=False)
     )
 
-    return f"Original prompt:\n{raw_prompt}\n\n" f"---\n\n" f"{proposal_block}"
+    return f"Original prompt:\n{raw_prompt}\n\n---\n\n{proposal_block}"
 
 
 def _parse_critique(raw: str) -> dict:

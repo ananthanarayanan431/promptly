@@ -6,15 +6,12 @@ export function useJobPoller(jobId: string | null) {
   return useQuery({
     queryKey: ['job', jobId],
     queryFn: async () => {
-      const { data } = await api.get<JobStatusResponse>(`/api/v1/chat/jobs/${jobId}`);
-      return data;
+      const { data } = await api.get<{ data: JobStatusResponse }>(`/api/v1/chat/jobs/${jobId}`);
+      return data.data;
     },
     refetchInterval: (query) => {
-      const data = query.state.data;
-      if (!data) return 2000;
-      if (data.status === 'completed' || data.status === 'failed') {
-        return false;
-      }
+      const status = query.state.data?.status;
+      if (status === 'completed' || status === 'failed') return false;
       return 2000;
     },
     enabled: !!jobId,

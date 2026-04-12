@@ -13,8 +13,8 @@ export default function VersionsPage() {
   const { data: families, isLoading, error } = useQuery({
     queryKey: ['prompt-families'],
     queryFn: async () => {
-      const res = await api.get<PromptFamily[]>('/api/v1/prompts/versions');
-      return res.data;
+      const res = await api.get<{ data: { families: PromptFamily[] } }>('/api/v1/prompts/versions');
+      return res.data.data.families;
     },
   });
 

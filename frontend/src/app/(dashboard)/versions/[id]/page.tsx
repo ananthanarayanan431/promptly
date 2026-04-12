@@ -18,8 +18,8 @@ export default function VersionHistoryPage({ params }: { params: { id: string } 
   const { data: family, isLoading } = useQuery({
     queryKey: ['prompt-family', params.id],
     queryFn: async () => {
-      const res = await api.get<PromptFamily>(`/api/v1/prompts/versions/${params.id}`);
-      return res.data;
+      const res = await api.get<{ data: PromptFamily }>(`/api/v1/prompts/versions/${params.id}`);
+      return res.data.data;
     },
   });
 

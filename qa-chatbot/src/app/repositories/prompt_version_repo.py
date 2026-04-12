@@ -59,6 +59,15 @@ class PromptVersionRepository(BaseRepository[PromptVersion]):
         )
         return result.scalar_one_or_none()
 
+    async def get_all_by_user_id(self, user_id: UUID) -> list[PromptVersion]:
+        """Return all versions for a user, ordered by prompt_id then version ascending."""
+        result = await self.db.execute(
+            select(PromptVersion)
+            .where(PromptVersion.user_id == user_id)
+            .order_by(PromptVersion.prompt_id, PromptVersion.version.asc())
+        )
+        return list(result.scalars().all())
+
     async def create_version(
         self,
         *,

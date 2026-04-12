@@ -1,21 +1,25 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import uuid
 from typing import Any
 from uuid import UUID
 
 from langchain_openai import ChatOpenAI
+from openai import APIError as OpenAIAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.llm import get_llm_settings
-from app.core.exceptions import GuardrailException, NotFoundException
+from app.core.exceptions import GuardrailException, LLMException, NotFoundException
 from app.graph.nodes.enhance_prompt import enhance_prompt_node
 from app.graph.nodes.guardrails import guardrails_node
 from app.graph.prompts import load_prompt
 from app.graph.state import GraphState
 from app.repositories.prompt_version_repo import PromptVersionRepository
+
+logger = logging.getLogger(__name__)
 
 llm_settings = get_llm_settings()
 
@@ -27,6 +31,30 @@ _analyser = ChatOpenAI(
     openai_api_base="https://openrouter.ai/api/v1",
     openai_api_key=llm_settings.OPENROUTER_API_KEY.get_secret_value(),
 )
+
+
+def _get_text_content(content: str | list | None) -> str:  # type: ignore[type-arg]
+    """
+    Normalise an AIMessage.content to a plain string.
+
+    In langchain_openai ≥1.x / openai ≥2.x the field can be:
+      - str   — normal text response
+      - list  — list of content blocks e.g. [{"type": "text", "text": "..."}]
+      - None  — filtered / quota exceeded
+    """
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    parts: list[str] = []
+    for block in content:
+        if isinstance(block, str):
+            parts.append(block)
+        elif isinstance(block, dict) and block.get("type") == "text":
+            text = block.get("text")
+            if isinstance(text, str):
+                parts.append(text)
+    return "".join(parts)
 
 
 def _extract_json(raw: str) -> str:
@@ -94,27 +122,85 @@ class PromptService:
     async def health_score(self, prompt: str, user_id: str) -> dict:
         await self._run_guardrails(prompt, user_id)
 
-        response = await _analyser.ainvoke(
-            [
-                {"role": "system", "content": _health_score_prompt},
-                {"role": "user", "content": prompt},
-            ]
-        )
+        try:
+            response = await _analyser.ainvoke(
+                [
+                    {"role": "system", "content": _health_score_prompt},
+                    {
+                        "role": "user",
+                        "content": f"<prompt_to_evaluate>\n{prompt}\n</prompt_to_evaluate>",
+                    },
+                ]
+            )
+        except OpenAIAPIError as exc:
+            logger.error(
+                "OpenRouter API error in health_score: status=%s body=%s",
+                exc.status_code,
+                exc.body,
+            )
+            raise LLMException(detail=f"OpenRouter error {exc.status_code}: {exc.message}") from exc
 
-        scores = json.loads(_extract_json(response.content.strip()))
+        raw = _get_text_content(response.content).strip()
+        if not raw:
+            raise LLMException(
+                detail=(
+                    "LLM returned an empty response"
+                    " — check your OpenRouter API key and model availability."
+                )
+            )
+        extracted = _extract_json(raw)
+        try:
+            scores = json.loads(extracted)
+        except json.JSONDecodeError as exc:
+            logger.error(
+                "health_score JSON parse failed: %s\n"
+                "--- raw (%d chars) ---\n%s\n--- extracted ---\n%s",
+                exc,
+                len(raw),
+                raw,
+                extracted,
+            )
+            raise LLMException(detail=f"LLM response was not valid JSON: {exc}") from exc
         return {"prompt": prompt, **scores}
 
     async def advisory(self, prompt: str, user_id: str) -> dict:
         await self._run_guardrails(prompt, user_id)
 
-        response = await _analyser.ainvoke(
-            [
-                {"role": "system", "content": _advisory_prompt},
-                {"role": "user", "content": prompt},
-            ]
-        )
+        try:
+            response = await _analyser.ainvoke(
+                [
+                    {"role": "system", "content": _advisory_prompt},
+                    {
+                        "role": "user",
+                        "content": f"<prompt_to_evaluate>\n{prompt}\n</prompt_to_evaluate>",
+                    },
+                ]
+            )
+        except OpenAIAPIError as exc:
+            logger.error(
+                "OpenRouter API error in advisory: status=%s body=%s",
+                exc.status_code,
+                exc.body,
+            )
+            raise LLMException(detail=f"OpenRouter error {exc.status_code}: {exc.message}") from exc
 
-        advice = json.loads(_extract_json(response.content.strip()))
+        raw = _get_text_content(response.content).strip()
+        logger.debug(
+            "advisory raw content type=%s len=%d",
+            type(response.content).__name__,
+            len(raw),
+        )
+        if not raw:
+            raise LLMException(
+                detail=(
+                    "LLM returned an empty response"
+                    " — check your OpenRouter API key and model availability."
+                )
+            )
+        try:
+            advice = json.loads(_extract_json(raw))
+        except json.JSONDecodeError as exc:
+            raise LLMException(detail=f"LLM response was not valid JSON: {exc}") from exc
         return {"prompt": prompt, **advice}
 
 
@@ -242,6 +328,27 @@ class PromptVersioningService:
             "original": self._fmt(latest),
             "optimized": self._fmt(next_version),
         }
+
+    async def list_families(self, user_id: str) -> list[dict]:
+        """
+        Return all prompt families (grouped by prompt_id) for a user,
+        each with their full version history in ascending order.
+        """
+        all_versions = await self.repo.get_all_by_user_id(UUID(user_id))
+
+        # Group by prompt_id preserving insertion order
+        families: dict[str, dict] = {}
+        for v in all_versions:
+            key = str(v.prompt_id)
+            if key not in families:
+                families[key] = {
+                    "prompt_id": key,
+                    "name": v.name,
+                    "versions": [],
+                }
+            families[key]["versions"].append(self._fmt(v))
+
+        return list(families.values())
 
     async def list_versions(self, prompt_id: UUID, user_id: str) -> dict:
         """

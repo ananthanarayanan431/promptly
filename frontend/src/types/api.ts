@@ -20,7 +20,11 @@ export interface JobSubmitResponse {
 export interface CouncilProposal {
   model: string;
   optimized_prompt: string;
-  usage: any; // Specify if needed
+  usage: {
+    total_tokens?: number;
+    input_tokens?: number;
+    output_tokens?: number;
+  };
 }
 
 export interface JobResult {
@@ -43,6 +47,9 @@ export interface JobStatusResponse {
 }
 
 export interface PromptVersion {
+  version_id: string;
+  prompt_id: string;
+  name: string;
   version: number;
   content: string;
   created_at: string;
@@ -56,22 +63,56 @@ export interface PromptFamily {
 
 export interface CreateVersionResponse {
   prompt_id: string;
-  version: number;
-  name: string;
+  version: PromptVersion;
 }
 
+// Each dimension returns a score (1–10) and a rationale string
+export interface MetricScore {
+  score: number;
+  rationale: string;
+}
+
+// Matches backend PromptHealthScoreResponse exactly
 export interface HealthScoreResponse {
-  scores: {
-    clarity: number;
-    specificity: number;
-    [key: string]: number; // Allow other dimensions
-  };
-  overall: number;
+  prompt: string;
+  clarity: MetricScore;
+  specificity: MetricScore;
+  completeness: MetricScore;
+  conciseness: MetricScore;
+  tone: MetricScore;
+  actionability: MetricScore;
+  context_richness: MetricScore;
+  goal_alignment: MetricScore;
+  overall_score: number; // float 1–10
 }
 
+// --- Dashboard Stats ---
+
+export interface DailyActivity {
+  date: string; // YYYY-MM-DD
+  count: number;
+}
+
+export interface ModelStats {
+  model: string;
+  total_tokens: number;
+}
+
+export interface DashboardStats {
+  prompts_optimized: number;
+  total_tokens: number;
+  estimated_cost_usd: number;
+  versions_saved: number;
+  credits_remaining: number;
+  daily_activity: DailyActivity[];
+  model_breakdown: ModelStats[];
+}
+
+// Matches backend PromptAdvisoryResponse exactly
 export interface AdvisoryResponse {
+  prompt: string;
   strengths: string[];
   weaknesses: string[];
   improvements: string[];
-  assessment: string;
+  overall_assessment: string;
 }

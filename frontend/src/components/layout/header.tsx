@@ -14,8 +14,8 @@ export function Header() {
   const { data: fetchedUser } = useQuery({
     queryKey: ['user', 'me'],
     queryFn: async () => {
-      const res = await api.get<User>('/api/v1/users/me');
-      return res.data;
+      const res = await api.get<{ data: User }>('/api/v1/users/me');
+      return res.data.data;
     },
     staleTime: 1000 * 60 * 5, // 5 minutes
   });

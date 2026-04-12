@@ -3,6 +3,8 @@ import { Inter } from 'next/font/google';
 import './globals.css';
 import { Providers } from '@/components/providers';
 import { Toaster } from '@/components/ui/sonner';
+import { cookies } from 'next/headers';
+import { AuthInitializer } from '@/components/auth-initializer';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -16,9 +18,12 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const token = cookies().get('auth_token')?.value || null;
+
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
+        <AuthInitializer token={token} />
         <Providers>
           {children}
           <Toaster />
