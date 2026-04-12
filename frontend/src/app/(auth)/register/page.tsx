@@ -28,18 +28,27 @@ export default function RegisterPage() {
   const onSubmit = async (data: RegisterFormData) => {
     setLoading(true);
     try {
-      // 1. Register and get token
-      const res = await api.post('/api/v1/auth/register', data);
-      const token = res.data.access_token;
+      // 1. Register
+      await api.post('/api/v1/auth/register', { email: data.email, password: data.password, full_name: data.email.split('@')[0] });
+
+      // 1.5. Login to get token
+      const formData = new URLSearchParams();
+      formData.append('username', data.email);
+      formData.append('password', data.password);
+
+      const loginRes = await api.post('/api/v1/auth/login', formData, {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      });
+      const token = loginRes.data.data.access_token;
 
       // 2. Set API interceptor store token (temporary until user fetched)
       useAuthStore.getState().setAuth(token, null as any);
 
       // 3. fetch user details
-      const userRes = await api.get<User>('/api/v1/users/me');
+      const userRes = await api.get<{ data: User }>('/api/v1/users/me');
 
       // 4. Update Zustand fully
-      setAuth(token, userRes.data);
+      setAuth(token, userRes.data.data);
 
       // 5. Store cookie via Next.js API route
       await setToken(token);

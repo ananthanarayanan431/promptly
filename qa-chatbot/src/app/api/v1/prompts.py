@@ -10,6 +10,7 @@ from app.models.user import User
 from app.schemas.prompt import (
     PromptAdvisoryRequest,
     PromptAdvisoryResponse,
+    PromptFamilyListResponse,
     PromptHealthScoreRequest,
     PromptHealthScoreResponse,
     PromptVersionCreateRequest,
@@ -43,6 +44,7 @@ async def prompt_health_score(
             detail="Insufficient credits. 5 credits required per run.",
         )
     current_user.credits -= 5
+    await db.flush()
 
     service = PromptService(db=db)
     result = await service.health_score(
@@ -69,6 +71,7 @@ async def prompt_advisory(
             detail="Insufficient credits. 5 credits required per run.",
         )
     current_user.credits -= 5
+    await db.flush()
 
     service = PromptService(db=db)
     result = await service.advisory(
@@ -81,6 +84,20 @@ async def prompt_advisory(
 # ---------------------------------------------------------------------------
 # Versioning endpoints
 # ---------------------------------------------------------------------------
+
+
+@router.get("/versions", response_model=SuccessResponse[PromptFamilyListResponse])
+async def list_prompt_families(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> SuccessResponse[PromptFamilyListResponse]:
+    """
+    List all prompt families (grouped by prompt_id) belonging to the current user,
+    each with their full version history in ascending order.
+    """
+    service = PromptVersioningService(db=db)
+    families = await service.list_families(user_id=str(current_user.id))
+    return SuccessResponse(data=PromptFamilyListResponse(families=families))
 
 
 @router.post("/versions", response_model=SuccessResponse[PromptVersionCreateResponse])

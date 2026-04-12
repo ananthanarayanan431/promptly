@@ -12,7 +12,12 @@ import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 
 export default function OptimizePage() {
-  const [jobId, setJobId] = useState<string | null>(null);
+  const [jobId, setJobId] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      return sessionStorage.getItem('optimize_job_id');
+    }
+    return null;
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const queryClient = useQueryClient();
 
@@ -23,8 +28,10 @@ export default function OptimizePage() {
     setJobId(null); // Reset current job
 
     try {
-      const res = await api.post<JobSubmitResponse>('/api/v1/chat/', data);
-      setJobId(res.data.job_id);
+      const res = await api.post<{ data: JobSubmitResponse }>('/api/v1/chat/', data);
+      const newJobId = res.data.data.job_id;
+      setJobId(newJobId);
+      sessionStorage.setItem('optimize_job_id', newJobId);
 
       // Invalidate user cache to force credits update
       queryClient.invalidateQueries({ queryKey: ['user', 'me'] });

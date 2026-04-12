@@ -83,6 +83,10 @@ class PromptVersionListResponse(BaseModel):
     versions: list[PromptVersionOut]
 
 
+class PromptFamilyListResponse(BaseModel):
+    families: list[PromptVersionListResponse]
+
+
 # --- Advisory ---
 
 
