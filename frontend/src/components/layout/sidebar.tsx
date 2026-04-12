@@ -1,6 +1,13 @@
 'use client';
 
-import { LayoutDashboard, Settings, History, ActivitySquare, LogOut, Wand2, Lightbulb } from 'lucide-react';
+import {
+  LayoutDashboard,
+  History,
+  ActivitySquare,
+  LogOut,
+  Wand2,
+  Lightbulb,
+} from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -8,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/stores/auth-store';
 import { clearToken } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
+import { ThemeToggle } from '@/components/landing/theme-toggle';
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -15,7 +23,7 @@ export function Sidebar() {
   const logout = useAuthStore((state) => state.logout);
 
   const navigation = [
-    { name: 'Dashboard', href: '/', icon: LayoutDashboard },
+    { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     { name: 'Optimize Prompt', href: '/optimize', icon: Wand2 },
     { name: 'Versions', href: '/versions', icon: History },
     { name: 'Analyze', href: '/analyze', icon: ActivitySquare },
@@ -31,14 +39,17 @@ export function Sidebar() {
   return (
     <div className="flex h-screen w-64 flex-col border-r bg-card text-card-foreground">
       <div className="flex h-14 items-center border-b px-4">
-        <Link href="/" className="flex items-center gap-2 font-bold text-lg text-primary">
+        <Link href="/dashboard" className="flex items-center gap-2 font-bold text-lg text-primary">
           <Lightbulb className="h-6 w-6" />
           <span>Promptly</span>
         </Link>
       </div>
+
       <nav className="flex-1 space-y-1 p-4">
         {navigation.map((item) => {
-          const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
+          const isActive =
+            pathname === item.href ||
+            (item.href !== '/dashboard' && pathname.startsWith(item.href));
           return (
             <Link
               key={item.name}
@@ -56,8 +67,17 @@ export function Sidebar() {
           );
         })}
       </nav>
-      <div className="border-t p-4">
-        <Button variant="ghost" className="w-full justify-start text-muted-foreground hover:text-foreground" onClick={handleLogout}>
+
+      <div className="border-t p-4 space-y-2">
+        <div className="flex items-center justify-between px-1 mb-1">
+          <span className="text-xs text-muted-foreground">Theme</span>
+          <ThemeToggle />
+        </div>
+        <Button
+          variant="ghost"
+          className="w-full justify-start text-muted-foreground hover:text-foreground"
+          onClick={handleLogout}
+        >
           <LogOut className="mr-2 h-4 w-4" />
           Logout
         </Button>

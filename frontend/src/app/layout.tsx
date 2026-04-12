@@ -11,6 +11,9 @@ const inter = Inter({ subsets: ['latin'] });
 export const metadata: Metadata = {
   title: 'Promptly - AI Prompt Optimization',
   description: 'AI prompt optimization platform using a multi-model council.',
+  icons: {
+    icon: '/favicon.ico',
+  },
 };
 
 export default function RootLayout({
