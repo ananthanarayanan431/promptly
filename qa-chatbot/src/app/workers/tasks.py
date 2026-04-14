@@ -43,10 +43,48 @@ def process_chat_async(
         completed / failed  (set here at task exit)
     """
 
+    def _fallback_title(text: str) -> str:
+        """Truncate raw_prompt to a readable title as a safe fallback (≤ 80 chars)."""
+        if len(text) <= 80:
+            return text
+        truncated = text[:77]
+        last_space = truncated.rfind(" ")
+        if last_space > 40:
+            truncated = truncated[:last_space]
+        return truncated + "..."
+
+    async def _generate_title(text: str, api_key: str) -> str:
+        """Ask a fast LLM to produce a short, meaningful session title (4-6 words)."""
+        from langchain_openai import ChatOpenAI
+
+        model = ChatOpenAI(
+            model="openai/gpt-4o-mini",
+            openai_api_base="https://openrouter.ai/api/v1",
+            openai_api_key=api_key,
+            max_tokens=20,
+            temperature=0,
+        )
+        response = await model.ainvoke(
+            [
+                {
+                    "role": "system",
+                    "content": (
+                        "Generate a short 4–6 word title that captures the purpose of the "
+                        "following prompt. Return ONLY the title — no quotes, no punctuation "
+                        "at the end, no explanation."
+                    ),
+                },
+                {"role": "user", "content": text[:500]},
+            ]
+        )
+        title = response.content.strip().strip('"').strip("'")
+        return title[:100] if title else _fallback_title(text)
+
     async def _run() -> dict:
         import uuid as uuid_mod
         from uuid import UUID
 
+        from app.config.llm import get_llm_settings
         from app.core.cache import set_job_result, set_job_status
         from app.db.redis import reset_connection_pool
         from app.db.session import AsyncSessionLocal
@@ -58,21 +96,47 @@ def process_chat_async(
         from app.graph.builder import compile_graph
         from app.graph.checkpointer import get_checkpointer
         from app.repositories.prompt_version_repo import PromptVersionRepository
+        from app.repositories.session_repo import SessionRepository
         from app.services.chat_service import ChatService
 
         await set_job_status(job_id, "started")
+
+        llm_settings = get_llm_settings()
+        api_key = llm_settings.OPENROUTER_API_KEY.get_secret_value()
 
         try:
             async with AsyncSessionLocal() as db:
                 async with get_checkpointer() as checkpointer:
                     graph = await compile_graph(checkpointer)
                     service = ChatService(db=db, graph=graph)
+
+                    # Run the optimization pipeline and the title LLM call concurrently.
+                    # Title generation is fire-and-forget — any failure falls back gracefully.
+                    title_task = asyncio.create_task(_generate_title(raw_prompt, api_key))
+
                     result = await service.process(
                         user_id=user_id,
                         raw_prompt=raw_prompt,
                         session_id=session_id,
                         feedback=feedback,
+                        title=_fallback_title(raw_prompt),  # initial placeholder
                     )
+
+                # Always commit session + message immediately so they're visible
+                # to the frontend (sidebar history, refresh) before the title
+                # LLM call or versioning completes.
+                await db.commit()
+
+                # Update session title with the LLM-generated value (best-effort)
+                try:
+                    llm_title = await asyncio.wait_for(title_task, timeout=10.0)
+                    session_repo = SessionRepository(db)
+                    session = await session_repo.get_by_thread_id(session_id)
+                    if session:
+                        await session_repo.update(session, title=llm_title)
+                        await db.commit()
+                except Exception:  # noqa: S110
+                    pass  # Keep the fallback title — non-critical
 
                 # --- Versioning save (same DB session, after pipeline) ---
                 saved_prompt_id: str | None = None

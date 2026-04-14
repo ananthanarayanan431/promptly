@@ -8,6 +8,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { buttonVariants } from '@/components/ui/button';
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
+import { PageContainer } from '@/components/layout/page-container';
 
 export default function VersionsPage() {
   const { data: families, isLoading, error } = useQuery({
@@ -19,6 +20,7 @@ export default function VersionsPage() {
   });
 
   return (
+    <PageContainer>
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Prompt Versions</h1>
@@ -76,5 +78,6 @@ export default function VersionsPage() {
         </Table>
       </div>
     </div>
+    </PageContainer>
   );
 }

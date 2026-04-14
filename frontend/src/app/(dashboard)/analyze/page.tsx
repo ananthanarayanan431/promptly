@@ -8,7 +8,6 @@ import { ScoreDisplay } from '@/components/analyze/score-display';
 import { AdvisoryDisplay } from '@/components/analyze/advisory-display';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Card, CardContent } from '@/components/ui/card';
 import { ActivitySquare, Lightbulb, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -49,68 +48,79 @@ export default function AnalyzePage() {
 
   const charCount = prompt.length;
   const isAnyLoading = loadingHealth || loadingAdvisory;
+  const hasResults = healthScore || advisory;
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Prompt Analyzer</h1>
-        <p className="text-muted-foreground mt-1">
-          Score and review any prompt — no council run required. Each analysis costs 5 credits.
-        </p>
-      </div>
-
-      {/* Input card */}
-      <Card className="shadow-sm">
-        <CardContent className="p-0">
-          <Textarea
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            placeholder="Paste the prompt you want to analyze…"
-            className="min-h-[200px] resize-y text-sm leading-relaxed rounded-b-none border-0 border-b focus-visible:ring-0 shadow-none rounded-t-xl"
-            maxLength={MAX_CHARS}
-          />
-          <div className="flex items-center justify-between px-4 py-3 bg-muted/30 rounded-b-xl">
-            <span className={cn(
-              'text-xs tabular-nums font-mono',
-              charCount > MAX_CHARS * 0.9 ? 'text-destructive font-semibold' : 'text-muted-foreground'
-            )}>
-              {charCount.toLocaleString()} / {MAX_CHARS.toLocaleString()} chars
-            </span>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleHealthScore}
-                disabled={isAnyLoading || !prompt.trim()}
-                className="gap-2 h-8"
-              >
-                {loadingHealth
-                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  : <ActivitySquare className="h-3.5 w-3.5" />}
-                <span>{loadingHealth ? 'Scoring…' : 'Health Score'}</span>
-                <span className="text-muted-foreground text-xs">5cr</span>
-              </Button>
-              <Button
-                size="sm"
-                onClick={handleAdvisory}
-                disabled={isAnyLoading || !prompt.trim()}
-                className="gap-2 h-8"
-              >
-                {loadingAdvisory
-                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  : <Lightbulb className="h-3.5 w-3.5" />}
-                <span>{loadingAdvisory ? 'Reviewing…' : 'Advisory'}</span>
-                <span className="opacity-70 text-xs">5cr</span>
-              </Button>
+    <div className="flex flex-col h-full">
+      {/* ── Results area (scrollable top section) ── */}
+      <div className="flex-1 overflow-y-auto">
+        {!hasResults ? (
+          /* Empty state */
+          <div className="flex flex-col items-center justify-center h-full px-4 pb-4 text-center">
+            <div className="space-y-2">
+              <h1 className="text-2xl font-semibold tracking-tight">Prompt Analyzer</h1>
+              <p className="text-sm text-muted-foreground max-w-sm">
+                Paste a prompt below and run a Health Score or Advisory review. Each analysis costs 5 credits.
+              </p>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        ) : (
+          <div className="max-w-2xl mx-auto px-4 py-6 space-y-6">
+            {healthScore && <ScoreDisplay score={healthScore} />}
+            {advisory && <AdvisoryDisplay advisory={advisory} />}
+          </div>
+        )}
+      </div>
 
-      {/* Results */}
-      {healthScore && <ScoreDisplay score={healthScore} />}
-      {advisory && <AdvisoryDisplay advisory={advisory} />}
+      {/* ── Input area (sticky bottom) ── */}
+      <div className="shrink-0 px-4 py-4 bg-gradient-to-t from-background via-background to-transparent">
+        <div className="max-w-2xl mx-auto">
+          <div className="rounded-2xl border bg-background shadow-sm focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary/40 transition-shadow">
+            <Textarea
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder="Paste the prompt you want to analyze…"
+              className="min-h-[100px] resize-none text-sm leading-relaxed rounded-b-none border-0 focus-visible:ring-0 shadow-none bg-transparent"
+              maxLength={MAX_CHARS}
+            />
+            <div className="flex items-center justify-between px-3 py-2.5 border-t">
+              <span className={cn(
+                'text-xs tabular-nums font-mono',
+                charCount > MAX_CHARS * 0.9 ? 'text-destructive font-semibold' : 'text-muted-foreground/60'
+              )}>
+                {charCount.toLocaleString()} / {MAX_CHARS.toLocaleString()} chars
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleHealthScore}
+                  disabled={isAnyLoading || !prompt.trim()}
+                  className="gap-1.5 h-8 text-xs"
+                >
+                  {loadingHealth
+                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    : <ActivitySquare className="h-3.5 w-3.5" />}
+                  {loadingHealth ? 'Scoring…' : 'Health Score'}
+                  <span className="text-muted-foreground">5cr</span>
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleAdvisory}
+                  disabled={isAnyLoading || !prompt.trim()}
+                  className="gap-1.5 h-8 text-xs"
+                >
+                  {loadingAdvisory
+                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    : <Lightbulb className="h-3.5 w-3.5" />}
+                  {loadingAdvisory ? 'Reviewing…' : 'Advisory'}
+                  <span className="opacity-70">5cr</span>
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

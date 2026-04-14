@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -70,9 +71,62 @@ class MessageOut(BaseModel):
     role: str
     raw_prompt: str | None
     response: str | None
-    created_at: str
+    council_votes: list | None = None
+    token_usage: dict | None = None
+    created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+# --- Session history schemas ---
+
+
+class SessionSummary(BaseModel):
+    id: uuid.UUID
+    title: str | None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class SessionsGroupedResponse(BaseModel):
+    today: list[SessionSummary]
+    last_7_days: list[SessionSummary]
+    last_30_days: list[SessionSummary]
+    older: list[SessionSummary]
+
+
+class SessionDetailResponse(BaseModel):
+    id: uuid.UUID
+    title: str | None
+    messages: list[MessageOut]
+    created_at: datetime
+
+
+# --- Prompt name suggestion ---
+
+
+class SuggestNameRequest(BaseModel):
+    prompt: str = Field(min_length=1, max_length=8000)
+
+
+class SuggestNameResponse(BaseModel):
+    name: str
+
+
+# --- Save version from chat response ---
+
+
+class SaveVersionRequest(BaseModel):
+    original_prompt: str = Field(min_length=1, max_length=8000)
+    optimized_prompt: str = Field(min_length=1, max_length=8000)
+
+
+class SaveVersionResponse(BaseModel):
+    prompt_id: str
+    name: str
+    version: int
 
 
 # --- Async job schemas (Celery queue pattern) ---

@@ -108,6 +108,51 @@ export interface DashboardStats {
   model_breakdown: ModelStats[];
 }
 
+// --- Session history ---
+
+export interface SessionSummary {
+  id: string;
+  title: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SessionsGrouped {
+  today: SessionSummary[];
+  last_7_days: SessionSummary[];
+  last_30_days: SessionSummary[];
+  older: SessionSummary[];
+}
+
+export interface SessionMessage {
+  id: string;
+  role: string;
+  raw_prompt: string | null;
+  response: string | null;
+  council_votes: CouncilProposal[] | null;
+  token_usage: { total_tokens: number } | null;
+  created_at: string;
+}
+
+export interface SessionDetail {
+  id: string;
+  title: string | null;
+  messages: SessionMessage[];
+  created_at: string;
+}
+
+// --- Chat conversation turn (frontend only) ---
+
+export interface ChatTurn {
+  tempId: string;
+  jobId?: string;
+  userText: string;
+  isFeedback: boolean;
+  status: 'loading' | 'completed' | 'failed';
+  result?: JobResult;
+  error?: string;
+}
+
 // Matches backend PromptAdvisoryResponse exactly
 export interface AdvisoryResponse {
   prompt: string;

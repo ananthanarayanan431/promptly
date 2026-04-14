@@ -17,12 +17,18 @@ class ChatService:
         self.session_repo = SessionRepository(db)
 
     async def process(
-        self, user_id: str, raw_prompt: str, session_id: str, feedback: str | None = None
+        self,
+        user_id: str,
+        raw_prompt: str,
+        session_id: str,
+        feedback: str | None = None,
+        title: str | None = None,
     ) -> dict:
         await self.session_repo.get_or_create(
             session_id=session_id,
             user_id=user_id,
             graph_thread_id=session_id,
+            title=title,
         )
 
         config = {"configurable": {"thread_id": session_id}}
@@ -45,7 +51,7 @@ class ChatService:
         # Persist the exchange (response = final optimized prompt)
         await self.msg_repo.create(
             session_id=uuid.UUID(session_id),
-            role="user",
+            role="assistant",
             raw_prompt=raw_prompt,
             enhanced_prompt=None,
             response=result["final_response"],

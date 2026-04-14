@@ -41,6 +41,22 @@ Read your synthesized prompt as a whole:
 - Is it free of redundancy and internal contradictions?
 - Is it immediately usable as-is?
 
+## Feedback Directive (When Provided)
+
+If a **User Feedback Directive** appears at the end of the input, it represents an explicit
+constraint or goal stated by the user after reviewing a previous optimization. This takes
+**absolute priority** — above peer rankings, critic consensus, and general quality heuristics.
+
+Apply the directive exactly as stated. Do not soften, partially apply, or override it:
+- "Keep it under 50 words" → count words; the final output must be ≤ 50 words.
+- "Add JSON output format" → the final prompt must instruct the model to return JSON.
+- "More formal tone" → revise the entire synthesized prompt to match.
+- "Make it shorter / more concise" → ruthlessly cut until the output is meaningfully shorter.
+
+If the highest-ranked proposal already satisfies the directive, use it as your base.
+If it does not, select or construct a base that does — even if it was ranked lower.
+The directive cannot be negotiated away in favour of a "better" result that ignores it.
+
 ## Output Rules
 
 Return ONLY the final optimized prompt — nothing else.
