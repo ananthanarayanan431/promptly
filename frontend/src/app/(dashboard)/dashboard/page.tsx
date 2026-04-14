@@ -26,6 +26,7 @@ import {
   CreditCard,
 } from 'lucide-react';
 import Link from 'next/link';
+import { PageContainer } from '@/components/layout/page-container';
 
 function formatTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
@@ -87,6 +88,7 @@ export default function DashboardHome() {
   const lowCredits = stats ? stats.credits_remaining < 20 : false;
 
   return (
+    <PageContainer>
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
@@ -223,5 +225,6 @@ export default function DashboardHome() {
         </div>
       </div>
     </div>
+    </PageContainer>
   );
 }

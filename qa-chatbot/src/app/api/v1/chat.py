@@ -1,4 +1,5 @@
 import uuid
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -7,9 +8,25 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.types.response import SuccessResponse
 from app.core.cache import get_job_result, get_job_status, set_job_status
 from app.dependencies import get_current_user, get_db
+from app.models.session import ChatSession
 from app.models.user import User
+from app.repositories.message_repo import MessageRepository
 from app.repositories.prompt_version_repo import PromptVersionRepository
-from app.schemas.chat import ChatJobAcceptedResponse, ChatRequest, ChatResponse, JobPollResponse
+from app.repositories.session_repo import SessionRepository
+from app.schemas.chat import (
+    ChatJobAcceptedResponse,
+    ChatRequest,
+    ChatResponse,
+    JobPollResponse,
+    MessageOut,
+    SaveVersionRequest,
+    SaveVersionResponse,
+    SessionDetailResponse,
+    SessionsGroupedResponse,
+    SessionSummary,
+    SuggestNameRequest,
+    SuggestNameResponse,
+)
 from app.workers.tasks import process_chat_async
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -135,4 +152,196 @@ async def poll_chat_job(
 
     return SuccessResponse(
         data=JobPollResponse(job_id=job_id, status=status, result=result, error=error)
+    )
+
+
+@router.post(
+    "/suggest-name",
+    response_model=SuccessResponse[SuggestNameResponse],
+)
+async def suggest_prompt_name(
+    request: SuggestNameRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> SuccessResponse[SuggestNameResponse]:
+    """
+    Generate a short ALL-CAPS version name (2–4 words) for a given prompt text.
+    Used by the frontend versioning toggle in the chat input.
+    """
+    from langchain_openai import ChatOpenAI
+
+    from app.config.llm import get_llm_settings
+
+    llm_settings = get_llm_settings()
+    api_key = llm_settings.OPENROUTER_API_KEY.get_secret_value()
+
+    model = ChatOpenAI(
+        model="openai/gpt-4o-mini",
+        openai_api_base="https://openrouter.ai/api/v1",
+        openai_api_key=api_key,
+        max_tokens=15,
+        temperature=0,
+    )
+    response = await model.ainvoke(
+        [
+            {
+                "role": "system",
+                "content": (
+                    "Generate a 2–4 word ALL-CAPS name that describes the purpose of this prompt "
+                    "(e.g. EMAIL SUBJECT OPTIMIZER, CODE REVIEW HELPER, BLOG INTRO WRITER). "
+                    "Return ONLY the name — no punctuation, no explanation."
+                ),
+            },
+            {"role": "user", "content": request.prompt[:500]},
+        ]
+    )
+    name = str(response.content).strip().upper()[:80]
+    return SuccessResponse(data=SuggestNameResponse(name=name))
+
+
+@router.post(
+    "/save-version",
+    response_model=SuccessResponse[SaveVersionResponse],
+)
+async def save_version_from_response(
+    request: SaveVersionRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> SuccessResponse[SaveVersionResponse]:
+    """
+    Save a prompt + its optimized response as v1 + v2 of a new version family.
+    An ALL-CAPS name is generated automatically via LLM.
+    Returns the prompt_id to pass in subsequent chat requests so each new
+    optimized result is appended as v3, v4, …
+    """
+    import uuid as uuid_mod
+
+    from langchain_openai import ChatOpenAI
+
+    from app.config.llm import get_llm_settings
+    from app.repositories.prompt_version_repo import PromptVersionRepository
+
+    llm_settings = get_llm_settings()
+    api_key = llm_settings.OPENROUTER_API_KEY.get_secret_value()
+
+    model = ChatOpenAI(
+        model="openai/gpt-4o-mini",
+        openai_api_base="https://openrouter.ai/api/v1",
+        openai_api_key=api_key,
+        max_tokens=15,
+        temperature=0,
+    )
+    llm_response = await model.ainvoke(
+        [
+            {
+                "role": "system",
+                "content": (
+                    "Generate a 2–4 word ALL-CAPS name that describes the purpose of this prompt "
+                    "(e.g. EMAIL SUBJECT OPTIMIZER, CODE REVIEW HELPER, BLOG INTRO WRITER). "
+                    "Return ONLY the name — no punctuation, no explanation."
+                ),
+            },
+            {"role": "user", "content": request.original_prompt[:500]},
+        ]
+    )
+    name = str(llm_response.content).strip().upper()[:80] or "MY PROMPT"
+
+    prompt_id = uuid_mod.uuid4()
+    version_repo = PromptVersionRepository(db)
+
+    await version_repo.create_version(
+        prompt_id=prompt_id,
+        user_id=current_user.id,
+        name=name,
+        version=1,
+        content=request.original_prompt,
+    )
+    await version_repo.create_version(
+        prompt_id=prompt_id,
+        user_id=current_user.id,
+        name=name,
+        version=2,
+        content=request.optimized_prompt,
+    )
+    await db.commit()
+
+    return SuccessResponse(data=SaveVersionResponse(prompt_id=str(prompt_id), name=name, version=2))
+
+
+@router.get(
+    "/sessions",
+    response_model=SuccessResponse[SessionsGroupedResponse],
+)
+async def list_sessions(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> SuccessResponse[SessionsGroupedResponse]:
+    """
+    Return this user's chat sessions grouped by recency: today / last 7 days /
+    last 30 days / older.  Sessions without a title (never completed a run) are
+    excluded.
+    """
+    session_repo = SessionRepository(db)
+    sessions = await session_repo.get_by_user_id(current_user.id, limit=100)
+
+    now = datetime.now(UTC)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_ago = now - timedelta(days=7)
+    month_ago = now - timedelta(days=30)
+
+    def _bucket(s: ChatSession) -> str:
+        ct: datetime = s.created_at
+        if ct.tzinfo is None:
+            ct = ct.replace(tzinfo=UTC)
+        if ct >= today_start:
+            return "today"
+        if ct >= week_ago:
+            return "last_7_days"
+        if ct >= month_ago:
+            return "last_30_days"
+        return "older"
+
+    grouped: dict[str, list[SessionSummary]] = {
+        "today": [],
+        "last_7_days": [],
+        "last_30_days": [],
+        "older": [],
+    }
+    for s in sessions:
+        if not s.title:  # skip sessions with no title (no run completed yet)
+            continue
+        grouped[_bucket(s)].append(SessionSummary.model_validate(s))
+
+    return SuccessResponse(data=SessionsGroupedResponse(**grouped))
+
+
+@router.get(
+    "/sessions/{session_id}",
+    response_model=SuccessResponse[SessionDetailResponse],
+)
+async def get_session(
+    session_id: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> SuccessResponse[SessionDetailResponse]:
+    """Return a specific session with all its messages (chronological order)."""
+    try:
+        sid = uuid.UUID(session_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid session ID.") from exc
+
+    session_repo = SessionRepository(db)
+    session = await session_repo.get_by_id(sid)
+    if session is None or session.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Session not found.")
+
+    msg_repo = MessageRepository(db)
+    messages = await msg_repo.get_by_session(sid, limit=50)
+
+    return SuccessResponse(
+        data=SessionDetailResponse(
+            id=session.id,
+            title=session.title,
+            messages=[MessageOut.model_validate(m) for m in messages],
+            created_at=session.created_at,
+        )
     )

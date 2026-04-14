@@ -49,12 +49,24 @@ def _build_user_message(state: GraphState) -> str:
     else:
         critiques_block = "(No critic reviews available — synthesize from proposals only.)"
 
+    # --- Optional user feedback directive ---
+    feedback = state.get("feedback")
+    feedback_section = ""
+    if feedback:
+        feedback_section = (
+            f"\n\n---\n\n"
+            f"User Feedback Directive "
+            f"(highest priority — must be reflected in the final output):\n"
+            f"{feedback}"
+        )
+
     return (
         f"Original prompt:\n{state['raw_prompt']}\n\n"
         f"---\n\n"
         f"Round 1 — Council proposals:\n\n{proposals_block}\n\n"
         f"---\n\n"
         f"Round 2 — Peer critiques:\n\n{critiques_block}"
+        f"{feedback_section}"
     )
 
 

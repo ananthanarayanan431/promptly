@@ -12,6 +12,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { PageContainer } from '@/components/layout/page-container';
 
 export default function VersionHistoryPage({ params }: { params: { id: string } }) {
   const router = useRouter();
@@ -46,22 +47,25 @@ export default function VersionHistoryPage({ params }: { params: { id: string } 
 
   if (isLoading) {
     return (
-      <div className="space-y-6">
-        <Skeleton className="h-10 w-[200px]" />
-        <Skeleton className="h-[200px] w-full" />
-        <Skeleton className="h-[200px] w-full" />
-      </div>
+      <PageContainer>
+        <div className="space-y-6">
+          <Skeleton className="h-10 w-[200px]" />
+          <Skeleton className="h-[200px] w-full" />
+          <Skeleton className="h-[200px] w-full" />
+        </div>
+      </PageContainer>
     );
   }
 
   if (!family) {
-    return <div>Prompt family not found.</div>;
+    return <PageContainer><div>Prompt family not found.</div></PageContainer>;
   }
 
   // Sort versions descending
   const sortedVersions = [...family.versions].sort((a, b) => b.version - a.version);
 
   return (
+    <PageContainer>
     <div className="space-y-6">
       <div className="flex items-center gap-4">
         <Link href="/versions" className={buttonVariants({ variant: 'ghost', size: 'icon' })}>
@@ -109,5 +113,6 @@ export default function VersionHistoryPage({ params }: { params: { id: string } 
         ))}
       </div>
     </div>
+    </PageContainer>
   );
 }

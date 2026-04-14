@@ -10,55 +10,69 @@ promptly/
   frontend/     # Next.js 14 frontend — dashboard UI
 ```
 
-Each subdirectory has its own dependencies, tooling, and CLAUDE.md. Always `cd` into the relevant subdirectory before running commands.
+Each subdirectory has its own `CLAUDE.md` with full detail. Always `cd` into the relevant subdirectory before running commands.
 
 ---
 
-## Backend (`qa-chatbot/`)
-
-See `qa-chatbot/CLAUDE.md` for full detail. Quick reference:
+## Quick Start (full stack)
 
 ```bash
+# Terminal 1 — infrastructure + backend API
 cd qa-chatbot
-make infra      # start postgres + redis (Docker)
-make migrate    # run alembic migrations
-make dev        # FastAPI on :8000
-make worker     # Celery worker (must run alongside dev for chat to work)
+make infra && make migrate && make dev
+
+# Terminal 2 — Celery worker (required for /chat to function)
+cd qa-chatbot && make worker
+
+# Terminal 3 — frontend
+cd frontend && npm run dev
 ```
 
-The FastAPI server and Celery worker are **two separate processes** — both must be running for the optimize endpoint to function. The API dispatches jobs; the worker executes them.
-
----
-
-## Frontend (`frontend/`)
-
-```bash
-cd frontend
-npm install
-npm run dev     # Next.js on :3000
-npm run build   # production build
-npm run lint    # ESLint
-```
-
-**Environment:** copy `.env.local` and set:
-```
-NEXT_PUBLIC_API_URL=http://localhost:8000
-```
+Swagger UI: `http://localhost:8000/docs`
 
 ---
 
 ## How the Two Connect
 
 ```
-Browser → Next.js (frontend/:3000)
+Browser → Next.js (:3000)
               ↓ axios (NEXT_PUBLIC_API_URL)
-         FastAPI (qa-chatbot/:8000)
+         FastAPI (:8000)  →  202 { job_id }
               ↓ Celery task dispatch
          Redis (broker)
-              ↓ worker picks up task
-         Celery Worker → LangGraph → OpenRouter LLMs
-              ↓ writes result back to Redis
-         FastAPI poll endpoint → Browser
+              ↓ Celery Worker → LangGraph → OpenRouter LLMs
+              ↓ writes result to Redis
+         FastAPI GET /chat/jobs/{id} ← frontend polls every 2 s
 ```
 
-Auth token is stored in an **httpOnly cookie** (set by `frontend/src/app/api/auth/route.ts`, a Next.js API route) and simultaneously hydrated into Zustand for use by the axios interceptor. The middleware at `frontend/src/middleware.ts` reads the cookie to protect dashboard routes server-side.
+**Critical:** `POST /api/v1/chat/` returns immediately with a `job_id`; the LangGraph pipeline runs in the Celery worker. Without the worker running, all optimize requests will hang in `queued` state forever.
+
+---
+
+## Cross-Cutting Concerns
+
+### Auth
+- Backend: `get_current_user()` in `qa-chatbot/src/app/dependencies.py` accepts JWT Bearer **or** `qac_`-prefixed API key.
+- Frontend: token stored in both an httpOnly cookie (for middleware route protection) and Zustand (for the axios interceptor). `AuthInitializer` in the dashboard layout hydrates Zustand from the cookie on page load.
+- On 401, the axios interceptor in `frontend/src/lib/api.ts` logs out and redirects to `/login`.
+
+### Credits
+Each optimization costs **10 credits**; health-score and advisory cost **5 credits** each. Users start with 100. Returns HTTP 402 when insufficient.
+
+### LLM Calls
+All LLM calls route through **OpenRouter** (`OPENROUTER_API_KEY`). The four council models are configurable via `COUNCIL_MODELS` env var — index order maps to the four optimization strategies (analytical/creative/concise/structured).
+
+### Prompts
+All system prompts are `.md` files in `qa-chatbot/prompts/`, loaded once at startup. Changing optimization behaviour means editing those files — no code changes required.
+
+---
+
+## Environment Variables
+
+| Variable | Where | Purpose |
+|----------|-------|---------|
+| `OPENROUTER_API_KEY` | `qa-chatbot/.env` | Required for all LLM calls |
+| `DATABASE_URL` | `qa-chatbot/.env` | Async postgres (`asyncpg` driver) |
+| `REDIS_URL` | `qa-chatbot/.env` | Celery broker/backend + job state cache |
+| `COUNCIL_MODELS` | `qa-chatbot/.env` | Override 4 model slugs (comma-separated) |
+| `NEXT_PUBLIC_API_URL` | `frontend/.env.local` | Backend base URL for axios |

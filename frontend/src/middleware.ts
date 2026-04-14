@@ -14,12 +14,13 @@ export function middleware(request: NextRequest) {
     pathname.startsWith('/analyze');
 
   if (isProtected && !token) {
-    return NextResponse.redirect(new URL('/login', request.url));
+    // Send unauthenticated visitors to the landing page so they see the product first
+    return NextResponse.redirect(new URL('/', request.url));
   }
 
-  // Redirect authenticated users away from auth pages to the dashboard
+  // Redirect authenticated users away from auth pages to the app
   if (token && (pathname === '/login' || pathname === '/register')) {
-    return NextResponse.redirect(new URL('/dashboard', request.url));
+    return NextResponse.redirect(new URL('/optimize', request.url));
   }
 
   return NextResponse.next();

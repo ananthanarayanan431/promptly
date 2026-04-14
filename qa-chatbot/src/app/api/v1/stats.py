@@ -41,11 +41,16 @@ async def get_dashboard_stats(
     user_id = current_user.id
 
     # --- 1. Total prompts optimized ------------------------------------------
+    # Count messages that have a response (= completed optimization runs).
+    # Filter on response IS NOT NULL rather than role so that historical rows
+    # saved with role="user" are counted correctly alongside newer role="assistant" rows.
+    has_response = Message.response.isnot(None)
+
     count_stmt = (
         select(func.count())
         .select_from(Message)
         .join(ChatSession, Message.session_id == ChatSession.id)
-        .where(ChatSession.user_id == user_id, Message.role == "assistant")
+        .where(ChatSession.user_id == user_id, has_response)
     )
     prompts_optimized: int = (await db.execute(count_stmt)).scalar_one() or 0
 
@@ -59,7 +64,7 @@ async def get_dashboard_stats(
         .join(ChatSession, Message.session_id == ChatSession.id)
         .where(
             ChatSession.user_id == user_id,
-            Message.role == "assistant",
+            has_response,
             Message.created_at >= thirty_days_ago,
         )
         .group_by(cast(Message.created_at, Date))
@@ -84,7 +89,7 @@ async def get_dashboard_stats(
     messages_stmt = (
         select(Message.token_usage, Message.council_votes)
         .join(ChatSession, Message.session_id == ChatSession.id)
-        .where(ChatSession.user_id == user_id, Message.role == "assistant")
+        .where(ChatSession.user_id == user_id, has_response)
         .order_by(Message.created_at.desc())
         .limit(500)
     )
