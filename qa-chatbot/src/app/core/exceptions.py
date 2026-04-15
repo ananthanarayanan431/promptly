@@ -30,6 +30,11 @@ class GuardrailException(HTTPException):
         super().__init__(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=detail)
 
 
+class UserAlreadyExistException(HTTPException):
+    def __init__(self, detail: str = "User already exists") -> None:
+        super().__init__(status_code=status.HTTP_409_CONFLICT, detail=detail)
+
+
 class LLMException(HTTPException):
     def __init__(self, detail: str = "LLM service error") -> None:
         super().__init__(status_code=status.HTTP_502_BAD_GATEWAY, detail=detail)

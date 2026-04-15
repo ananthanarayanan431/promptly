@@ -2,10 +2,17 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.types.response import SuccessResponse
+from app.api.v1.exceptions.chat import (
+    ChatInsufficientCreditsException,
+    InvalidSessionIDException,
+    JobNotFoundException,
+    SessionNotFoundException,
+    VersionedPromptNotFoundException,
+)
 from app.core.cache import get_job_result, get_job_status, set_job_status
 from app.dependencies import get_current_user, get_db
 from app.models.session import ChatSession
@@ -65,10 +72,7 @@ async def create_chat(
     Cost: 10 credits, deducted on submission.
     """
     if current_user.credits < 10:
-        raise HTTPException(
-            status_code=402,
-            detail="Insufficient credits. 10 credits required per run.",
-        )
+        raise ChatInsufficientCreditsException()
 
     # Resolve prompt content and versioning context
     raw_prompt: str
@@ -79,7 +83,7 @@ async def create_chat(
         version_repo = PromptVersionRepository(db)
         latest = await version_repo.get_latest_by_prompt_id(request.prompt_id, current_user.id)
         if latest is None:
-            raise HTTPException(status_code=404, detail="Versioned prompt not found.")
+            raise VersionedPromptNotFoundException()
         raw_prompt = latest.content
         resolved_prompt_id = str(request.prompt_id)
         resolved_name = resolved_name or latest.name
@@ -135,7 +139,7 @@ async def poll_chat_job(
     """
     status = await get_job_status(job_id)
     if status is None:
-        raise HTTPException(status_code=404, detail="Job not found.")
+        raise JobNotFoundException()
 
     result: ChatResponse | None = None
     error: str | None = None
@@ -327,12 +331,12 @@ async def get_session(
     try:
         sid = uuid.UUID(session_id)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail="Invalid session ID.") from exc
+        raise InvalidSessionIDException() from exc
 
     session_repo = SessionRepository(db)
     session = await session_repo.get_by_id(sid)
     if session is None or session.user_id != current_user.id:
-        raise HTTPException(status_code=404, detail="Session not found.")
+        raise SessionNotFoundException()
 
     msg_repo = MessageRepository(db)
     messages = await msg_repo.get_by_session(sid, limit=50)

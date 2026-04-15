@@ -1,10 +1,11 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.types.response import SuccessResponse
+from app.api.v1.exceptions.prompts import PromptInsufficientCreditsException
 from app.dependencies import get_current_user, get_db
 from app.models.user import User
 from app.schemas.prompt import (
@@ -39,10 +40,7 @@ async def prompt_health_score(
     Returns a 1–10 score with a rationale for each dimension plus an overall score.
     """
     if current_user.credits < 5:
-        raise HTTPException(
-            status_code=402,
-            detail="Insufficient credits. 5 credits required per run.",
-        )
+        raise PromptInsufficientCreditsException()
     current_user.credits -= 5
     await db.flush()
 
@@ -66,10 +64,7 @@ async def prompt_advisory(
     and an overall assessment of the prompt's effectiveness.
     """
     if current_user.credits < 5:
-        raise HTTPException(
-            status_code=402,
-            detail="Insufficient credits. 5 credits required per run.",
-        )
+        raise PromptInsufficientCreditsException()
     current_user.credits -= 5
     await db.flush()
 
