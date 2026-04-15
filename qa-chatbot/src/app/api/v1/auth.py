@@ -1,10 +1,12 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.types.response import SuccessResponse
+from app.api.v1.exceptions.auth import InactiveUserException, InvalidCredentialsException
+from app.core.exceptions import UserAlreadyExistException
 from app.core.security import create_access_token, hash_password, verify_password
 from app.db.session import get_async_session
 from app.repositories.user_repo import UserRepository
@@ -20,10 +22,7 @@ async def register(
     user_repo = UserRepository(db)
     user = await user_repo.get_by_email(email=user_in.email)
     if user:
-        raise HTTPException(
-            status_code=400,
-            detail="The user with this username already exists in the system.",
-        )
+        raise UserAlreadyExistException("The user with this email already exists in the system.")
 
     hashed_password = hash_password(user_in.password)
     new_user = await user_repo.create(
@@ -45,11 +44,11 @@ async def login_access_token(
     user_repo = UserRepository(db)
     user = await user_repo.get_by_email(email=form_data.username)
     if not user or not user.hashed_password:
-        raise HTTPException(status_code=400, detail="Incorrect email or password")
+        raise InvalidCredentialsException()
     if not verify_password(form_data.password, user.hashed_password):
-        raise HTTPException(status_code=400, detail="Incorrect email or password")
+        raise InvalidCredentialsException()
     if not user.is_active:
-        raise HTTPException(status_code=400, detail="Inactive user")
+        raise InactiveUserException()
 
     access_token = create_access_token(subject=str(user.id))
     return SuccessResponse(data=Token(access_token=access_token, token_type="bearer"))
