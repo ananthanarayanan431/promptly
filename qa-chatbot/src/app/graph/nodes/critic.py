@@ -21,14 +21,30 @@ llm_settings = get_llm_settings()
 
 _CRITIC_PROMPT = load_prompt("critic")
 
-_critic_models = [
-    ChatOpenAI(
-        model=m,
-        openai_api_base="https://openrouter.ai/api/v1",
-        openai_api_key=llm_settings.OPENROUTER_API_KEY.get_secret_value(),
-    )
-    for m in llm_settings.COUNCIL_MODELS
-]
+_critic_loop_id: int | None = None
+_critic_models: list[ChatOpenAI] | None = None
+
+
+def _build_critic_models() -> list[ChatOpenAI]:
+    return [
+        ChatOpenAI(
+            model=m,
+            openai_api_base="https://openrouter.ai/api/v1",
+            openai_api_key=llm_settings.OPENROUTER_API_KEY.get_secret_value(),
+        )
+        for m in llm_settings.COUNCIL_MODELS
+    ]
+
+
+def _get_critic_models() -> list[ChatOpenAI]:
+    """Models bind httpx to the running loop; Celery uses a new loop per task."""
+    global _critic_loop_id, _critic_models
+    loop = asyncio.get_running_loop()
+    lid = id(loop)
+    if _critic_loop_id != lid or _critic_models is None:
+        _critic_loop_id = lid
+        _critic_models = _build_critic_models()
+    return _critic_models
 
 
 def _build_review_message(
@@ -95,7 +111,7 @@ async def critic_node(state: GraphState) -> dict:
         }
 
     results = await asyncio.gather(
-        *[critique(m, i) for i, m in enumerate(_critic_models) if i < len(proposals)],
+        *[critique(m, i) for i, m in enumerate(_get_critic_models()) if i < len(proposals)],
         return_exceptions=True,
     )
 

@@ -99,11 +99,20 @@ export interface ModelStats {
 }
 
 export interface DashboardStats {
+  // Core counters
   prompts_optimized: number;
+  total_sessions: number;
   total_tokens: number;
+  avg_tokens_per_run: number;
   estimated_cost_usd: number;
   versions_saved: number;
+  total_versions: number;
   credits_remaining: number;
+  // Engagement signals
+  streak_days: number;
+  last_optimized_at: string | null; // ISO datetime
+  top_model: string | null;
+  // Chart data
   daily_activity: DailyActivity[];
   model_breakdown: ModelStats[];
 }

@@ -70,7 +70,7 @@ export default function LoginPage() {
             id="email"
             type="email"
             placeholder="you@example.com"
-            className="h-11 bg-background/60 border-border/70 focus-visible:border-violet-500 focus-visible:ring-violet-500/20"
+            className="h-11 bg-background/60 border-border/70 focus-visible:border-primary/50 focus-visible:ring-primary/20"
             {...register('email')}
           />
           {errors.email && (
@@ -84,7 +84,7 @@ export default function LoginPage() {
             id="password"
             type="password"
             placeholder="••••••••"
-            className="h-11 bg-background/60 border-border/70 focus-visible:border-violet-500 focus-visible:ring-violet-500/20"
+            className="h-11 bg-background/60 border-border/70 focus-visible:border-primary/50 focus-visible:ring-primary/20"
             {...register('password')}
           />
           {errors.password && (
@@ -95,7 +95,7 @@ export default function LoginPage() {
         <button
           type="submit"
           disabled={loading}
-          className="w-full inline-flex items-center justify-center gap-2 h-11 px-5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-semibold text-sm transition-all shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40 hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-60 disabled:pointer-events-none"
+          className="w-full inline-flex items-center justify-center gap-2 h-11 px-5 rounded-xl bg-gradient-to-br from-primary to-primary/80 text-primary-foreground font-semibold text-sm transition-all shadow-lg shadow-primary/25 hover:shadow-primary/40 hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-60 disabled:pointer-events-none"
         >
           {loading ? (
             <Loader2 className="h-4 w-4 animate-spin" />

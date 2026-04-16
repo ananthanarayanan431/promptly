@@ -8,7 +8,7 @@ import { ScoreDisplay } from '@/components/analyze/score-display';
 import { AdvisoryDisplay } from '@/components/analyze/advisory-display';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { ActivitySquare, Lightbulb, Loader2 } from 'lucide-react';
+import { ActivitySquare, Lightbulb, Loader2, ScanSearch } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const MAX_CHARS = 8000;
@@ -56,10 +56,15 @@ export default function AnalyzePage() {
       <div className="flex-1 overflow-y-auto">
         {!hasResults ? (
           /* Empty state */
-          <div className="flex flex-col items-center justify-center h-full px-4 pb-4 text-center">
-            <div className="space-y-2">
-              <h1 className="text-2xl font-semibold tracking-tight">Prompt Analyzer</h1>
-              <p className="text-sm text-muted-foreground max-w-sm">
+          <div className="flex flex-col items-center justify-center h-full px-4 pb-16">
+            <div className="w-full max-w-2xl space-y-4 text-center">
+              <div className="inline-flex items-center justify-center h-12 w-12 rounded-2xl bg-gradient-to-br from-primary to-primary/60 shadow-lg shadow-primary/20 mb-2">
+                <ScanSearch className="h-6 w-6 text-primary-foreground" />
+              </div>
+              <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-br from-foreground to-foreground/60 bg-clip-text text-transparent">
+                Analyze your prompt
+              </h1>
+              <p className="text-sm text-muted-foreground max-w-sm mx-auto">
                 Paste a prompt below and run a Health Score or Advisory review. Each analysis costs 5 credits.
               </p>
             </div>

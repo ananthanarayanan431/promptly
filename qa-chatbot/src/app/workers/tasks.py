@@ -87,12 +87,12 @@ def process_chat_async(
         from app.config.llm import get_llm_settings
         from app.core.cache import set_job_result, set_job_status
         from app.db.redis import reset_connection_pool
-        from app.db.session import AsyncSessionLocal
+        from app.db.session import AsyncSessionLocal, dispose_async_engine
 
-        # The module-level Redis pool is bound to the previous event loop
-        # (closed by the last asyncio.run()). Reset it so a fresh pool is
-        # created for this event loop.
+        # Redis + SQLAlchemy pools are bound to the previous event loop (closed by the
+        # last asyncio.run()). Reset so fresh connections attach to this loop.
         reset_connection_pool()
+        await dispose_async_engine()
         from app.graph.builder import compile_graph
         from app.graph.checkpointer import get_checkpointer
         from app.repositories.prompt_version_repo import PromptVersionRepository

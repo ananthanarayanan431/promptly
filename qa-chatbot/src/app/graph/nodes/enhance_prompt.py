@@ -1,3 +1,5 @@
+import asyncio
+
 from langchain_openai import ChatOpenAI
 
 from app.config.llm import get_llm_settings
@@ -5,12 +7,8 @@ from app.graph.state import GraphState
 
 llm_settings = get_llm_settings()
 
-_enhancer = ChatOpenAI(
-    model=llm_settings.DEFAULT_MODEL,
-    openai_api_base="https://openrouter.ai/api/v1",
-    openai_api_key=llm_settings.OPENROUTER_API_KEY.get_secret_value(),
-    max_tokens=1000,
-)
+_loop_id: int | None = None
+_enhancer: ChatOpenAI | None = None
 
 ENHANCE_SYSTEM = (
     "You are an expert prompt engineer.\n"
@@ -22,8 +20,24 @@ ENHANCE_SYSTEM = (
 )
 
 
+def _get_enhancer() -> ChatOpenAI:
+    """ChatOpenAI binds httpx to the running loop; Celery uses a new loop per task."""
+    global _loop_id, _enhancer
+    loop = asyncio.get_running_loop()
+    lid = id(loop)
+    if _loop_id != lid or _enhancer is None:
+        _loop_id = lid
+        _enhancer = ChatOpenAI(
+            model=llm_settings.DEFAULT_MODEL,
+            openai_api_base="https://openrouter.ai/api/v1",
+            openai_api_key=llm_settings.OPENROUTER_API_KEY.get_secret_value(),
+            max_tokens=1000,
+        )
+    return _enhancer
+
+
 async def enhance_prompt_node(state: GraphState) -> dict:
-    response = await _enhancer.ainvoke(
+    response = await _get_enhancer().ainvoke(
         [
             {"role": "system", "content": ENHANCE_SYSTEM},
             {"role": "user", "content": state["raw_prompt"]},

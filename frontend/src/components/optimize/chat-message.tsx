@@ -13,7 +13,7 @@ import type { ChatTurn } from '@/types/api';
 function UserBubble({ text, isFeedback }: { text: string; isFeedback: boolean }) {
   return (
     <div className="flex justify-end">
-      <div className="max-w-[75%] space-y-1">
+      <div className="max-w-[78%] space-y-1">
         {isFeedback && (
           <p className="text-right text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 pr-1">
             Feedback
@@ -22,7 +22,9 @@ function UserBubble({ text, isFeedback }: { text: string; isFeedback: boolean })
         <div
           className={cn(
             'rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap',
-            isFeedback ? 'bg-muted/60 border text-foreground' : 'bg-muted text-foreground'
+            isFeedback
+              ? 'bg-accent/60 border border-primary/20 text-foreground'
+              : 'bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-sm shadow-primary/20'
           )}
         >
           {text}
@@ -60,7 +62,7 @@ function AssistantResult({ turn, isVersioningActive, onVersionSaved }: Assistant
     return (
       <div className="flex gap-3">
         <PromptlyIcon />
-        <div className="flex items-start gap-2 pt-1">
+        <div className="flex items-start gap-2 pt-1 rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3">
           <AlertCircle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
           <div>
             <p className="text-sm font-medium text-destructive">Optimization failed</p>
@@ -77,7 +79,6 @@ function AssistantResult({ turn, isVersioningActive, onVersionSaved }: Assistant
 
   const { result } = turn;
 
-  // Version info: from job result (if versioned at submit time) OR from local save-version call
   const versionNum = result.version ?? savedVersion?.version;
   const isVersioned = !!result.prompt_id || !!savedVersion;
   const canSaveVersion = !isVersioningActive && !isVersioned;
@@ -114,63 +115,61 @@ function AssistantResult({ turn, isVersioningActive, onVersionSaved }: Assistant
     <div className="flex gap-3">
       <PromptlyIcon />
 
-      <div className="flex-1 min-w-0 space-y-3">
-        {/* Version pill — shown after versioning starts */}
-        {(isVersioned || isVersioningActive) && versionNum && (
-          <div className="inline-flex items-center gap-1.5 rounded-full bg-violet-100 dark:bg-violet-900/30 border border-violet-200 dark:border-violet-800 px-2.5 py-0.5 text-xs font-medium text-violet-700 dark:text-violet-300">
-            <GitBranch className="h-3 w-3" />
-            v{versionNum} saved
-          </div>
-        )}
+      <div className="flex-1 min-w-0">
+        {/* Result card */}
+        <div className="rounded-2xl border border-border/60 bg-card p-4 space-y-3 shadow-sm">
+          {/* Version pill */}
+          {(isVersioned || isVersioningActive) && versionNum && (
+            <div className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 border border-primary/20 px-2.5 py-0.5 text-xs font-medium text-primary">
+              <GitBranch className="h-3 w-3" />
+              v{versionNum} saved
+            </div>
+          )}
 
-        {/* Optimized prompt — plain text, no box */}
-        <p className="text-sm leading-7 whitespace-pre-wrap text-foreground">
-          {result.optimized_prompt}
-        </p>
+          {/* Optimized prompt text */}
+          <p className="text-sm leading-7 whitespace-pre-wrap text-foreground">
+            {result.optimized_prompt}
+          </p>
 
-        {/* Action row */}
-        <div className="flex items-center gap-1 -ml-1.5 pt-0.5">
-          {/* Copy */}
-          <button
-            onClick={handleCopy}
-            className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-          >
-            {copied ? (
-              <><CheckCheck className="h-3.5 w-3.5 text-green-500" /> Copied</>
-            ) : (
-              <><Copy className="h-3.5 w-3.5" /> Copy</>
-            )}
-          </button>
-
-          {/* Version button */}
-          {canSaveVersion && (
+          {/* Divider + action row */}
+          <div className="flex items-center gap-1 pt-1 border-t border-border/40 -mx-4 px-4 mt-3">
             <button
-              onClick={handleSaveVersion}
-              disabled={versionLoading}
-              title="Save as versioned prompt"
-              className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50"
+              onClick={handleCopy}
+              className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
             >
-              {versionLoading ? (
-                <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…</>
+              {copied ? (
+                <><CheckCheck className="h-3.5 w-3.5 text-green-500" /> Copied</>
               ) : (
-                <><GitBranch className="h-3.5 w-3.5" /> Version</>
+                <><Copy className="h-3.5 w-3.5" /> Copy</>
               )}
             </button>
-          )}
 
-          {/* Versioning active indicator (no button - auto-saved by backend) */}
-          {isVersioningActive && !versionNum && (
-            <span className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs text-violet-500">
-              <GitBranch className="h-3.5 w-3.5" /> Versioning active
-            </span>
-          )}
+            {canSaveVersion && (
+              <button
+                onClick={handleSaveVersion}
+                disabled={versionLoading}
+                className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-50"
+              >
+                {versionLoading ? (
+                  <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…</>
+                ) : (
+                  <><GitBranch className="h-3.5 w-3.5" /> Version</>
+                )}
+              </button>
+            )}
 
-          {/* Token count */}
-          {result.token_usage?.total_tokens ? (
-            <span className="ml-auto text-[11px] text-muted-foreground/50">
-              {result.token_usage.total_tokens.toLocaleString()} tokens
-            </span>
-          ) : null}
+            {isVersioningActive && !versionNum && (
+              <span className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-primary/70">
+                <GitBranch className="h-3.5 w-3.5" /> Versioning active
+              </span>
+            )}
+
+            {result.token_usage?.total_tokens ? (
+              <span className="ml-auto text-[11px] text-muted-foreground/50">
+                {result.token_usage.total_tokens.toLocaleString()} tokens
+              </span>
+            ) : null}
+          </div>
         </div>
       </div>
     </div>
@@ -181,8 +180,8 @@ function AssistantResult({ turn, isVersioningActive, onVersionSaved }: Assistant
 
 function PromptlyIcon() {
   return (
-    <div className="h-7 w-7 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0 mt-0.5">
-      <Sparkles className="h-3.5 w-3.5 text-primary" />
+    <div className="h-7 w-7 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center shrink-0 mt-0.5 shadow-sm shadow-primary/30">
+      <Sparkles className="h-3.5 w-3.5 text-primary-foreground" />
     </div>
   );
 }

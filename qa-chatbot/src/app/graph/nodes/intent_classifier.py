@@ -11,6 +11,8 @@ attempts, off-topic queries, and "write me a prompt" requests are all caught
 here as IRRELEVANT.
 """
 
+import asyncio
+
 from langchain_openai import ChatOpenAI
 
 from app.config.llm import get_llm_settings
@@ -28,15 +30,27 @@ _REJECTION_IRRELEVANT = (
     "harmful or injective content, and queries unrelated to prompt engineering."
 )
 
-_classifier = ChatOpenAI(
-    model=llm_settings.DEFAULT_MODEL,
-    openai_api_base="https://openrouter.ai/api/v1",
-    openai_api_key=llm_settings.OPENROUTER_API_KEY.get_secret_value(),
-    max_tokens=5,
-    temperature=0,  # deterministic — classification, not generation
-)
+_loop_id: int | None = None
+_classifier: ChatOpenAI | None = None
 
 _SYSTEM_PROMPT = load_prompt("intent_classifier")
+
+
+def _get_classifier() -> ChatOpenAI:
+    """ChatOpenAI binds httpx to the running loop; Celery uses a new loop per task."""
+    global _loop_id, _classifier
+    loop = asyncio.get_running_loop()
+    lid = id(loop)
+    if _loop_id != lid or _classifier is None:
+        _loop_id = lid
+        _classifier = ChatOpenAI(
+            model=llm_settings.DEFAULT_MODEL,
+            openai_api_base="https://openrouter.ai/api/v1",
+            openai_api_key=llm_settings.OPENROUTER_API_KEY.get_secret_value(),
+            max_tokens=5,
+            temperature=0,  # deterministic — classification, not generation
+        )
+    return _classifier
 
 
 async def intent_classifier_node(state: GraphState) -> dict:
@@ -49,7 +63,7 @@ async def intent_classifier_node(state: GraphState) -> dict:
     """
     raw = state.get("raw_prompt", "").strip()
 
-    response = await _classifier.ainvoke(
+    response = await _get_classifier().ainvoke(
         [
             {"role": "system", "content": _SYSTEM_PROMPT},
             {"role": "user", "content": raw},

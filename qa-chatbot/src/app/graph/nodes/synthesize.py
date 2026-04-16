@@ -6,6 +6,8 @@ Uses the critique consensus to identify the strongest base proposal, patch confi
 weaknesses, and produce the single definitive optimized prompt.
 """
 
+import asyncio
+
 from langchain_openai import ChatOpenAI
 
 from app.config.llm import get_llm_settings
@@ -14,13 +16,25 @@ from app.graph.state import GraphState
 
 llm_settings = get_llm_settings()
 
-_synthesizer = ChatOpenAI(
-    model=llm_settings.DEFAULT_MODEL,
-    openai_api_base="https://openrouter.ai/api/v1",
-    openai_api_key=llm_settings.OPENROUTER_API_KEY.get_secret_value(),
-)
+_loop_id: int | None = None
+_synthesizer: ChatOpenAI | None = None
 
 _SYSTEM_PROMPT = load_prompt("synthesize_best")
+
+
+def _get_synthesizer() -> ChatOpenAI:
+    """ChatOpenAI binds httpx to the running loop; Celery uses a new loop per task."""
+    global _loop_id, _synthesizer
+    loop = asyncio.get_running_loop()
+    lid = id(loop)
+    if _loop_id != lid or _synthesizer is None:
+        _loop_id = lid
+        _synthesizer = ChatOpenAI(
+            model=llm_settings.DEFAULT_MODEL,
+            openai_api_base="https://openrouter.ai/api/v1",
+            openai_api_key=llm_settings.OPENROUTER_API_KEY.get_secret_value(),
+        )
+    return _synthesizer
 
 
 def _build_user_message(state: GraphState) -> str:
@@ -80,7 +94,7 @@ async def synthesize_node(state: GraphState) -> dict:
     Returns:
         {"final_response": <best_optimized_prompt>, "token_usage": {"total_tokens": N}}
     """
-    response = await _synthesizer.ainvoke(
+    response = await _get_synthesizer().ainvoke(
         [
             {"role": "system", "content": _SYSTEM_PROMPT},
             {"role": "user", "content": _build_user_message(state)},

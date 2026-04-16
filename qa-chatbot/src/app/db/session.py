@@ -19,6 +19,16 @@ engine = create_async_engine(
 AsyncSessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
+async def dispose_async_engine() -> None:
+    """Drop pooled connections so the next asyncio.run() uses a fresh asyncpg pool.
+
+    Celery calls ``asyncio.run()`` per task; each run uses a new event loop. Asyncpg
+    connections must not be reused across loops — same rationale as
+    ``reset_connection_pool()`` for Redis in ``tasks.py``.
+    """
+    await engine.dispose()
+
+
 async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionLocal() as session:
         try:
