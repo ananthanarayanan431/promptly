@@ -77,11 +77,11 @@ export default function RegisterPage() {
       {/* Perks */}
       <div className="grid grid-cols-1 gap-2">
         {PERKS.map(({ icon: Icon, label }) => (
-          <div key={label} className="flex items-center gap-3 px-4 py-2.5 rounded-lg bg-violet-50 dark:bg-violet-950/30 border border-violet-100 dark:border-violet-900/50">
-            <div className="h-7 w-7 rounded-md bg-violet-100 dark:bg-violet-900/60 flex items-center justify-center shrink-0">
-              <Icon className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
+          <div key={label} className="flex items-center gap-3 px-4 py-2.5 rounded-lg bg-primary/5 border border-primary/20">
+            <div className="h-7 w-7 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
+              <Icon className="h-3.5 w-3.5 text-primary" />
             </div>
-            <span className="text-sm font-medium text-violet-900 dark:text-violet-200">{label}</span>
+            <span className="text-sm font-medium text-foreground">{label}</span>
           </div>
         ))}
       </div>
@@ -94,7 +94,7 @@ export default function RegisterPage() {
             id="email"
             type="email"
             placeholder="you@example.com"
-            className="h-11 bg-background/60 border-border/70 focus-visible:border-violet-500 focus-visible:ring-violet-500/20"
+            className="h-11 bg-background/60 border-border/70 focus-visible:border-primary/50 focus-visible:ring-primary/20"
             {...register('email')}
           />
           {errors.email && (
@@ -108,7 +108,7 @@ export default function RegisterPage() {
             id="password"
             type="password"
             placeholder="Min. 8 characters"
-            className="h-11 bg-background/60 border-border/70 focus-visible:border-violet-500 focus-visible:ring-violet-500/20"
+            className="h-11 bg-background/60 border-border/70 focus-visible:border-primary/50 focus-visible:ring-primary/20"
             {...register('password')}
           />
           {errors.password && (
@@ -119,7 +119,7 @@ export default function RegisterPage() {
         <button
           type="submit"
           disabled={loading}
-          className="w-full inline-flex items-center justify-center gap-2 h-11 px-5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-semibold text-sm transition-all shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40 hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-60 disabled:pointer-events-none"
+          className="w-full inline-flex items-center justify-center gap-2 h-11 px-5 rounded-xl bg-gradient-to-br from-primary to-primary/80 text-primary-foreground font-semibold text-sm transition-all shadow-lg shadow-primary/25 hover:shadow-primary/40 hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-60 disabled:pointer-events-none"
         >
           {loading ? (
             <Loader2 className="h-4 w-4 animate-spin" />

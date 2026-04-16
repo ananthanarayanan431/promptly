@@ -15,7 +15,7 @@ export function LandingNav() {
       <div className="px-4 sm:px-5 h-14 flex items-center justify-between">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2 font-bold text-lg shrink-0">
-          <Sparkles className="h-5 w-5 text-violet-500" />
+          <Sparkles className="h-5 w-5 text-primary" />
           <span>Promptly</span>
         </Link>
 
@@ -38,7 +38,7 @@ export function LandingNav() {
           </Link>
           <Link
             href="/register"
-            className="text-sm font-semibold px-4 py-2 rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white transition-all shadow-sm shadow-violet-500/20"
+            className="text-sm font-semibold px-4 py-2 rounded-lg bg-gradient-to-br from-primary to-primary/80 text-primary-foreground transition-all shadow-sm shadow-primary/20 hover:shadow-primary/30 hover:opacity-90"
           >
             Get started
           </Link>
@@ -97,7 +97,7 @@ export function LandingNav() {
             </Link>
             <Link
               href="/register"
-              className="text-sm font-semibold text-center py-2.5 rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 text-white"
+              className="text-sm font-semibold text-center py-2.5 rounded-lg bg-gradient-to-br from-primary to-primary/80 text-primary-foreground"
             >
               Get started free
             </Link>

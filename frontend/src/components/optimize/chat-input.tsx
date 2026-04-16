@@ -91,21 +91,21 @@ export function ChatInput({
       {/* Version name badge — shown above the textarea when versioning is on */}
       {versioning && (
         <div className="mb-2 flex items-center gap-2">
-          <div className="flex items-center gap-1.5 rounded-full bg-violet-100 dark:bg-violet-900/40 border border-violet-200 dark:border-violet-800 px-3 py-1">
-            <GitBranch className="h-3 w-3 text-violet-600 dark:text-violet-400 shrink-0" />
+          <div className="flex items-center gap-1.5 rounded-full bg-primary/10 border border-primary/25 px-3 py-1">
+            <GitBranch className="h-3 w-3 text-primary shrink-0" />
             {nameLoading ? (
-              <Loader2 className="h-3 w-3 animate-spin text-violet-500" />
+              <Loader2 className="h-3 w-3 animate-spin text-primary" />
             ) : (
               <input
                 value={versionName}
                 onChange={(e) => setVersionName(e.target.value)}
                 placeholder="VERSION NAME"
-                className="bg-transparent text-xs font-semibold tracking-wide text-violet-700 dark:text-violet-300 outline-none placeholder:text-violet-400 w-40"
+                className="bg-transparent text-xs font-semibold tracking-wide text-primary outline-none placeholder:text-primary/50 w-40"
               />
             )}
             <button
               onClick={() => { setVersioning(false); setVersionName(''); }}
-              className="ml-1 text-violet-400 hover:text-violet-600 transition-colors"
+              className="ml-1 text-primary/50 hover:text-primary transition-colors"
             >
               <X className="h-3 w-3" />
             </button>
@@ -116,9 +116,9 @@ export function ChatInput({
 
       {/* Input box */}
       <div className={cn(
-        'relative rounded-2xl border bg-background transition-shadow',
-        'focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary/40',
-        'shadow-sm hover:shadow-md'
+        'relative rounded-2xl border bg-card transition-all duration-200',
+        'focus-within:border-primary/50 focus-within:shadow-[0_0_0_3px_oklch(0.67_0.22_285_/_0.12)]',
+        'shadow-sm hover:border-primary/30'
       )}>
         <textarea
           ref={textareaRef}
@@ -135,7 +135,7 @@ export function ChatInput({
           rows={1}
           className={cn(
             'w-full resize-none bg-transparent px-4 pt-4 pb-12 text-sm leading-relaxed',
-            'outline-none placeholder:text-muted-foreground/60 disabled:opacity-50',
+            'outline-none placeholder:text-muted-foreground/50 disabled:opacity-50',
             hasPreviousTurns ? 'min-h-[56px]' : 'min-h-[128px]'
           )}
         />
@@ -150,8 +150,8 @@ export function ChatInput({
             className={cn(
               'flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
               versioning
-                ? 'bg-violet-100 dark:bg-violet-900/40 text-violet-600 dark:text-violet-400 border border-violet-200 dark:border-violet-800'
-                : 'text-muted-foreground hover:text-foreground hover:bg-muted border border-transparent'
+                ? 'bg-primary/10 text-primary border border-primary/30'
+                : 'text-muted-foreground hover:text-foreground hover:bg-accent border border-transparent'
             )}
           >
             <GitBranch className="h-3.5 w-3.5" />
@@ -164,9 +164,9 @@ export function ChatInput({
             onClick={handleSubmit}
             disabled={!canSubmit}
             className={cn(
-              'flex h-8 w-8 items-center justify-center rounded-full transition-all',
+              'flex h-8 w-8 items-center justify-center rounded-full transition-all duration-200',
               canSubmit
-                ? 'bg-foreground text-background hover:bg-foreground/80'
+                ? 'bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-sm shadow-primary/30 hover:shadow-primary/50 hover:scale-105'
                 : 'bg-muted text-muted-foreground cursor-not-allowed'
             )}
           >
@@ -180,7 +180,7 @@ export function ChatInput({
       </div>
 
       {!hasPreviousTurns && (
-        <p className="mt-2 text-center text-xs text-muted-foreground/60">
+        <p className="mt-2 text-center text-xs text-muted-foreground/50">
           Press Enter to optimize · Shift+Enter for new line · 10 credits per run
         </p>
       )}

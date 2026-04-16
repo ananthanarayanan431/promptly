@@ -51,7 +51,19 @@ def _build_models() -> list[ChatOpenAI]:
     ]
 
 
-_council_models = _build_models()
+_council_loop_id: int | None = None
+_council_models: list[ChatOpenAI] | None = None
+
+
+def _get_council_models() -> list[ChatOpenAI]:
+    """Models bind httpx to the running loop; Celery uses a new loop per task."""
+    global _council_loop_id, _council_models
+    loop = asyncio.get_running_loop()
+    lid = id(loop)
+    if _council_loop_id != lid or _council_models is None:
+        _council_loop_id = lid
+        _council_models = _build_models()
+    return _council_models
 
 
 def _build_user_message(raw_prompt: str, feedback: str | None) -> str:
@@ -95,7 +107,7 @@ async def council_vote_node(state: GraphState) -> dict:
         }
 
     results = await asyncio.gather(
-        *[optimize(m, i) for i, m in enumerate(_council_models)],
+        *[optimize(m, i) for i, m in enumerate(_get_council_models())],
         return_exceptions=True,
     )
 

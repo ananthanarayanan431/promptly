@@ -12,7 +12,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
       </div>
 
       {/* ── Right column — feature panel (hidden on mobile) ──────────── */}
-      <div className="hidden lg:flex flex-1 items-center justify-center relative overflow-hidden bg-gradient-to-br from-violet-600 via-indigo-600 to-blue-700 dark:from-violet-700 dark:via-indigo-700 dark:to-blue-800">
+      <div className="hidden lg:flex flex-1 items-center justify-center relative overflow-hidden bg-gradient-to-br from-[oklch(0.52_0.24_285)] via-[oklch(0.47_0.22_275)] to-[oklch(0.42_0.2_260)]">
         {/* Mesh overlay */}
         <div
           aria-hidden
@@ -20,7 +20,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         />
         {/* Glow spots */}
         <div aria-hidden className="absolute top-[-10%] right-[-10%] w-96 h-96 rounded-full bg-white/10 blur-3xl" />
-        <div aria-hidden className="absolute bottom-[-10%] left-[-5%] w-80 h-80 rounded-full bg-indigo-400/20 blur-3xl" />
+        <div aria-hidden className="absolute bottom-[-10%] left-[-5%] w-80 h-80 rounded-full bg-primary/20 blur-3xl" />
 
         <div className="relative z-10 max-w-sm px-8 text-white space-y-10">
           {/* Brand */}
