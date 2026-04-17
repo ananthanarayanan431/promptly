@@ -35,7 +35,7 @@ function SessionItem({ session, isActive }: { session: SessionSummary; isActive:
     <Link
       href={`/optimize?session=${session.id}`}
       className={cn(
-        'flex items-center gap-2 px-3 py-1.5 rounded-md text-xs transition-colors truncate',
+        'flex items-center gap-2 px-3 py-2 rounded-md text-xs transition-colors truncate',
         isActive
           ? 'bg-primary/10 text-primary'
           : 'text-muted-foreground hover:bg-muted hover:text-foreground'
@@ -60,7 +60,7 @@ function SessionGroup({
   if (sessions.length === 0) return null;
   return (
     <div className="mb-2">
-      <p className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+      <p className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">
         {label}
       </p>
       {sessions.map((s) => (
@@ -149,11 +149,12 @@ export function Sidebar() {
   return (
     <div className="flex h-screen w-64 flex-col border-r bg-card text-card-foreground overflow-hidden">
       {/* Logo */}
-      <div className="flex h-14 items-center border-b px-4 shrink-0">
+      <div className="flex h-14 items-center px-4 shrink-0 relative">
         <Link href="/" className="flex items-center gap-2 font-bold text-lg text-primary">
           <Lightbulb className="h-6 w-6" />
           <span>Promptly</span>
         </Link>
+        <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-border/60 via-border/30 to-transparent" />
       </div>
 
       {/* Nav links */}
@@ -169,8 +170,8 @@ export function Sidebar() {
               className={cn(
                 'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
                 isActive
-                  ? 'bg-primary/10 text-primary'
-                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                  ? 'border-l-2 border-primary text-primary pl-[10px]'
+                  : 'border-l-2 border-transparent text-muted-foreground hover:bg-muted hover:text-foreground pl-[10px]'
               )}
             >
               <item.icon className="h-4 w-4" />
