@@ -10,6 +10,7 @@ import { useJobPoller } from '@/hooks/use-job-poller';
 import { api } from '@/lib/api';
 import { formatApiErrorDetail } from '@/lib/api-errors';
 import { cn } from '@/lib/utils';
+import { useAuthStore } from '@/stores/auth-store';
 import { ChatMessage } from './chat-message';
 import { ChatInput } from './chat-input';
 import { ResultPanel } from './result-panel';
@@ -31,6 +32,8 @@ export function OptimizeChat() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const user = useAuthStore((s) => s.user);
+  const firstName = user?.email.split('@')[0] ?? 'there';
 
   const urlSession = searchParams.get('session');
 
@@ -77,22 +80,46 @@ export function OptimizeChat() {
       .get<{ data: SessionDetail }>(`/api/v1/chat/sessions/${urlSession}`)
       .then((res) => {
         const { messages } = res.data.data;
-        const loaded: ChatTurn[] = messages.map((msg) => ({
-          tempId: msg.id,
-          userText: msg.raw_prompt ?? '',
-          isFeedback: false,
-          status: 'completed' as const,
-          result: msg.response
-            ? ({
-                session_id: urlSession,
-                original_prompt: msg.raw_prompt ?? '',
-                optimized_prompt: msg.response,
-                council_proposals: msg.council_votes ?? [],
-                token_usage: msg.token_usage ?? { total_tokens: 0 },
-              } as JobResult)
-            : undefined,
-        }));
+        const pendingJobId = sessionStorage.getItem(`pending_job_${urlSession}`);
+
+        const loaded: ChatTurn[] = messages.map((msg) => {
+          const hasResult = !!msg.response;
+          return {
+            tempId: msg.id,
+            userText: msg.raw_prompt ?? '',
+            isFeedback: false,
+            // If the message has no response and we have a pending job, mark as loading
+            status: !hasResult && pendingJobId ? ('loading' as const) : ('completed' as const),
+            jobId: !hasResult && pendingJobId ? pendingJobId : undefined,
+            result: hasResult
+              ? ({
+                  session_id: urlSession,
+                  original_prompt: msg.raw_prompt ?? '',
+                  optimized_prompt: msg.response!,
+                  council_proposals: msg.council_votes ?? [],
+                  token_usage: msg.token_usage ?? { total_tokens: 0 },
+                } as JobResult)
+              : undefined,
+          };
+        });
+
         setTurns(loaded);
+
+        // Resume polling if there's an in-flight job
+        const hasPendingTurn = loaded.some((t) => t.status === 'loading');
+        if (pendingJobId && hasPendingTurn) {
+          setActiveJobId(pendingJobId);
+        } else if (pendingJobId) {
+          // Job completed while away — clean up
+          sessionStorage.removeItem(`pending_job_${urlSession}`);
+        }
+
+        // Restore active version family so feedback turns keep appending
+        const lastVersioned = [...loaded].reverse().find((t) => t.result?.prompt_id);
+        if (lastVersioned?.result?.prompt_id) {
+          setVersionPromptId(lastVersioned.result.prompt_id);
+        }
+
         const lastWithResult = [...loaded].reverse().find((t) => t.result);
         if (lastWithResult) {
           setSelectedTurnId(lastWithResult.tempId);
@@ -113,10 +140,12 @@ export function OptimizeChat() {
     if (!jobData) return;
 
     if (jobData.status === 'completed' && jobData.result) {
-      const completedTempId = turnsRef.current.find((t) => t.jobId === activeJobId)?.tempId;
+      const completedJobId = activeJobId;
+      const completedResult = jobData.result;
+      const completedTempId = turnsRef.current.find((t) => t.jobId === completedJobId)?.tempId;
       setTurns((prev) =>
         prev.map((t) =>
-          t.jobId === activeJobId ? { ...t, status: 'completed', result: jobData.result! } : t
+          t.jobId === completedJobId ? { ...t, status: 'completed', result: completedResult } : t
         )
       );
       if (completedTempId) {
@@ -125,8 +154,31 @@ export function OptimizeChat() {
         setMobilePanelOpen(true);
       }
       setActiveJobId(null);
+      if (sessionId) sessionStorage.removeItem(`pending_job_${sessionId}`);
       queryClient.invalidateQueries({ queryKey: ['user', 'me'] });
       queryClient.invalidateQueries({ queryKey: ['sessions'] });
+
+      // Auto-version: on first result in a session, create the version family silently
+      if (!versionPromptId && !completedResult.prompt_id) {
+        api.post<{ data: { prompt_id: string; name: string; version: number } }>(
+          '/api/v1/chat/save-version',
+          {
+            original_prompt: completedResult.original_prompt,
+            optimized_prompt: completedResult.optimized_prompt,
+          }
+        ).then((res) => {
+          const { prompt_id, version } = res.data.data;
+          setVersionPromptId(prompt_id);
+          // Patch the version metadata onto the completed turn
+          setTurns((prev) =>
+            prev.map((t) =>
+              t.jobId === completedJobId && t.result
+                ? { ...t, result: { ...t.result, prompt_id, version } }
+                : t
+            )
+          );
+        }).catch(() => {}); // silent — versioning failure shouldn't block the UX
+      }
     } else if (jobData.status === 'failed') {
       const errMsg = formatApiErrorDetail(jobData.error, 'Optimization failed');
       setTurns((prev) =>
@@ -135,6 +187,7 @@ export function OptimizeChat() {
         )
       );
       setActiveJobId(null);
+      if (sessionId) sessionStorage.removeItem(`pending_job_${sessionId}`);
     }
   }, [jobData, activeJobId, queryClient]);
 
@@ -182,8 +235,11 @@ export function OptimizeChat() {
       });
 
       const jobId = res.data.data.job_id;
+      sessionStorage.setItem(`pending_job_${sid}`, jobId);
       setTurns((prev) => prev.map((t) => (t.tempId === tempId ? { ...t, jobId } : t)));
       setActiveJobId(jobId);
+      // Show session in sidebar immediately (before job completes)
+      queryClient.invalidateQueries({ queryKey: ['sessions'] });
     } catch (err: unknown) {
       const rawDetail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data
         ?.detail;
@@ -250,28 +306,24 @@ export function OptimizeChat() {
             Loading conversation…
           </div>
         ) : !hasMessages ? (
-          /* Empty state */
-          <div className="flex flex-col items-center justify-center h-full px-4 pb-16">
-            <div className="w-full max-w-2xl space-y-6">
-              <div className="text-center space-y-3">
-                <div className="inline-flex items-center justify-center h-12 w-12 rounded-2xl bg-gradient-to-br from-primary to-primary/60 shadow-lg shadow-primary/20 mb-2">
-                  <Sparkles className="h-6 w-6 text-primary-foreground" />
-                </div>
-                <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-br from-foreground to-foreground/60 bg-clip-text text-transparent">
+          /* Empty state — greeting top, input + chips bottom */
+          <div className="flex flex-col h-full px-4">
+            {/* Greeting — upper center */}
+            <div className="flex flex-col items-center justify-center flex-1 gap-3 pb-8">
+              <div className="h-14 w-14 rounded-full bg-gradient-to-br from-primary to-primary/50 flex items-center justify-center shadow-lg shadow-primary/20">
+                <Sparkles className="h-7 w-7 text-primary-foreground" />
+              </div>
+              <div className="text-center">
+                <p className="text-lg font-semibold text-primary">Hello, {firstName}</p>
+                <h1 className="text-2xl font-bold tracking-tight text-foreground mt-0.5">
                   What prompt can I optimize?
                 </h1>
               </div>
+            </div>
 
-              <ChatInput
-                onSubmit={handleSubmit}
-                isLoading={isAnyLoading}
-                hasPreviousTurns={false}
-                defaultValue={prefillText}
-                defaultName={prefillName}
-                autoFocus
-              />
-
-              <div className="grid grid-cols-3 gap-3 pt-1">
+            {/* Input + feature chips — pinned to bottom */}
+            <div className="w-full max-w-2xl mx-auto pb-8 space-y-4">
+              <div className="grid grid-cols-3 gap-2">
                 {[
                   { label: '4 AI models', desc: 'Optimize in parallel' },
                   { label: 'Peer critique', desc: 'Models review each other' },
@@ -283,6 +335,15 @@ export function OptimizeChat() {
                   </div>
                 ))}
               </div>
+
+              <ChatInput
+                onSubmit={handleSubmit}
+                isLoading={isAnyLoading}
+                hasPreviousTurns={false}
+                defaultValue={prefillText}
+                defaultName={prefillName}
+                autoFocus
+              />
             </div>
           </div>
         ) : (
@@ -292,8 +353,6 @@ export function OptimizeChat() {
               <ChatMessage
                 key={turn.tempId}
                 turn={turn}
-                isVersioningActive={!!versionPromptId}
-                onVersionSaved={(pid) => setVersionPromptId(pid)}
                 isTurnSelected={turn.tempId === selectedTurnId}
                 onSelectTurn={() => handleSelectTurn(turn.tempId)}
               />
