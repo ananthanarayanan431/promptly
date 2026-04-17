@@ -19,7 +19,6 @@ import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/stores/auth-store';
 import { clearToken } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
-import { ThemeToggle } from '@/components/landing/theme-toggle';
 import { api } from '@/lib/api';
 import type { SessionsGrouped, SessionSummary } from '@/types/api';
 
@@ -190,11 +189,7 @@ export function Sidebar() {
       </Suspense>
 
       {/* Footer */}
-      <div className="shrink-0 border-t p-4 space-y-2">
-        <div className="flex items-center justify-between px-1 mb-1">
-          <span className="text-xs text-muted-foreground">Theme</span>
-          <ThemeToggle />
-        </div>
+      <div className="shrink-0 border-t p-4">
         <Button
           variant="ghost"
           className="w-full justify-start text-muted-foreground hover:text-foreground"
