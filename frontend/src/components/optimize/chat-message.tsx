@@ -14,19 +14,13 @@ function UserBubble({ text, isFeedback }: { text: string; isFeedback: boolean })
   return (
     <div className="flex justify-end">
       <div className="max-w-[78%] space-y-1">
-        {isFeedback && (
-          <p className="text-right text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 pr-1">
-            Feedback
-          </p>
-        )}
-        <div
-          className={cn(
-            'rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap',
-            isFeedback
-              ? 'bg-accent/60 border border-primary/20 text-foreground'
-              : 'bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-sm shadow-primary/20'
-          )}
-        >
+        <p className={cn(
+          'text-right text-[10px] font-semibold uppercase tracking-widest pr-1',
+          isFeedback ? 'text-primary/70' : 'text-muted-foreground/60'
+        )}>
+          {isFeedback ? 'Feedback' : 'You'}
+        </p>
+        <div className="rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap bg-accent/40 border border-border/50 text-foreground">
           {text}
         </div>
       </div>
