@@ -43,10 +43,15 @@ function AssistantResult({ turn, isVersioningActive, onVersionSaved }: Assistant
 
   if (turn.status === 'loading') {
     return (
-      <div className="flex gap-3">
-        <PromptlyIcon />
-        <div className="flex-1 pt-1">
-          <LoadingWords />
+      <div className="space-y-1">
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 pl-10">
+          Promptly
+        </p>
+        <div className="flex gap-3">
+          <PromptlyIcon />
+          <div className="flex-1 pt-1">
+            <LoadingWords />
+          </div>
         </div>
       </div>
     );
@@ -54,15 +59,20 @@ function AssistantResult({ turn, isVersioningActive, onVersionSaved }: Assistant
 
   if (turn.status === 'failed') {
     return (
-      <div className="flex gap-3">
-        <PromptlyIcon />
-        <div className="flex items-start gap-2 pt-1 rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3">
-          <AlertCircle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm font-medium text-destructive">Optimization failed</p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {turn.error || 'Something went wrong. Please try again.'}
-            </p>
+      <div className="space-y-1">
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 pl-10">
+          Promptly
+        </p>
+        <div className="flex gap-3">
+          <PromptlyIcon />
+          <div className="flex items-start gap-2 pt-1 rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3">
+            <AlertCircle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-medium text-destructive">Optimization failed</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {turn.error || 'Something went wrong. Please try again.'}
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -106,63 +116,68 @@ function AssistantResult({ turn, isVersioningActive, onVersionSaved }: Assistant
   };
 
   return (
-    <div className="flex gap-3">
-      <PromptlyIcon />
+    <div className="space-y-1">
+      <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 pl-10">
+        Promptly
+      </p>
+      <div className="flex gap-3">
+        <PromptlyIcon />
 
-      <div className="flex-1 min-w-0">
-        {/* Result card */}
-        <div className="rounded-2xl border border-border/60 bg-card p-4 space-y-3 shadow-sm">
-          {/* Version pill */}
-          {(isVersioned || isVersioningActive) && versionNum && (
-            <div className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 border border-primary/20 px-2.5 py-0.5 text-xs font-medium text-primary">
-              <GitBranch className="h-3 w-3" />
-              v{versionNum} saved
-            </div>
-          )}
+        <div className="flex-1 min-w-0">
+          {/* Result card */}
+          <div className="rounded-2xl border border-border/60 bg-card p-4 space-y-3 shadow-sm">
+            {/* Version pill */}
+            {(isVersioned || isVersioningActive) && versionNum && (
+              <div className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 border border-primary/20 px-2.5 py-0.5 text-xs font-medium text-primary">
+                <GitBranch className="h-3 w-3" />
+                v{versionNum} saved
+              </div>
+            )}
 
-          {/* Optimized prompt text */}
-          <p className="text-sm leading-7 whitespace-pre-wrap text-foreground">
-            {result.optimized_prompt}
-          </p>
+            {/* Optimized prompt text */}
+            <p className="text-sm leading-7 whitespace-pre-wrap text-foreground">
+              {result.optimized_prompt}
+            </p>
 
-          {/* Divider + action row */}
-          <div className="flex items-center gap-1 pt-1 border-t border-border/40 -mx-4 px-4 mt-3">
-            <button
-              onClick={handleCopy}
-              className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-            >
-              {copied ? (
-                <><CheckCheck className="h-3.5 w-3.5 text-green-500" /> Copied</>
-              ) : (
-                <><Copy className="h-3.5 w-3.5" /> Copy</>
-              )}
-            </button>
-
-            {canSaveVersion && (
+            {/* Divider + action row */}
+            <div className="flex items-center gap-1 pt-1 border-t border-border/40 -mx-4 px-4 mt-3">
               <button
-                onClick={handleSaveVersion}
-                disabled={versionLoading}
-                className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-50"
+                onClick={handleCopy}
+                className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
               >
-                {versionLoading ? (
-                  <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…</>
+                {copied ? (
+                  <><CheckCheck className="h-3.5 w-3.5 text-green-500" /> Copied</>
                 ) : (
-                  <><GitBranch className="h-3.5 w-3.5" /> Version</>
+                  <><Copy className="h-3.5 w-3.5" /> Copy</>
                 )}
               </button>
-            )}
 
-            {isVersioningActive && !versionNum && (
-              <span className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-primary/70">
-                <GitBranch className="h-3.5 w-3.5" /> Versioning active
-              </span>
-            )}
+              {canSaveVersion && (
+                <button
+                  onClick={handleSaveVersion}
+                  disabled={versionLoading}
+                  className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-50"
+                >
+                  {versionLoading ? (
+                    <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…</>
+                  ) : (
+                    <><GitBranch className="h-3.5 w-3.5" /> Version</>
+                  )}
+                </button>
+              )}
 
-            {result.token_usage?.total_tokens ? (
-              <span className="ml-auto text-[11px] text-muted-foreground/50">
-                {result.token_usage.total_tokens.toLocaleString()} tokens
-              </span>
-            ) : null}
+              {isVersioningActive && !versionNum && (
+                <span className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-primary/70">
+                  <GitBranch className="h-3.5 w-3.5" /> Versioning active
+                </span>
+              )}
+
+              {result.token_usage?.total_tokens ? (
+                <span className="ml-auto text-[11px] text-muted-foreground/50">
+                  {result.token_usage.total_tokens.toLocaleString()} tokens
+                </span>
+              ) : null}
+            </div>
           </div>
         </div>
       </div>
