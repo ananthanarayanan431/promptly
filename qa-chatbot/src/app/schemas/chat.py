@@ -8,7 +8,6 @@ class ChatRequest(BaseModel):
     prompt: str | None = Field(
         default=None,
         min_length=1,
-        max_length=8000,
         description="Raw prompt text to optimize. Required when prompt_id is not supplied.",
     )
     prompt_id: uuid.UUID | None = Field(
@@ -108,7 +107,7 @@ class SessionDetailResponse(BaseModel):
 
 
 class SuggestNameRequest(BaseModel):
-    prompt: str = Field(min_length=1, max_length=8000)
+    prompt: str = Field(min_length=1)
 
 
 class SuggestNameResponse(BaseModel):
@@ -119,8 +118,8 @@ class SuggestNameResponse(BaseModel):
 
 
 class SaveVersionRequest(BaseModel):
-    original_prompt: str = Field(min_length=1, max_length=8000)
-    optimized_prompt: str = Field(min_length=1, max_length=8000)
+    original_prompt: str = Field(min_length=1)
+    optimized_prompt: str = Field(min_length=1)
 
 
 class SaveVersionResponse(BaseModel):

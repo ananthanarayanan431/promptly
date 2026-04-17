@@ -62,7 +62,9 @@ export function PromptForm({ onSubmit, isLoading }: PromptFormProps) {
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label htmlFor="prompt">Prompt Content</Label>
-              <span className="text-xs text-muted-foreground">{charCount} / 8000</span>
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {charCount.toLocaleString()} characters
+              </span>
             </div>
             <Textarea
               id="prompt"

@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 
 
 class PromptEnhanceRequest(BaseModel):
-    raw_prompt: str = Field(..., min_length=1, max_length=8000)
+    raw_prompt: str = Field(..., min_length=1)
 
 
 class PromptEnhanceResponse(BaseModel):
@@ -19,7 +19,7 @@ class MetricScore(BaseModel):
 
 
 class PromptHealthScoreRequest(BaseModel):
-    prompt: str = Field(..., min_length=1, max_length=8000)
+    prompt: str = Field(..., min_length=1)
 
 
 class PromptHealthScoreResponse(BaseModel):
@@ -42,9 +42,7 @@ class PromptVersionCreateRequest(BaseModel):
     name: str = Field(
         ..., min_length=1, max_length=255, description="Human-readable name for this prompt family"
     )
-    prompt: str = Field(
-        ..., min_length=1, max_length=8000, description="The initial prompt text (becomes v1)"
-    )
+    prompt: str = Field(..., min_length=1, description="The initial prompt text (becomes v1)")
 
 
 class PromptVersionOptimizeRequest(BaseModel):
@@ -91,7 +89,7 @@ class PromptFamilyListResponse(BaseModel):
 
 
 class PromptAdvisoryRequest(BaseModel):
-    prompt: str = Field(..., min_length=1, max_length=8000)
+    prompt: str = Field(..., min_length=1)
 
 
 class PromptAdvisoryResponse(BaseModel):

@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { loginSchema, LoginFormData } from '@/lib/schemas';
 import { api } from '@/lib/api';
+import { formatApiErrorDetail } from '@/lib/api-errors';
 import { useAuthStore } from '@/stores/auth-store';
 import { setToken } from '@/lib/auth';
 import { Input } from '@/components/ui/input';
@@ -46,7 +47,9 @@ export default function LoginPage() {
       router.push('/optimize');
       router.refresh();
     } catch (error: any) {
-      toast.error(error.response?.data?.detail || 'Failed to login');
+      toast.error(
+        formatApiErrorDetail(error.response?.data?.detail, 'Failed to login')
+      );
     } finally {
       setLoading(false);
     }

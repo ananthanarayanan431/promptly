@@ -4,12 +4,28 @@ import { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Sparkles } from 'lucide-react';
+import { PanelRight, Sparkles } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { useJobPoller } from '@/hooks/use-job-poller';
 import { api } from '@/lib/api';
+import { formatApiErrorDetail } from '@/lib/api-errors';
+import { cn } from '@/lib/utils';
 import { ChatMessage } from './chat-message';
 import { ChatInput } from './chat-input';
+import { ResultPanel } from './result-panel';
 import type { ChatTurn, JobResult, SessionDetail } from '@/types/api';
+
+function useIsDesktop() {
+  const [isDesktop, setIsDesktop] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1024px)');
+    setIsDesktop(mq.matches);
+    const fn = () => setIsDesktop(mq.matches);
+    mq.addEventListener('change', fn);
+    return () => mq.removeEventListener('change', fn);
+  }, []);
+  return isDesktop;
+}
 
 export function OptimizeChat() {
   const searchParams = useSearchParams();
@@ -25,6 +41,12 @@ export function OptimizeChat() {
   // Track active versioning prompt family — set when user clicks "Version" on a response
   const [versionPromptId, setVersionPromptId] = useState<string | null>(null);
 
+  const [selectedTurnId, setSelectedTurnId] = useState<string | null>(null);
+  const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
+  /** When true on desktop, the result column is hidden but the selection is kept (user can reopen with “View result”). */
+  const [desktopPanelDismissed, setDesktopPanelDismissed] = useState(false);
+  const isDesktop = useIsDesktop();
+
   // Prefill from sessionStorage (set by versions page "Optimize This Version")
   const [prefillText] = useState(() => {
     if (typeof window === 'undefined') return '';
@@ -36,6 +58,8 @@ export function OptimizeChat() {
   });
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const turnsRef = useRef(turns);
+  turnsRef.current = turns;
   // Sessions created in this tab — never fetch these from the API
   // (the session doesn't exist in the DB yet when the URL is first updated)
   const localSessions = useRef(new Set<string>());
@@ -69,6 +93,11 @@ export function OptimizeChat() {
             : undefined,
         }));
         setTurns(loaded);
+        const lastWithResult = [...loaded].reverse().find((t) => t.result);
+        if (lastWithResult) {
+          setSelectedTurnId(lastWithResult.tempId);
+          setDesktopPanelDismissed(false);
+        }
       })
       .catch(() => {
         // Session not found or network error — show empty state silently
@@ -84,20 +113,25 @@ export function OptimizeChat() {
     if (!jobData) return;
 
     if (jobData.status === 'completed' && jobData.result) {
+      const completedTempId = turnsRef.current.find((t) => t.jobId === activeJobId)?.tempId;
       setTurns((prev) =>
         prev.map((t) =>
           t.jobId === activeJobId ? { ...t, status: 'completed', result: jobData.result! } : t
         )
       );
+      if (completedTempId) {
+        setSelectedTurnId(completedTempId);
+        setDesktopPanelDismissed(false);
+        setMobilePanelOpen(true);
+      }
       setActiveJobId(null);
       queryClient.invalidateQueries({ queryKey: ['user', 'me'] });
       queryClient.invalidateQueries({ queryKey: ['sessions'] });
     } else if (jobData.status === 'failed') {
+      const errMsg = formatApiErrorDetail(jobData.error, 'Optimization failed');
       setTurns((prev) =>
         prev.map((t) =>
-          t.jobId === activeJobId
-            ? { ...t, status: 'failed', error: jobData.error ?? 'Optimization failed' }
-            : t
+          t.jobId === activeJobId ? { ...t, status: 'failed', error: errMsg } : t
         )
       );
       setActiveJobId(null);
@@ -151,9 +185,9 @@ export function OptimizeChat() {
       setTurns((prev) => prev.map((t) => (t.tempId === tempId ? { ...t, jobId } : t)));
       setActiveJobId(jobId);
     } catch (err: unknown) {
-      const detail =
-        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
-        'Failed to submit prompt';
+      const rawDetail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data
+        ?.detail;
+      const detail = formatApiErrorDetail(rawDetail, 'Failed to submit prompt');
       setTurns((prev) =>
         prev.map((t) =>
           t.tempId === tempId ? { ...t, status: 'failed', error: detail } : t
@@ -166,10 +200,51 @@ export function OptimizeChat() {
   const isAnyLoading = turns.some((t) => t.status === 'loading');
   const hasMessages = turns.length > 0;
 
+  const selectedResult = turns.find((t) => t.tempId === selectedTurnId)?.result;
+  const canShowPanel = Boolean(selectedTurnId && selectedResult);
+  const panelVisible =
+    canShowPanel && (isDesktop ? !desktopPanelDismissed : mobilePanelOpen);
+
+  const handleClosePanel = () => {
+    if (isDesktop) setDesktopPanelDismissed(true);
+    else setMobilePanelOpen(false);
+  };
+
+  const handleSelectTurn = (tempId: string) => {
+    setSelectedTurnId(tempId);
+    setDesktopPanelDismissed(false);
+    setMobilePanelOpen(true);
+  };
+
   return (
-    <div className="flex flex-col h-full">
-      {/* ── Messages area ── */}
-      <div className="flex-1 overflow-y-auto">
+    <div
+      className={cn(
+        'flex flex-1 min-h-0 h-full flex-col',
+        panelVisible && isDesktop && 'lg:flex-row'
+      )}
+    >
+      {/* ── Messages area (50% when split on desktop) ── */}
+      <div
+        className={cn(
+          'flex flex-col min-w-0 min-h-0',
+          panelVisible && isDesktop ? 'lg:w-1/2 lg:shrink-0' : 'flex-1'
+        )}
+      >
+        {hasMessages && canShowPanel && isDesktop && desktopPanelDismissed && (
+          <div className="shrink-0 flex justify-end px-4 pt-3 pb-2 border-b border-border/50 bg-background/95 backdrop-blur-sm">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={() => setDesktopPanelDismissed(false)}
+            >
+              <PanelRight className="h-4 w-4" />
+              View result
+            </Button>
+          </div>
+        )}
+      <div className="flex-1 overflow-y-auto min-h-0">
         {isLoadingSession ? (
           <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
             Loading conversation…
@@ -219,6 +294,8 @@ export function OptimizeChat() {
                 turn={turn}
                 isVersioningActive={!!versionPromptId}
                 onVersionSaved={(pid) => setVersionPromptId(pid)}
+                isTurnSelected={turn.tempId === selectedTurnId}
+                onSelectTurn={() => handleSelectTurn(turn.tempId)}
               />
             ))}
             <div ref={messagesEndRef} />
@@ -237,6 +314,44 @@ export function OptimizeChat() {
             />
           </div>
         </div>
+      )}
+      </div>
+
+      {/* Mobile: reopen result when overlay is closed */}
+      {hasMessages && canShowPanel && !isDesktop && !mobilePanelOpen && (
+        <div className="fixed bottom-24 right-4 z-30 lg:hidden">
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            className="gap-2 shadow-lg"
+            onClick={() => setMobilePanelOpen(true)}
+          >
+            <PanelRight className="h-4 w-4" />
+            View result
+          </Button>
+        </div>
+      )}
+
+      {/* ── Result panel (50% width on desktop when open) ── */}
+      {panelVisible && selectedResult && (
+        <>
+          <button
+            type="button"
+            className="fixed inset-0 z-40 bg-background/80 backdrop-blur-sm lg:hidden"
+            aria-label="Dismiss panel"
+            onClick={() => setMobilePanelOpen(false)}
+          />
+          <div
+            className={cn(
+              'fixed inset-y-0 right-0 z-50 flex h-full min-h-0 lg:static lg:z-auto',
+              'animate-in slide-in-from-right-4 duration-200 lg:animate-none lg:slide-in-from-right-0',
+              'lg:w-1/2 lg:min-w-0 lg:shrink-0'
+            )}
+          >
+            <ResultPanel result={selectedResult} onClose={handleClosePanel} />
+          </div>
+        </>
       )}
     </div>
   );
