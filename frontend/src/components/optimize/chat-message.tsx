@@ -20,7 +20,7 @@ function UserBubble({ text, isFeedback }: { text: string; isFeedback: boolean })
         )}>
           {isFeedback ? 'Feedback' : 'You'}
         </p>
-        <div className="rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap bg-accent/40 border border-border/50 text-foreground">
+        <div className="rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap bg-secondary border border-border text-foreground">
           {text}
         </div>
       </div>
