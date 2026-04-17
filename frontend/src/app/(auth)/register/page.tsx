@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { registerSchema, RegisterFormData } from '@/lib/schemas';
 import { api } from '@/lib/api';
+import { formatApiErrorDetail } from '@/lib/api-errors';
 import { useAuthStore } from '@/stores/auth-store';
 import { setToken } from '@/lib/auth';
 import { Input } from '@/components/ui/input';
@@ -58,7 +59,9 @@ export default function RegisterPage() {
       router.push('/optimize');
       router.refresh();
     } catch (error: any) {
-      toast.error(error.response?.data?.detail || 'Failed to register');
+      toast.error(
+        formatApiErrorDetail(error.response?.data?.detail, 'Failed to register')
+      );
     } finally {
       setLoading(false);
     }

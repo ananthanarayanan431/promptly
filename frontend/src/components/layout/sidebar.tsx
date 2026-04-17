@@ -19,7 +19,6 @@ import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/stores/auth-store';
 import { clearToken } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
-import { ThemeToggle } from '@/components/landing/theme-toggle';
 import { api } from '@/lib/api';
 import type { SessionsGrouped, SessionSummary } from '@/types/api';
 
@@ -35,7 +34,7 @@ function SessionItem({ session, isActive }: { session: SessionSummary; isActive:
     <Link
       href={`/optimize?session=${session.id}`}
       className={cn(
-        'flex items-center gap-2 px-3 py-1.5 rounded-md text-xs transition-colors truncate',
+        'flex items-center gap-2 px-3 py-2 rounded-md text-xs transition-colors truncate',
         isActive
           ? 'bg-primary/10 text-primary'
           : 'text-muted-foreground hover:bg-muted hover:text-foreground'
@@ -60,7 +59,7 @@ function SessionGroup({
   if (sessions.length === 0) return null;
   return (
     <div className="mb-2">
-      <p className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+      <p className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">
         {label}
       </p>
       {sessions.map((s) => (
@@ -100,7 +99,7 @@ function SessionHistory() {
     <div className="flex-1 overflow-y-auto min-h-0">
       {/* Section header with New Chat button */}
       <div className="flex items-center justify-between px-4 pt-3 pb-1">
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">
           Chats
         </span>
         <Link
@@ -115,7 +114,7 @@ function SessionHistory() {
       <div className="px-2 pb-2">
         {/* Untitled placeholder — visible before first submit */}
         {isNewChat && (
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs bg-primary/10 text-primary">
+          <div className="flex items-center gap-2 px-3 py-2 rounded-md text-xs bg-primary/10 text-primary">
             <MessageSquare className="h-3 w-3 shrink-0" />
             <span className="truncate italic">New chat</span>
           </div>
@@ -149,11 +148,12 @@ export function Sidebar() {
   return (
     <div className="flex h-screen w-64 flex-col border-r bg-card text-card-foreground overflow-hidden">
       {/* Logo */}
-      <div className="flex h-14 items-center border-b px-4 shrink-0">
+      <div className="flex h-14 items-center px-4 shrink-0 relative">
         <Link href="/" className="flex items-center gap-2 font-bold text-lg text-primary">
           <Lightbulb className="h-6 w-6" />
           <span>Promptly</span>
         </Link>
+        <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-border/60 via-border/30 to-transparent" />
       </div>
 
       {/* Nav links */}
@@ -169,8 +169,8 @@ export function Sidebar() {
               className={cn(
                 'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
                 isActive
-                  ? 'bg-primary/10 text-primary'
-                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                  ? 'border-l-2 border-primary text-primary pl-[10px]'
+                  : 'border-l-2 border-transparent text-muted-foreground hover:bg-muted hover:text-foreground pl-[10px]'
               )}
             >
               <item.icon className="h-4 w-4" />
@@ -189,11 +189,7 @@ export function Sidebar() {
       </Suspense>
 
       {/* Footer */}
-      <div className="shrink-0 border-t p-4 space-y-2">
-        <div className="flex items-center justify-between px-1 mb-1">
-          <span className="text-xs text-muted-foreground">Theme</span>
-          <ThemeToggle />
-        </div>
+      <div className="shrink-0 border-t p-4">
         <Button
           variant="ghost"
           className="w-full justify-start text-muted-foreground hover:text-foreground"

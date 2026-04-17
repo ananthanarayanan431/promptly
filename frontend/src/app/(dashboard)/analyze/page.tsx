@@ -9,10 +9,6 @@ import { AdvisoryDisplay } from '@/components/analyze/advisory-display';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ActivitySquare, Lightbulb, Loader2, ScanSearch } from 'lucide-react';
-import { cn } from '@/lib/utils';
-
-const MAX_CHARS = 8000;
-
 export default function AnalyzePage() {
   const [prompt, setPrompt] = useState('');
   const [healthScore, setHealthScore] = useState<HealthScoreResponse | null>(null);
@@ -86,14 +82,10 @@ export default function AnalyzePage() {
               onChange={(e) => setPrompt(e.target.value)}
               placeholder="Paste the prompt you want to analyze…"
               className="min-h-[100px] resize-none text-sm leading-relaxed rounded-b-none border-0 focus-visible:ring-0 shadow-none bg-transparent"
-              maxLength={MAX_CHARS}
             />
             <div className="flex items-center justify-between px-3 py-2.5 border-t">
-              <span className={cn(
-                'text-xs tabular-nums font-mono',
-                charCount > MAX_CHARS * 0.9 ? 'text-destructive font-semibold' : 'text-muted-foreground/60'
-              )}>
-                {charCount.toLocaleString()} / {MAX_CHARS.toLocaleString()} chars
+              <span className="text-xs tabular-nums font-mono text-muted-foreground/60">
+                {charCount.toLocaleString()} characters
               </span>
               <div className="flex items-center gap-2">
                 <Button

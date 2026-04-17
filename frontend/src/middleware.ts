@@ -9,7 +9,8 @@ export function middleware(request: NextRequest) {
   const isProtected =
     pathname === '/dashboard' ||
     pathname.startsWith('/dashboard/') ||
-    pathname.startsWith('/optimize') ||
+    pathname === '/optimize' ||
+    pathname.startsWith('/optimize/') ||
     pathname.startsWith('/versions') ||
     pathname.startsWith('/analyze');
 
@@ -28,12 +29,11 @@ export function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/dashboard',
-    '/dashboard/:path*',
-    '/login',
-    '/register',
-    '/optimize/:path*',
-    '/versions/:path*',
-    '/analyze/:path*',
+    /*
+     * Run middleware for app routes only — never for Next internals or static assets.
+     * Omitting this exclusion can cause 404s or broken JS/CSS when auth middleware
+     * runs on `/_next/static/*` in some setups.
+     */
+    '/((?!api|_next/static|_next/image|favicon.ico).*)',
   ],
 };
