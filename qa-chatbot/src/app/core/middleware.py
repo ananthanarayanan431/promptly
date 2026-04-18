@@ -1,8 +1,8 @@
 import asyncio
-import time
 import uuid
 from typing import Any
 
+import redis.asyncio as aioredis
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -10,6 +10,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from app.api.types.response import ResponseError
 from app.config.app import get_app_settings
 from app.config.rate_limit import get_rate_limit_settings
+from app.config.redis import get_redis_settings
 
 
 class CorrelationIdMiddleware(BaseHTTPMiddleware):
@@ -25,33 +26,41 @@ class CorrelationIdMiddleware(BaseHTTPMiddleware):
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
+    """Redis-backed sliding-window rate limiter keyed by client IP."""
+
     def __init__(self, app: Any) -> None:
         super().__init__(app)
-        self.rate_limits: dict[str, list[float]] = {}
+        redis_settings = get_redis_settings()
+        self._redis: aioredis.Redis = aioredis.from_url(  # type: ignore[assignment]
+            str(redis_settings.REDIS_URL),
+            encoding="utf-8",
+            decode_responses=True,
+        )
 
     async def dispatch(self, request: Request, call_next: Any) -> Any:
         settings = get_rate_limit_settings()
-
-        # Simple in-memory rate limiting based on client IP
         client_ip = request.client.host if request.client else "unknown"
-        now = time.time()
+        key = f"rl:{client_ip}"
 
-        if client_ip not in self.rate_limits:
-            self.rate_limits[client_ip] = []
+        pipe = self._redis.pipeline()
+        await pipe.incr(key)
+        await pipe.expire(key, settings.RATE_LIMIT_WINDOW_SECONDS)
+        results: list[int] = await pipe.execute()
+        count: int = results[0]
 
-        # Clean old requests
-        self.rate_limits[client_ip] = [
-            t for t in self.rate_limits[client_ip] if now - t < settings.RATE_LIMIT_WINDOW_SECONDS
-        ]
+        if count > settings.RATE_LIMIT_REQUESTS:
+            return JSONResponse(
+                status_code=429,
+                content={"detail": "Rate limit exceeded. Please slow down."},
+                headers={"Retry-After": str(settings.RATE_LIMIT_WINDOW_SECONDS)},
+            )
 
-        # Check limit
-        if len(self.rate_limits[client_ip]) >= settings.RATE_LIMIT_REQUESTS:
-            return JSONResponse(status_code=429, content={"detail": "Rate limit exceeded"})
-
-        # Add current request
-        self.rate_limits[client_ip].append(now)
-
-        return await call_next(request)
+        response = await call_next(request)
+        response.headers["X-RateLimit-Limit"] = str(settings.RATE_LIMIT_REQUESTS)
+        response.headers["X-RateLimit-Remaining"] = str(
+            max(0, settings.RATE_LIMIT_REQUESTS - count)
+        )
+        return response
 
 
 class RequestLimitMiddleware(BaseHTTPMiddleware):
