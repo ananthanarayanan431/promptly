@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,6 +18,7 @@ class AppSettings(BaseSettings):
     CORS_ORIGIN: list[str] = ["http://localhost:3000", "*"]
     MAX_REQUEST_BODY_BYTES: int = 1 * 1024 * 1024  # 1 MB
     REQUEST_TIMEOUT_SECONDS: float = 60.0
+    SENTRY_DSN: SecretStr | None = None
 
 
 @lru_cache
