@@ -10,7 +10,7 @@ from app.api.types.response import ResponseError
 from app.config.app import get_app_settings
 from app.config.env import get_env_settings
 from app.core.logging import setup_logging
-from app.core.middleware import CorrelationIdMiddleware, RateLimitMiddleware
+from app.core.middleware import CorrelationIdMiddleware, RateLimitMiddleware, RequestLimitMiddleware
 from app.db.session import AsyncSessionLocal
 from app.dependencies import _ANONYMOUS_USER
 from app.graph.builder import compile_graph
@@ -71,6 +71,7 @@ def create_app() -> FastAPI:
     )
     app.add_middleware(CorrelationIdMiddleware)
     app.add_middleware(RateLimitMiddleware)
+    app.add_middleware(RequestLimitMiddleware)
     app.include_router(api_router, prefix=app_settings.API_V1_PREFIX)
 
     @app.exception_handler(ResponseError)

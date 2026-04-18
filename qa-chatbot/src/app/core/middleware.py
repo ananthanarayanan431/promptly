@@ -1,3 +1,4 @@
+import asyncio
 import time
 import uuid
 from typing import Any
@@ -7,6 +8,7 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.api.types.response import ResponseError
+from app.config.app import get_app_settings
 from app.config.rate_limit import get_rate_limit_settings
 
 
@@ -50,3 +52,28 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self.rate_limits[client_ip].append(now)
 
         return await call_next(request)
+
+
+class RequestLimitMiddleware(BaseHTTPMiddleware):
+    """Rejects oversized request bodies and enforces a per-request timeout."""
+
+    async def dispatch(self, request: Request, call_next: Any) -> Any:
+        settings = get_app_settings()
+
+        content_length = request.headers.get("content-length")
+        if content_length and int(content_length) > settings.MAX_REQUEST_BODY_BYTES:
+            return JSONResponse(
+                status_code=413,
+                content={"detail": "Request body too large"},
+            )
+
+        try:
+            return await asyncio.wait_for(
+                call_next(request),
+                timeout=settings.REQUEST_TIMEOUT_SECONDS,
+            )
+        except TimeoutError:
+            return JSONResponse(
+                status_code=504,
+                content={"detail": "Request timed out"},
+            )
