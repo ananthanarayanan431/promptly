@@ -1,8 +1,9 @@
 import axios from 'axios';
 import { useAuthStore } from '@/stores/auth-store';
+import { env } from '@/lib/env';
 
 export const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000',
+  baseURL: env.NEXT_PUBLIC_API_URL,
 });
 
 // Request Interceptor
