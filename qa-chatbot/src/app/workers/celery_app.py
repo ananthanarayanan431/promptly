@@ -1,6 +1,3 @@
-import logging
-import signal
-
 import sentry_sdk
 from celery import Celery
 from sentry_sdk.integrations.celery import CeleryIntegration
@@ -37,14 +34,3 @@ if app_settings.SENTRY_DSN:
         traces_sample_rate=0.0,
         send_default_pii=False,
     )
-
-_logger = logging.getLogger(__name__)
-
-
-def _graceful_shutdown(signum: int, frame: object) -> None:  # noqa: ARG001
-    """On SIGTERM: finish the current task then exit cleanly."""
-    _logger.info("SIGTERM received — initiating warm Celery shutdown")
-    celery_app.control.broadcast("shutdown", destination=None)
-
-
-signal.signal(signal.SIGTERM, _graceful_shutdown)

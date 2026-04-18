@@ -44,7 +44,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         pipe = self._redis.pipeline()
         await pipe.incr(key)
-        await pipe.expire(key, settings.RATE_LIMIT_WINDOW_SECONDS)
+        await pipe.expire(key, settings.RATE_LIMIT_WINDOW_SECONDS, nx=True)
         results: list[int] = await pipe.execute()
         count: int = results[0]
 
@@ -70,11 +70,18 @@ class RequestLimitMiddleware(BaseHTTPMiddleware):
         settings = get_app_settings()
 
         content_length = request.headers.get("content-length")
-        if content_length and int(content_length) > settings.MAX_REQUEST_BODY_BYTES:
-            return JSONResponse(
-                status_code=413,
-                content={"detail": "Request body too large"},
-            )
+        if content_length:
+            try:
+                cl = int(content_length)
+            except ValueError:
+                return JSONResponse(
+                    status_code=400, content={"detail": "Invalid Content-Length header"}
+                )
+            if cl > settings.MAX_REQUEST_BODY_BYTES:
+                return JSONResponse(
+                    status_code=413,
+                    content={"detail": "Request body too large"},
+                )
 
         try:
             return await asyncio.wait_for(
