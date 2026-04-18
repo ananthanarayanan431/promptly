@@ -1,0 +1,11 @@
+# Default owner for everything
+* @ananthanarayanan431
+
+# LLM pipeline — requires extra review
+qa-chatbot/src/app/graph/ @ananthanarayanan431
+
+# DB migrations — always needs review
+qa-chatbot/src/app/migrations/ @ananthanarayanan431
+
+# CI/CD — always needs review
+.github/ @ananthanarayanan431
