@@ -1,10 +1,19 @@
-name: CI
+name: Backend CI
 
 on:
   pull_request:
     branches: [main, develop]
+    paths:
+      - 'qa-chatbot/**'
+      - '.github/workflows/backend-ci.yml'
   push:
     branches: [main, develop]
+    paths:
+      - 'qa-chatbot/**'
+
+defaults:
+  run:
+    working-directory: qa-chatbot
 
 jobs:
   lint:
@@ -88,15 +97,18 @@ jobs:
       - name: Run migrations
         run: uv run alembic upgrade head
 
-      - name: Run unit tests
-        run: uv run pytest tests/unit/ -v --tb=short
-
-      - name: Run integration tests
-        run: uv run pytest tests/integration/ -v --tb=short
+      - name: Run tests with coverage gate
+        run: |
+          uv run pytest tests/ \
+            -v --tb=short \
+            --cov=app \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            --cov-fail-under=60
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: coverage-report
-          path: coverage.xml
+          path: qa-chatbot/coverage.xml

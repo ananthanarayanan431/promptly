@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -51,7 +52,7 @@ class ChatRequest(BaseModel):
 class CouncilProposal(BaseModel):
     model: str
     optimized_prompt: str
-    usage: dict
+    usage: dict[str, Any]
 
 
 class ChatResponse(BaseModel):
@@ -59,7 +60,7 @@ class ChatResponse(BaseModel):
     original_prompt: str
     optimized_prompt: str  # final synthesized best prompt
     council_proposals: list[CouncilProposal] | None = None
-    token_usage: dict
+    token_usage: dict[str, Any]
     # Populated only when the result was saved as a new prompt version
     prompt_id: str | None = None
     version: int | None = None
@@ -70,8 +71,8 @@ class MessageOut(BaseModel):
     role: str
     raw_prompt: str | None
     response: str | None
-    council_votes: list | None = None
-    token_usage: dict | None = None
+    council_votes: list[Any] | None = None
+    token_usage: dict[str, Any] | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

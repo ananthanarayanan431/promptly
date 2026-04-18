@@ -1,4 +1,5 @@
 import asyncio
+from typing import Any
 
 from langchain_openai import ChatOpenAI
 
@@ -36,7 +37,7 @@ def _get_enhancer() -> ChatOpenAI:
     return _enhancer
 
 
-async def enhance_prompt_node(state: GraphState) -> dict:
+async def enhance_prompt_node(state: GraphState) -> dict[str, Any]:
     response = await _get_enhancer().ainvoke(
         [
             {"role": "system", "content": ENHANCE_SYSTEM},

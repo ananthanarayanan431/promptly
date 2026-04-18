@@ -10,6 +10,7 @@ All 4 critiques run in parallel. Each returns a ranking + per-proposal critique 
 
 import asyncio
 import json
+from typing import Any
 
 from langchain_openai import ChatOpenAI
 
@@ -49,7 +50,7 @@ def _get_critic_models() -> list[ChatOpenAI]:
 
 def _build_review_message(
     raw_prompt: str,
-    proposals: list[dict],
+    proposals: list[dict[str, Any]],
     reviewer_idx: int,
 ) -> str:
     """
@@ -69,7 +70,7 @@ def _build_review_message(
     return f"Original prompt:\n{raw_prompt}\n\n---\n\n{proposal_block}"
 
 
-def _parse_critique(raw: str) -> dict:
+def _parse_critique(raw: str) -> dict[str, Any]:
     """Strip accidental markdown fences and parse JSON."""
     text = raw.strip()
     if text.startswith("```"):
@@ -78,10 +79,11 @@ def _parse_critique(raw: str) -> dict:
         if inner.startswith("json"):
             inner = inner[4:]
         text = inner.strip()
-    return json.loads(text)
+    result: dict[str, Any] = json.loads(text)
+    return result
 
 
-async def critic_node(state: GraphState) -> dict:
+async def critic_node(state: GraphState) -> dict[str, Any]:
     """
     LangGraph node — Round 2.
 
@@ -96,7 +98,7 @@ async def critic_node(state: GraphState) -> dict:
         # Not enough proposals to critique — skip this round
         return {"critic_responses": []}
 
-    async def critique(model: ChatOpenAI, reviewer_idx: int) -> dict:
+    async def critique(model: ChatOpenAI, reviewer_idx: int) -> dict[str, Any]:
         user_msg = _build_review_message(raw_prompt, proposals, reviewer_idx)
         response = await model.ainvoke(
             [
@@ -104,7 +106,7 @@ async def critic_node(state: GraphState) -> dict:
                 {"role": "user", "content": user_msg},
             ]
         )
-        parsed = _parse_critique(response.content)
+        parsed = _parse_critique(str(response.content))
         return {
             "reviewer_model": llm_settings.COUNCIL_MODELS[reviewer_idx],
             **parsed,

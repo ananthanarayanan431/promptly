@@ -7,6 +7,7 @@ weaknesses, and produce the single definitive optimized prompt.
 """
 
 import asyncio
+from typing import Any
 
 from langchain_openai import ChatOpenAI
 
@@ -84,7 +85,7 @@ def _build_user_message(state: GraphState) -> str:
     )
 
 
-async def synthesize_node(state: GraphState) -> dict:
+async def synthesize_node(state: GraphState) -> dict[str, Any]:
     """
     LangGraph node — Round 3 (Chairman).
 
@@ -106,6 +107,6 @@ async def synthesize_node(state: GraphState) -> dict:
     )
 
     return {
-        "final_response": response.content.strip(),
+        "final_response": str(response.content).strip(),
         "token_usage": {"total_tokens": total_tokens},
     }

@@ -1,3 +1,5 @@
+from typing import Any
+
 from pydantic import BaseModel
 
 
@@ -7,4 +9,4 @@ class HealthResponse(BaseModel):
 
 class ReadinessResponse(BaseModel):
     status: str
-    checks: dict
+    checks: dict[str, Any]

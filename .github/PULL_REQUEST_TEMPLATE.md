@@ -1,7 +1,3 @@
- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# .github/PULL_REQUEST_TEMPLATE.md
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
 ## What does this PR do?
 <!-- Brief description of the change -->
 
@@ -14,7 +10,7 @@
 - [ ] Docs / config
 
 ## Checklist
-- [ ] Code follows project style (`make check` passes)
+- [ ] Code follows project style (`make check` passes for backend, `npm run lint` for frontend)
 - [ ] Tests added or updated (`make test` passes)
 - [ ] Migrations created if schema changed (`make migration name=...`)
 - [ ] `.env.example` updated if new env vars added

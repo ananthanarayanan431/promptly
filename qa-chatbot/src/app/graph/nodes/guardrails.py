@@ -10,6 +10,7 @@ Returns an error in state to short-circuit the graph if triggered.
 """
 
 import re
+from typing import Any
 
 from app.graph.state import GraphState
 
@@ -78,7 +79,7 @@ _CHECKS = [
 ]
 
 
-async def guardrails_node(state: GraphState) -> dict:
+async def guardrails_node(state: GraphState) -> dict[str, Any]:
     """
     LangGraph node. Returns {"error": "<reason>"} to stop the graph,
     or {"error": None} to continue.

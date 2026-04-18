@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import text
@@ -22,7 +22,7 @@ async def readiness(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> SuccessResponse[ReadinessResponse]:
     """Checks DB and Redis connectivity — used by container orchestrators."""
-    checks: dict = {}
+    checks: dict[str, Any] = {}
 
     # Postgres
     try:
@@ -34,7 +34,7 @@ async def readiness(
     # Redis
     try:
         redis = await get_redis_client()
-        await redis.ping()
+        await redis.ping()  # type: ignore[misc]
         checks["redis"] = "ok"
     except Exception as e:
         checks["redis"] = f"error: {e}"

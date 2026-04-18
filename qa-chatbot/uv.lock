@@ -2369,6 +2369,7 @@ dependencies = [
     { name = "pydantic-settings" },
     { name = "python-jose", extra = ["cryptography"] },
     { name = "redis", extra = ["hiredis"] },
+    { name = "sentry-sdk", extra = ["fastapi"] },
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "structlog" },
     { name = "tenacity" },
@@ -2419,6 +2420,7 @@ requires-dist = [
     { name = "python-jose", extras = ["cryptography"], specifier = ">=3.5.0" },
     { name = "redis", extras = ["hiredis"], specifier = ">=7.4.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.8.0" },
+    { name = "sentry-sdk", extras = ["fastapi"], specifier = ">=2.0.0" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.49" },
     { name = "structlog", specifier = ">=25.5.0" },
     { name = "tenacity", specifier = ">=9.1.4" },
@@ -2750,6 +2752,11 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/4f/87/46c0406d8b5ddd026f73adaf5ab75ce144219c41a4830b52df4b9ab55f7f/sentry_sdk-2.57.0.tar.gz", hash = "sha256:4be8d1e71c32fb27f79c577a337ac8912137bba4bcbc64a4ec1da4d6d8dc5199", size = 435288, upload-time = "2026-03-31T09:39:29.264Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c9/64/982e07b93219cb52e1cca5d272cb579e2f3eb001956c9e7a9a6d106c9473/sentry_sdk-2.57.0-py2.py3-none-any.whl", hash = "sha256:812c8bf5ff3d2f0e89c82f5ce80ab3a6423e102729c4706af7413fd1eb480585", size = 456489, upload-time = "2026-03-31T09:39:27.524Z" },
+]
+
+[package.optional-dependencies]
+fastapi = [
+    { name = "fastapi" },
 ]
 
 [[package]]

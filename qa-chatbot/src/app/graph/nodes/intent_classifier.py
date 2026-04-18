@@ -12,6 +12,7 @@ here as IRRELEVANT.
 """
 
 import asyncio
+from typing import Any
 
 from langchain_openai import ChatOpenAI
 
@@ -53,7 +54,7 @@ def _get_classifier() -> ChatOpenAI:
     return _classifier
 
 
-async def intent_classifier_node(state: GraphState) -> dict:
+async def intent_classifier_node(state: GraphState) -> dict[str, Any]:
     """
     LangGraph node. Classifies the intent of the raw input.
 
@@ -70,7 +71,7 @@ async def intent_classifier_node(state: GraphState) -> dict:
         ]
     )
 
-    verdict = response.content.strip().upper()
+    verdict = str(response.content).strip().upper()
 
     if verdict == "IRRELEVANT":
         return {
