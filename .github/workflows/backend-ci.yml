@@ -1,10 +1,19 @@
-name: CI
+name: Backend CI
 
 on:
   pull_request:
     branches: [main, develop]
+    paths:
+      - 'qa-chatbot/**'
+      - '.github/workflows/backend-ci.yml'
   push:
     branches: [main, develop]
+    paths:
+      - 'qa-chatbot/**'
+
+defaults:
+  run:
+    working-directory: qa-chatbot
 
 jobs:
   lint:
@@ -102,4 +111,4 @@ jobs:
         if: always()
         with:
           name: coverage-report
-          path: coverage.xml
+          path: qa-chatbot/coverage.xml
