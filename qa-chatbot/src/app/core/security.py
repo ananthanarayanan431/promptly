@@ -31,11 +31,12 @@ def create_access_token(subject: str, expires_delta: timedelta | None = None) ->
         expires_delta or timedelta(minutes=auth_settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     )
     payload = {"sub": subject, "exp": expire, "iat": datetime.now(UTC)}
-    return jwt.encode(
+    token: str = jwt.encode(
         payload,
         auth_settings.SECRET_KEY.get_secret_value(),
         algorithm=auth_settings.ALGORITHM,
     )
+    return token
 
 
 def decode_access_token(token: str) -> str:

@@ -8,7 +8,7 @@ from typing import Any
 from uuid import UUID
 
 from langchain_openai import ChatOpenAI
-from openai import APIError as OpenAIAPIError
+from openai import APIStatusError as OpenAIAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.llm import get_llm_settings
@@ -111,7 +111,7 @@ class PromptService:
         state.update(result)  # type: ignore[typeddict-item]
         return state
 
-    async def enhance(self, raw_prompt: str, user_id: str) -> dict:
+    async def enhance(self, raw_prompt: str, user_id: str) -> dict[str, Any]:
         state = await self._run_guardrails(raw_prompt, user_id)
         enhance_result = await enhance_prompt_node(state)
         return {
@@ -119,7 +119,7 @@ class PromptService:
             "enhanced_prompt": enhance_result["enhanced_prompt"],
         }
 
-    async def health_score(self, prompt: str, user_id: str) -> dict:
+    async def health_score(self, prompt: str, user_id: str) -> dict[str, Any]:
         await self._run_guardrails(prompt, user_id)
 
         try:
@@ -163,7 +163,7 @@ class PromptService:
             raise LLMException(detail=f"LLM response was not valid JSON: {exc}") from exc
         return {"prompt": prompt, **scores}
 
-    async def advisory(self, prompt: str, user_id: str) -> dict:
+    async def advisory(self, prompt: str, user_id: str) -> dict[str, Any]:
         await self._run_guardrails(prompt, user_id)
 
         try:
@@ -218,7 +218,7 @@ class PromptVersioningService:
         self.repo = PromptVersionRepository(db)
 
     @staticmethod
-    def _fmt(v: Any) -> dict:  # noqa: ANN401
+    def _fmt(v: Any) -> dict[str, Any]:  # noqa: ANN401
         return {
             "version_id": str(v.id),
             "prompt_id": str(v.prompt_id),
@@ -228,7 +228,7 @@ class PromptVersioningService:
             "created_at": v.created_at.isoformat(),
         }
 
-    async def create(self, name: str, content: str, user_id: str) -> dict:
+    async def create(self, name: str, content: str, user_id: str) -> dict[str, Any]:
         """
         Save a prompt under a given name.
 
@@ -281,7 +281,7 @@ class PromptVersioningService:
         user_id: str,
         feedback: str | None,
         graph: Any,  # noqa: ANN401
-    ) -> dict:
+    ) -> dict[str, Any]:
         """
         Optimize the latest version of a prompt through the full LangGraph council
         pipeline and save the result as the next version.
@@ -329,7 +329,7 @@ class PromptVersioningService:
             "optimized": self._fmt(next_version),
         }
 
-    async def list_families(self, user_id: str) -> list[dict]:
+    async def list_families(self, user_id: str) -> list[dict[str, Any]]:
         """
         Return all prompt families (grouped by prompt_id) for a user,
         each with their full version history in ascending order.
@@ -337,7 +337,7 @@ class PromptVersioningService:
         all_versions = await self.repo.get_all_by_user_id(UUID(user_id))
 
         # Group by prompt_id preserving insertion order
-        families: dict[str, dict] = {}
+        families: dict[str, dict[str, Any]] = {}
         for v in all_versions:
             key = str(v.prompt_id)
             if key not in families:
@@ -350,7 +350,7 @@ class PromptVersioningService:
 
         return list(families.values())
 
-    async def list_versions(self, prompt_id: UUID, user_id: str) -> dict:
+    async def list_versions(self, prompt_id: UUID, user_id: str) -> dict[str, Any]:
         """
         Return all versions of a prompt in ascending order.
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import JSON, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -20,8 +20,8 @@ class Message(Base, UUIDMixin, TimestampMixin):
     raw_prompt: Mapped[str | None] = mapped_column(Text)  # original user input
     enhanced_prompt: Mapped[str | None] = mapped_column(Text)
     response: Mapped[str | None] = mapped_column(Text)
-    council_votes: Mapped[dict | None] = mapped_column(JSON)
+    council_votes: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     model_used: Mapped[str | None] = mapped_column(String(100))
-    token_usage: Mapped[dict | None] = mapped_column(JSON)
+    token_usage: Mapped[dict[str, Any] | None] = mapped_column(JSON)
 
     session: Mapped[ChatSession] = relationship(back_populates="messages")

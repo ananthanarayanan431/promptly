@@ -13,6 +13,7 @@ This diversity of angles gives the critic round and the chairman meaningful vari
 
 import asyncio
 import logging
+from typing import Any
 
 from langchain_openai import ChatOpenAI
 
@@ -25,7 +26,7 @@ logger = logging.getLogger(__name__)
 llm_settings = get_llm_settings()
 
 # Load all 4 strategy prompts at module startup (file I/O once)
-_STRATEGY_PROMPTS = [
+_STRATEGY_PROMPTS: list[str] = [
     load_prompt("council_optimizer_analytical"),  # 0 — analytical
     load_prompt("council_optimizer_creative"),  # 1 — creative
     load_prompt("council_optimizer_concise"),  # 2 — concise
@@ -79,7 +80,7 @@ def _build_user_message(raw_prompt: str, feedback: str | None) -> str:
     )
 
 
-async def council_vote_node(state: GraphState) -> dict:
+async def council_vote_node(state: GraphState) -> dict[str, Any]:
     """
     LangGraph node — Round 1.
 
@@ -92,7 +93,7 @@ async def council_vote_node(state: GraphState) -> dict:
     raw_prompt = state["raw_prompt"]
     feedback = state.get("feedback")
 
-    async def optimize(model: ChatOpenAI, idx: int) -> dict:
+    async def optimize(model: ChatOpenAI, idx: int) -> dict[str, Any]:
         system = _get_strategy(idx)
         response = await model.ainvoke(
             [
@@ -102,8 +103,8 @@ async def council_vote_node(state: GraphState) -> dict:
         )
         return {
             "model": llm_settings.COUNCIL_MODELS[idx],
-            "optimized_prompt": response.content.strip(),
-            "usage": getattr(response, "usage_metadata", {}),
+            "optimized_prompt": str(response.content).strip(),
+            "usage": getattr(response, "usage_metadata", {}) or {},
         }
 
     results = await asyncio.gather(

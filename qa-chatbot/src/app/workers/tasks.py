@@ -16,7 +16,7 @@ from typing import Any
 from app.workers.celery_app import celery_app
 
 
-@celery_app.task(bind=True, max_retries=3, default_retry_delay=5)
+@celery_app.task(bind=True, max_retries=3, default_retry_delay=5)  # type: ignore[untyped-decorator]
 def process_chat_async(
     self: Any,
     *,
@@ -27,7 +27,7 @@ def process_chat_async(
     feedback: str | None = None,
     prompt_id: str | None = None,
     name: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """
     Run the full LangGraph council pipeline as a background job.
 
@@ -77,10 +77,10 @@ def process_chat_async(
                 {"role": "user", "content": text[:500]},
             ]
         )
-        title = response.content.strip().strip('"').strip("'")
+        title = str(response.content).strip().strip('"').strip("'")
         return title[:100] if title else _fallback_title(text)
 
-    async def _run() -> dict:
+    async def _run() -> dict[str, Any]:
         import uuid as uuid_mod
         from uuid import UUID
 

@@ -22,7 +22,7 @@ class CorrelationIdMiddleware(BaseHTTPMiddleware):
             response.headers["X-Correlation-ID"] = correlation_id
             return response
         except ResponseError as e:
-            return JSONResponse(status_code=e.status_code, content={"detail": e.message})
+            return JSONResponse(status_code=e.error.code, content={"detail": e.error.message})
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
@@ -31,7 +31,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     def __init__(self, app: Any) -> None:
         super().__init__(app)
         redis_settings = get_redis_settings()
-        self._redis: aioredis.Redis = aioredis.from_url(  # type: ignore[assignment]
+        self._redis: aioredis.Redis = aioredis.from_url(
             str(redis_settings.REDIS_URL),
             encoding="utf-8",
             decode_responses=True,
