@@ -129,6 +129,20 @@ class SaveVersionResponse(BaseModel):
     version: int
 
 
+# --- Recent sessions widget ---
+
+
+class RecentSessionWithPrompt(BaseModel):
+    id: uuid.UUID
+    title: str | None
+    last_prompt: str | None  # raw_prompt of the most-recent user message, truncated
+    updated_at: datetime
+
+
+class RecentSessionsResponse(BaseModel):
+    sessions: list[RecentSessionWithPrompt]
+
+
 # --- Async job schemas (Celery queue pattern) ---
 
 

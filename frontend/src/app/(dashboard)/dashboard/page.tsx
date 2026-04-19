@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import type { DashboardStats, SessionsGrouped } from '@/types/api';
+import type { DashboardStats, RecentSessionsResponse } from '@/types/api';
 import { formatDistanceToNow } from 'date-fns';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
@@ -12,8 +12,11 @@ const ActivityChart = dynamic(
   () => import('@/components/dashboard/activity-chart').then((m) => ({ default: m.ActivityChart })),
   { ssr: false }
 );
-const ModelChart = dynamic(
-  () => import('@/components/dashboard/model-chart').then((m) => ({ default: m.ModelChart })),
+const QualityTrendChart = dynamic(
+  () =>
+    import('@/components/dashboard/quality-trend-chart').then((m) => ({
+      default: m.QualityTrendChart,
+    })),
   { ssr: false }
 );
 
@@ -74,10 +77,10 @@ export default function DashboardHome() {
     refetchInterval: 30_000,
   });
 
-  const { data: sessions } = useQuery<SessionsGrouped>({
-    queryKey: ['sessions'],
+  const { data: recentData } = useQuery<RecentSessionsResponse>({
+    queryKey: ['recent-sessions'],
     queryFn: async () => {
-      const res = await api.get<{ data: SessionsGrouped }>('/api/v1/chat/sessions');
+      const res = await api.get<{ data: RecentSessionsResponse }>('/api/v1/chat/sessions/recent?limit=3');
       return res.data.data;
     },
     staleTime: 30_000,
@@ -85,17 +88,7 @@ export default function DashboardHome() {
 
   const lowCredits = stats ? stats.credits_remaining < 20 : false;
   const firstName = user?.email?.split('@')[0] ?? 'there';
-
-  const recentSessions = sessions
-    ? [
-        ...sessions.today,
-        ...sessions.last_7_days,
-        ...sessions.last_30_days,
-        ...sessions.older,
-      ]
-        .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
-        .slice(0, 6)
-    : [];
+  const recentSessions = recentData?.sessions ?? [];
 
   return (
     <div style={{ height: '100%', overflowY: 'auto', padding: '28px 40px 80px',
@@ -195,79 +188,90 @@ export default function DashboardHome() {
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16 }}>
               <div>
                 <div style={{ fontSize: 13, fontWeight: 500, color: '#ededed', marginBottom: 3 }}>
-                  Token usage by model
+                  Prompt quality trend
                 </div>
                 <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5, color: '#5a5a60' }}>
-                  Council consumption per LLM{stats?.top_model ? ` · ${stats.top_model} leads` : ''}
+                  Avg health score per day — last 30 days
                 </div>
               </div>
-              <div style={{ width: 28, height: 28, borderRadius: 7, background: 'rgba(245,158,11,0.1)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f59e0b' }}>
+              <div style={{ width: 28, height: 28, borderRadius: 7, background: 'rgba(124,92,255,0.1)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#7c5cff' }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
-                  <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+                  <path d="M3 3v18h18"/><path d="M7 14v4M12 10v8M17 6v12"/>
                 </svg>
               </div>
             </div>
             {statsLoading ? (
               <div style={{ height: 220, background: '#222226', borderRadius: 8 }} />
-            ) : stats?.model_breakdown && stats.model_breakdown.length > 0 ? (
-              <ModelChart data={stats.model_breakdown} />
+            ) : stats?.quality_trend && stats.quality_trend.length > 0 ? (
+              <QualityTrendChart data={stats.quality_trend} />
             ) : (
               <div style={{ height: 220, display: 'flex', flexDirection: 'column', alignItems: 'center',
                 justifyContent: 'center', gap: 8, color: '#5a5a60', textAlign: 'center' }}>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4">
-                  <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+                  <path d="M3 3v18h18"/><path d="M7 14v4M12 10v8M17 6v12"/>
                 </svg>
-                <div style={{ fontSize: 13 }}>No model data yet</div>
+                <div style={{ fontSize: 13 }}>No quality data yet</div>
                 <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5 }}>
-                  Run your first optimization to see stats
+                  Scores appear after your first optimization
                 </div>
               </div>
             )}
           </div>
         </div>
 
-        {/* Recent sessions */}
+        {/* Continue where you left off */}
         {recentSessions.length > 0 && (
           <div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
               <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5,
                 color: '#5a5a60', textTransform: 'uppercase', letterSpacing: '0.12em' }}>
-                Recent sessions · {recentSessions.length}
+                Continue where you left off
               </div>
               <Link href="/history" style={{ fontFamily: 'var(--font-geist-mono, monospace)',
                 fontSize: 11, color: '#7c5cff', textDecoration: 'none' }}>
                 View all →
               </Link>
             </div>
-            <div style={{ background: '#1a1a1a', border: '1px solid #1f1f23', borderRadius: 10, overflow: 'hidden' }}>
-              {recentSessions.map((session, i) => (
-                <Link key={session.id} href={`/optimize?session=${session.id}`}
-                  style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 20px',
-                    borderBottom: i < recentSessions.length - 1 ? '1px solid #1f1f23' : 'none',
-                    textDecoration: 'none', transition: 'background 120ms' }}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.015)')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                  <div style={{ width: 28, height: 28, borderRadius: 7, flexShrink: 0,
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {recentSessions.map((session) => (
+                <div key={session.id}
+                  style={{ background: '#1a1a1a', border: '1px solid #1f1f23', borderRadius: 10,
+                    padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 16 }}>
+                  <div style={{ width: 36, height: 36, borderRadius: 9, flexShrink: 0,
                     background: 'rgba(124,92,255,0.1)', border: '1px solid rgba(124,92,255,0.2)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#7c5cff' }}>
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
                       <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
                     </svg>
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, color: '#ededed', overflow: 'hidden',
-                      textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <div style={{ fontSize: 13, fontWeight: 500, color: '#ededed', marginBottom: 4,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {session.title || 'Untitled conversation'}
                     </div>
+                    {session.last_prompt && (
+                      <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 11,
+                        color: '#5a5a60', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {session.last_prompt}
+                      </div>
+                    )}
+                    <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5,
+                      color: '#3a3a40', marginTop: 3 }}>
+                      {formatDistanceToNow(new Date(session.updated_at), { addSuffix: true })}
+                    </div>
                   </div>
-                  <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 11,
-                    color: '#5a5a60', flexShrink: 0 }}>
-                    {formatDistanceToNow(new Date(session.updated_at), { addSuffix: true })}
-                  </div>
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
-                    stroke="#5a5a60" strokeWidth="1.6"><path d="M9 6l6 6-6 6"/></svg>
-                </Link>
+                  <Link href={`/optimize?session=${session.id}`}
+                    style={{ height: 30, padding: '0 14px', borderRadius: 7, flexShrink: 0,
+                      background: 'rgba(124,92,255,0.12)', border: '1px solid rgba(124,92,255,0.25)',
+                      fontSize: 12, color: '#7c5cff', textDecoration: 'none', fontWeight: 500,
+                      display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <polygon points="5 3 19 12 5 21 5 3"/>
+                    </svg>
+                    Resume
+                  </Link>
+                </div>
               ))}
             </div>
           </div>

@@ -98,6 +98,11 @@ export interface ModelStats {
   total_tokens: number;
 }
 
+export interface QualityTrendPoint {
+  date: string; // YYYY-MM-DD
+  avg_score: number; // 1–10
+}
+
 export interface DashboardStats {
   // Core counters
   prompts_optimized: number;
@@ -115,6 +120,20 @@ export interface DashboardStats {
   // Chart data
   daily_activity: DailyActivity[];
   model_breakdown: ModelStats[];
+  quality_trend: QualityTrendPoint[];
+}
+
+// --- Recent sessions widget ---
+
+export interface RecentSessionWithPrompt {
+  id: string;
+  title: string | null;
+  last_prompt: string | null;
+  updated_at: string;
+}
+
+export interface RecentSessionsResponse {
+  sessions: RecentSessionWithPrompt[];
 }
 
 // --- Session history ---
