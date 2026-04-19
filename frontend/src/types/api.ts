@@ -98,6 +98,11 @@ export interface ModelStats {
   total_tokens: number;
 }
 
+export interface QualityTrendPoint {
+  date: string; // YYYY-MM-DD
+  avg_score: number; // 1–10
+}
+
 export interface DashboardStats {
   // Core counters
   prompts_optimized: number;
@@ -115,6 +120,20 @@ export interface DashboardStats {
   // Chart data
   daily_activity: DailyActivity[];
   model_breakdown: ModelStats[];
+  quality_trend: QualityTrendPoint[];
+}
+
+// --- Recent sessions widget ---
+
+export interface RecentSessionWithPrompt {
+  id: string;
+  title: string | null;
+  last_prompt: string | null;
+  updated_at: string;
+}
+
+export interface RecentSessionsResponse {
+  sessions: RecentSessionWithPrompt[];
 }
 
 // --- Session history ---
@@ -160,6 +179,51 @@ export interface ChatTurn {
   status: 'loading' | 'completed' | 'failed';
   result?: JobResult;
   error?: string;
+}
+
+// --- Diff ---
+
+export interface DiffHunk {
+  type: 'equal' | 'insert' | 'delete' | 'replace';
+  text?: string;
+  from_text?: string;
+  to_text?: string;
+}
+
+export interface DiffStats {
+  added: number;
+  removed: number;
+  equal: number;
+}
+
+export interface PromptDiffResponse {
+  prompt_id: string;
+  from_version: number;
+  to_version: number;
+  from_content: string;
+  to_content: string;
+  hunks: DiffHunk[];
+  stats: DiffStats;
+}
+
+// --- Templates ---
+
+export interface Template {
+  id: string;
+  category: string;
+  name: string;
+  description: string;
+  content: string;
+}
+
+export interface TemplateCategoryGroup {
+  category: string;
+  templates: Template[];
+}
+
+export interface TemplateListResponse {
+  categories: TemplateCategoryGroup[];
+  total: number;
 }
 
 // Matches backend PromptAdvisoryResponse exactly

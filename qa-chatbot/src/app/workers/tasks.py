@@ -199,6 +199,15 @@ def process_chat_async(
 
             await set_job_result(job_id, result)
             await set_job_status(job_id, "completed")
+
+            # Fire-and-forget silent health scoring (no credits charged)
+            score_prompt_async.apply_async(
+                kwargs={
+                    "user_id": user_id,
+                    "optimized_prompt": result.get("optimized_prompt", ""),
+                }
+            )
+
             return result
 
         except Exception as exc:
@@ -211,3 +220,51 @@ def process_chat_async(
     except Exception as exc:
         # Retry limit exhausted — status already written to Redis as "failed"
         raise exc
+
+
+@celery_app.task(bind=True, max_retries=2, default_retry_delay=10)  # type: ignore[untyped-decorator]
+def score_prompt_async(
+    self: Any,
+    *,
+    user_id: str,
+    optimized_prompt: str,
+) -> None:
+    """
+    Silently compute a health score for an optimized prompt and persist it.
+    No credits are charged. Failures are swallowed after retries — this is
+    best-effort telemetry to power the quality trend chart.
+    """
+
+    async def _run() -> None:
+        import logging
+        from uuid import UUID
+
+        from app.db.redis import reset_connection_pool
+        from app.db.session import AsyncSessionLocal, dispose_async_engine
+        from app.repositories.health_score_repo import HealthScoreRepository
+        from app.services.prompt_service import PromptService
+
+        reset_connection_pool()
+        await dispose_async_engine()
+
+        log = logging.getLogger(__name__)
+        try:
+            async with AsyncSessionLocal() as db:
+                service = PromptService(db)
+                scores = await service.health_score(optimized_prompt, user_id)
+                overall: float = float(scores.get("overall_score", 0.0))
+                repo = HealthScoreRepository(db)
+                await repo.save_score(
+                    user_id=UUID(user_id),
+                    overall_score=overall,
+                    prompt_text=optimized_prompt[:2000],
+                )
+                await db.commit()
+        except Exception as exc:
+            log.warning("score_prompt_async failed (will retry): %s", exc)
+            raise self.retry(exc=exc) from exc
+
+    try:
+        asyncio.run(_run())
+    except Exception:  # noqa: S110
+        pass  # Exhausted retries — silently discard, non-critical

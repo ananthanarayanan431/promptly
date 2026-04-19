@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { PanelRight, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -14,7 +14,107 @@ import { useAuthStore } from '@/stores/auth-store';
 import { ChatMessage } from './chat-message';
 import { ChatInput } from './chat-input';
 import { ResultPanel } from './result-panel';
-import type { ChatTurn, JobResult, SessionDetail } from '@/types/api';
+import type { ChatTurn, JobResult, SessionDetail, TemplateListResponse } from '@/types/api';
+
+function TemplatePickerModal({
+  data,
+  onSelect,
+  onClose,
+}: {
+  data: TemplateListResponse;
+  onSelect: (content: string) => void;
+  onClose: () => void;
+}) {
+  const [activeCategory, setActiveCategory] = useState(data.categories[0]?.category ?? '');
+
+  return (
+    <div
+      style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex',
+        alignItems: 'center', justifyContent: 'center',
+        background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)' }}
+      onClick={onClose}>
+      <div
+        style={{ width: 640, maxHeight: '78vh', borderRadius: 14, background: '#141414',
+          border: '1px solid #2a2a2e', display: 'flex', flexDirection: 'column',
+          overflow: 'hidden', boxShadow: '0 24px 64px rgba(0,0,0,0.5)' }}
+        onClick={e => e.stopPropagation()}>
+
+        {/* Header */}
+        <div style={{ padding: '14px 20px', borderBottom: '1px solid #1f1f23',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7c5cff" strokeWidth="1.6">
+              <rect x="3" y="3" width="7" height="8" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/>
+              <rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="15" width="7" height="6" rx="1"/>
+            </svg>
+            <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 11,
+              textTransform: 'uppercase', letterSpacing: '0.12em', color: '#7c5cff' }}>
+              Prompt Templates
+            </span>
+            <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5,
+              padding: '1px 6px', borderRadius: 4, background: '#222226',
+              border: '1px solid #2a2a2e', color: '#5a5a60' }}>
+              {data.total}
+            </span>
+          </div>
+          <button onClick={onClose}
+            style={{ background: 'none', border: 'none', cursor: 'pointer',
+              color: '#5a5a60', width: 24, height: 24, display: 'flex',
+              alignItems: 'center', justifyContent: 'center', borderRadius: 4 }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <path d="M18 6L6 18M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+
+        {/* Category tabs */}
+        <div style={{ display: 'flex', gap: 4, padding: '10px 16px',
+          borderBottom: '1px solid #1f1f23', overflowX: 'auto' as const }}>
+          {data.categories.map(g => (
+            <button key={g.category} onClick={() => setActiveCategory(g.category)}
+              style={{ padding: '4px 12px', borderRadius: 6, fontSize: 12,
+                border: '1px solid transparent', cursor: 'pointer', whiteSpace: 'nowrap' as const,
+                background: activeCategory === g.category ? 'rgba(124,92,255,0.15)' : 'transparent',
+                color: activeCategory === g.category ? '#7c5cff' : '#8a8a90',
+                borderColor: activeCategory === g.category ? 'rgba(124,92,255,0.3)' : 'transparent',
+                fontFamily: 'var(--font-geist-mono, monospace)',
+                textTransform: 'capitalize' as const }}>
+              {g.category.replace(/-/g, ' ')}
+            </button>
+          ))}
+        </div>
+
+        {/* Template list */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: 12,
+          display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {(data.categories.find(g => g.category === activeCategory)?.templates ?? []).map(t => (
+            <button key={t.id} onClick={() => { onSelect(t.content); onClose(); }}
+              style={{ textAlign: 'left', padding: '12px 14px', borderRadius: 8,
+                border: '1px solid #1f1f23', background: 'transparent', cursor: 'pointer',
+                transition: 'background 120ms, border-color 120ms',
+                fontFamily: 'var(--font-geist, ui-sans-serif)' }}
+              onMouseEnter={e => {
+                e.currentTarget.style.background = 'rgba(124,92,255,0.06)';
+                e.currentTarget.style.borderColor = 'rgba(124,92,255,0.25)';
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.borderColor = '#1f1f23';
+              }}>
+              <div style={{ fontSize: 13, fontWeight: 500, color: '#ededed', marginBottom: 4 }}>
+                {t.name}
+              </div>
+              <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 11,
+                color: '#5a5a60', lineHeight: 1.5 }}>
+                {t.description}
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function useIsDesktop() {
   const [isDesktop, setIsDesktop] = useState(false);
@@ -49,6 +149,18 @@ export function OptimizeChat() {
   /** When true on desktop, the result column is hidden but the selection is kept (user can reopen with “View result”). */
   const [desktopPanelDismissed, setDesktopPanelDismissed] = useState(false);
   const isDesktop = useIsDesktop();
+
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [templateDefault, setTemplateDefault] = useState('');
+
+  const { data: templatesData } = useQuery({
+    queryKey: ['templates'],
+    queryFn: async () => {
+      const res = await api.get<{ data: TemplateListResponse }>('/api/v1/templates');
+      return res.data.data;
+    },
+    staleTime: Infinity,
+  });
 
   // Prefill from sessionStorage (set by versions page "Optimize This Version")
   const [prefillText] = useState(() => {
@@ -307,40 +419,79 @@ export function OptimizeChat() {
           </div>
         ) : !hasMessages ? (
           /* Empty state — greeting top, input + chips bottom */
-          <div className="flex flex-col h-full px-4">
-            {/* Greeting — upper center */}
-            <div className="flex flex-col items-center justify-center flex-1 gap-3 pb-8">
-              <div className="h-14 w-14 rounded-full bg-gradient-to-br from-primary to-primary/50 flex items-center justify-center shadow-lg shadow-primary/20">
-                <Sparkles className="h-7 w-7 text-primary-foreground" />
+          <div style={{ display: 'flex', flexDirection: 'column', height: '100%',
+            fontFamily: 'var(--font-geist, ui-sans-serif)' }}>
+            {/* Greeting */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center',
+              justifyContent: 'center', flex: 1, gap: 12, paddingBottom: 32 }}>
+              <div style={{ width: 48, height: 48, borderRadius: '50%',
+                background: 'rgba(124,92,255,0.15)', border: '1px solid rgba(124,92,255,0.3)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Sparkles style={{ width: 22, height: 22, color: '#7c5cff' }} />
               </div>
-              <div className="text-center">
-                <p className="text-lg font-semibold text-primary">Hello, {firstName}</p>
-                <h1 className="text-2xl font-bold tracking-tight text-foreground mt-0.5">
-                  What prompt can I optimize?
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 11,
+                  color: '#7c5cff', textTransform: 'uppercase', letterSpacing: '0.12em',
+                  marginBottom: 8 }}>Hello, {firstName}</div>
+                <h1 style={{ fontFamily: 'var(--font-instrument-serif, Georgia, serif)',
+                  fontWeight: 400, fontSize: 36, letterSpacing: '-0.02em', lineHeight: 1.15,
+                  margin: 0, color: '#ededed' }}>
+                  What prompt can I<br />
+                  <em style={{ color: '#7c5cff', fontStyle: 'italic' }}>optimize</em> for you?
                 </h1>
               </div>
             </div>
 
-            {/* Input + feature chips — pinned to bottom */}
-            <div className="w-full max-w-2xl mx-auto pb-8 space-y-4">
-              <div className="grid grid-cols-3 gap-2">
+            {/* Chips + input */}
+            <div style={{ width: '100%', maxWidth: 680, margin: '0 auto',
+              paddingBottom: 32, paddingLeft: 16, paddingRight: 16 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr',
+                gap: 8, marginBottom: 16 }}>
                 {[
                   { label: '4 AI models', desc: 'Optimize in parallel' },
                   { label: 'Peer critique', desc: 'Models review each other' },
                   { label: 'Best result', desc: 'Synthesized by a chairman' },
                 ].map((item) => (
-                  <div key={item.label} className="rounded-xl border border-border/50 bg-card/50 px-3 py-2.5 text-center">
-                    <p className="text-xs font-semibold text-foreground">{item.label}</p>
-                    <p className="text-[11px] text-muted-foreground mt-0.5">{item.desc}</p>
+                  <div key={item.label} style={{ borderRadius: 8,
+                    border: '1px solid #1f1f23', background: '#1a1a1a',
+                    padding: '10px 12px', textAlign: 'center' }}>
+                    <div style={{ fontSize: 12, fontWeight: 500, color: '#ededed',
+                      marginBottom: 2 }}>{item.label}</div>
+                    <div style={{ fontFamily: 'var(--font-geist-mono, monospace)',
+                      fontSize: 10.5, color: '#5a5a60' }}>{item.desc}</div>
                   </div>
                 ))}
               </div>
 
+              {templatesData && (
+                <button type="button" onClick={() => setShowTemplates(true)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6,
+                    marginBottom: 10, padding: '5px 12px', borderRadius: 6, fontSize: 12,
+                    border: '1px solid #2a2a2e', background: 'transparent',
+                    color: '#8a8a90', cursor: 'pointer', fontFamily: 'inherit',
+                    transition: 'color 120ms, border-color 120ms' }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.color = '#7c5cff';
+                    e.currentTarget.style.borderColor = 'rgba(124,92,255,0.4)';
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.color = '#8a8a90';
+                    e.currentTarget.style.borderColor = '#2a2a2e';
+                  }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+                    <rect x="3" y="3" width="7" height="8" rx="1"/>
+                    <rect x="14" y="3" width="7" height="5" rx="1"/>
+                    <rect x="14" y="12" width="7" height="9" rx="1"/>
+                    <rect x="3" y="15" width="7" height="6" rx="1"/>
+                  </svg>
+                  Browse templates
+                </button>
+              )}
               <ChatInput
                 onSubmit={handleSubmit}
                 isLoading={isAnyLoading}
                 hasPreviousTurns={false}
-                defaultValue={prefillText}
+                defaultValue={templateDefault || prefillText}
                 defaultName={prefillName}
                 autoFocus
               />
@@ -390,6 +541,15 @@ export function OptimizeChat() {
             View result
           </Button>
         </div>
+      )}
+
+      {/* ── Template picker modal ── */}
+      {showTemplates && templatesData && (
+        <TemplatePickerModal
+          data={templatesData}
+          onSelect={(content) => { setTemplateDefault(content); }}
+          onClose={() => setShowTemplates(false)}
+        />
       )}
 
       {/* ── Result panel (50% width on desktop when open) ── */}

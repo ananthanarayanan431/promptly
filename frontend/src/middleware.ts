@@ -35,7 +35,9 @@ export function middleware(request: NextRequest) {
     pathname === '/optimize' ||
     pathname.startsWith('/optimize/') ||
     pathname.startsWith('/versions') ||
-    pathname.startsWith('/analyze');
+    pathname.startsWith('/analyze') ||
+    pathname === '/history' ||
+    pathname === '/billing';
 
   if (isProtected && !token) {
     // Send unauthenticated visitors to the landing page so they see the product first

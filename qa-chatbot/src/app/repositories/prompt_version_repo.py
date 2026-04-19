@@ -68,6 +68,19 @@ class PromptVersionRepository(BaseRepository[PromptVersion]):
         )
         return list(result.scalars().all())
 
+    async def get_by_version_number(
+        self, prompt_id: UUID, version: int, user_id: UUID
+    ) -> PromptVersion | None:
+        """Return a specific version of a prompt by version number."""
+        result = await self.db.execute(
+            select(PromptVersion).where(
+                PromptVersion.prompt_id == prompt_id,
+                PromptVersion.version == version,
+                PromptVersion.user_id == user_id,
+            )
+        )
+        return result.scalar_one_or_none()
+
     async def create_version(
         self,
         *,

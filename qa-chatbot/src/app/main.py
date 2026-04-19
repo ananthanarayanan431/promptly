@@ -19,6 +19,7 @@ from app.db.session import AsyncSessionLocal
 from app.dependencies import _ANONYMOUS_USER
 from app.graph.builder import compile_graph
 from app.graph.checkpointer import get_checkpointer
+from app.seeds.templates import seed_templates
 
 app_settings = get_app_settings()
 
@@ -69,6 +70,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     setup_logging(debug=app_settings.DEBUG)
     if not get_env_settings().AUTH_ENABLED:
         await _seed_anonymous_user()
+    async with AsyncSessionLocal() as session:
+        await seed_templates(session)
     async with get_checkpointer() as checkpointer:
         app.state.graph = await compile_graph(checkpointer)
         yield

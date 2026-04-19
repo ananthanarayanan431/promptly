@@ -13,6 +13,11 @@ class ModelStats(BaseModel):
     total_tokens: int
 
 
+class QualityTrendPoint(BaseModel):
+    date: str  # ISO date string YYYY-MM-DD
+    avg_score: float
+
+
 class DashboardStats(BaseModel):
     # Core counters
     prompts_optimized: int
@@ -32,3 +37,4 @@ class DashboardStats(BaseModel):
     # Chart data
     daily_activity: list[DailyActivity]  # last 30 days, zero-filled
     model_breakdown: list[ModelStats]  # per-council-model token totals
+    quality_trend: list[QualityTrendPoint]  # avg health score per day, last 30 days

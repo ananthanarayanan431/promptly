@@ -12,7 +12,8 @@ from app.models.message import Message
 from app.models.prompt_version import PromptVersion
 from app.models.session import ChatSession
 from app.models.user import User
-from app.schemas.stats import DailyActivity, DashboardStats, ModelStats
+from app.repositories.health_score_repo import HealthScoreRepository
+from app.schemas.stats import DailyActivity, DashboardStats, ModelStats, QualityTrendPoint
 
 router = APIRouter(prefix="/stats", tags=["stats"])
 
@@ -171,6 +172,16 @@ async def get_dashboard_stats(
         raw = max(model_tokens, key=lambda k: model_tokens[k])
         top_model = _MODEL_DISPLAY.get(raw, raw)
 
+    # ── 9. Quality trend — 30-day average health scores ─────────────────────
+    score_repo = HealthScoreRepository(db)
+    raw_trend = await score_repo.get_daily_averages(user_id, days=30)
+    trend_map: dict[str, float] = {str(d): s for d, s in raw_trend}
+    quality_trend: list[QualityTrendPoint] = [
+        QualityTrendPoint(date=str(d), avg_score=round(trend_map[str(d)], 1))
+        for d in ((datetime.now(UTC) - timedelta(days=29 - i)).date() for i in range(30))
+        if str(d) in trend_map
+    ]
+
     return SuccessResponse(
         data=DashboardStats(
             prompts_optimized=prompts_optimized,
@@ -186,5 +197,6 @@ async def get_dashboard_stats(
             top_model=top_model,
             daily_activity=daily_activity,
             model_breakdown=model_breakdown,
+            quality_trend=quality_trend,
         )
     )

@@ -2,7 +2,8 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.types.response import SuccessResponse
@@ -15,6 +16,7 @@ from app.api.v1.exceptions.chat import (
 )
 from app.core.cache import get_job_result, get_job_status, set_job_status
 from app.dependencies import get_current_user, get_db
+from app.models.message import Message
 from app.models.session import ChatSession
 from app.models.user import User
 from app.repositories.message_repo import MessageRepository
@@ -26,6 +28,8 @@ from app.schemas.chat import (
     ChatResponse,
     JobPollResponse,
     MessageOut,
+    RecentSessionsResponse,
+    RecentSessionWithPrompt,
     SaveVersionRequest,
     SaveVersionResponse,
     SessionDetailResponse,
@@ -349,3 +353,68 @@ async def get_session(
             created_at=session.created_at,
         )
     )
+
+
+@router.get(
+    "/sessions/recent",
+    response_model=SuccessResponse[RecentSessionsResponse],
+)
+async def get_recent_sessions(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    limit: Annotated[int, Query(ge=1, le=10)] = 3,
+) -> SuccessResponse[RecentSessionsResponse]:
+    """
+    Return the N most-recently-updated sessions with a snippet of the last
+    user prompt. Used by the 'Continue where you left off' dashboard widget.
+    """
+    # Subquery: latest user message created_at per session
+    latest_msg_sq = (
+        select(
+            Message.session_id.label("sid"),
+            func.max(Message.created_at).label("last_msg_at"),
+        )
+        .where(Message.role == "user")
+        .group_by(Message.session_id)
+        .subquery()
+    )
+
+    # Join to get the actual raw_prompt of that message
+    last_prompt_sq = (
+        select(
+            Message.session_id.label("sid"),
+            Message.raw_prompt.label("raw_prompt"),
+        )
+        .join(
+            latest_msg_sq,
+            (Message.session_id == latest_msg_sq.c.sid)
+            & (Message.created_at == latest_msg_sq.c.last_msg_at),
+        )
+        .where(Message.role == "user")
+        .subquery()
+    )
+
+    stmt = (
+        select(
+            ChatSession.id,
+            ChatSession.title,
+            ChatSession.updated_at,
+            last_prompt_sq.c.raw_prompt,
+        )
+        .outerjoin(last_prompt_sq, ChatSession.id == last_prompt_sq.c.sid)
+        .where(ChatSession.user_id == current_user.id, ChatSession.title.isnot(None))
+        .order_by(ChatSession.updated_at.desc())
+        .limit(limit)
+    )
+
+    rows = (await db.execute(stmt)).all()
+    sessions = [
+        RecentSessionWithPrompt(
+            id=row.id,
+            title=row.title,
+            last_prompt=(row.raw_prompt or "")[:120] or None,
+            updated_at=row.updated_at,
+        )
+        for row in rows
+    ]
+    return SuccessResponse(data=RecentSessionsResponse(sessions=sessions))

@@ -1,16 +1,21 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.types.response import SuccessResponse
-from app.api.v1.exceptions.prompts import PromptInsufficientCreditsException
+from app.api.v1.exceptions.prompts import (
+    PromptInsufficientCreditsException,
+    PromptVersionNotFoundException,
+)
 from app.dependencies import get_current_user, get_db
 from app.models.user import User
+from app.repositories.prompt_version_repo import PromptVersionRepository
 from app.schemas.prompt import (
     PromptAdvisoryRequest,
     PromptAdvisoryResponse,
+    PromptDiffResponse,
     PromptFamilyListResponse,
     PromptHealthScoreRequest,
     PromptHealthScoreResponse,
@@ -19,6 +24,7 @@ from app.schemas.prompt import (
     PromptVersionListResponse,
 )
 from app.services.prompt_service import PromptService, PromptVersioningService
+from app.utils.diff import compute_diff
 
 router = APIRouter(prefix="/prompts", tags=["prompts"])
 
@@ -133,3 +139,44 @@ async def list_prompt_versions(
         user_id=str(current_user.id),
     )
     return SuccessResponse(data=PromptVersionListResponse(**result))
+
+
+@router.get(
+    "/versions/{prompt_id}/diff",
+    response_model=SuccessResponse[PromptDiffResponse],
+)
+async def diff_prompt_versions(
+    prompt_id: uuid.UUID,
+    from_version: int = Query(..., alias="from", ge=1),
+    to_version: int = Query(..., alias="to", ge=1),
+    db: Annotated[AsyncSession, Depends(get_db)] = ...,  # type: ignore[assignment]
+    current_user: Annotated[User, Depends(get_current_user)] = ...,  # type: ignore[assignment]
+) -> SuccessResponse[PromptDiffResponse]:
+    """
+    Return a word-level diff between two versions of a prompt family.
+    Query params: from=<version_number>&to=<version_number>
+    Both versions must belong to the current user.
+    """
+    repo = PromptVersionRepository(db)
+    from_pv = await repo.get_by_version_number(prompt_id, from_version, current_user.id)
+    to_pv = await repo.get_by_version_number(prompt_id, to_version, current_user.id)
+
+    if from_pv is None or to_pv is None:
+        raise PromptVersionNotFoundException()
+
+    hunks, stats = compute_diff(from_pv.content, to_pv.content)
+
+    return SuccessResponse(
+        data=PromptDiffResponse(
+            prompt_id=str(prompt_id),
+            from_version=from_version,
+            to_version=to_version,
+            from_content=from_pv.content,
+            to_content=to_pv.content,
+            hunks=[
+                {"type": h.type, "text": h.text, "from_text": h.from_text, "to_text": h.to_text}
+                for h in hunks
+            ],
+            stats=stats,
+        )
+    )
