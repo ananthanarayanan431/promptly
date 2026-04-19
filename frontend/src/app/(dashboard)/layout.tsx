@@ -3,11 +3,12 @@ import { Header } from '@/components/layout/header';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div style={{ display: 'grid', gridTemplateColumns: '248px 1fr', height: '100vh',
+      background: '#141414', overflow: 'hidden' }}>
       <Sidebar />
-      <div className="flex flex-col flex-1 overflow-hidden">
+      <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
         <Header />
-        <main className="flex-1 overflow-hidden">
+        <main style={{ flex: 1, overflow: 'hidden' }}>
           {children}
         </main>
       </div>

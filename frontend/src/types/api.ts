@@ -162,6 +162,51 @@ export interface ChatTurn {
   error?: string;
 }
 
+// --- Diff ---
+
+export interface DiffHunk {
+  type: 'equal' | 'insert' | 'delete' | 'replace';
+  text?: string;
+  from_text?: string;
+  to_text?: string;
+}
+
+export interface DiffStats {
+  added: number;
+  removed: number;
+  equal: number;
+}
+
+export interface PromptDiffResponse {
+  prompt_id: string;
+  from_version: number;
+  to_version: number;
+  from_content: string;
+  to_content: string;
+  hunks: DiffHunk[];
+  stats: DiffStats;
+}
+
+// --- Templates ---
+
+export interface Template {
+  id: string;
+  category: string;
+  name: string;
+  description: string;
+  content: string;
+}
+
+export interface TemplateCategoryGroup {
+  category: string;
+  templates: Template[];
+}
+
+export interface TemplateListResponse {
+  categories: TemplateCategoryGroup[];
+  total: number;
+}
+
 // Matches backend PromptAdvisoryResponse exactly
 export interface AdvisoryResponse {
   prompt: string;

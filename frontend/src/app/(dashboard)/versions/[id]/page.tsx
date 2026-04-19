@@ -3,14 +3,65 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api } from '@/lib/api';
-import { PromptFamily, PromptVersion } from '@/types/api';
-import { Skeleton } from '@/components/ui/skeleton';
-import { buttonVariants } from '@/components/ui/button';
+import type { PromptFamily, PromptVersion, PromptDiffResponse } from '@/types/api';
 import { formatDistanceToNow } from 'date-fns';
-import { Copy, CheckCheck, ArrowLeft, Wand2, GitBranch } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+
+function DiffView({ diff }: { diff: PromptDiffResponse }) {
+  return (
+    <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 13, lineHeight: 1.8 }}>
+      {/* Stats bar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16,
+        padding: '8px 12px', borderRadius: 8, background: '#131316', border: '1px solid #1f1f23',
+        fontSize: 11.5 }}>
+        <span style={{ color: '#5a5a60' }}>v{diff.from_version} → v{diff.to_version}</span>
+        <span style={{ color: '#22c55e' }}>+{diff.stats.added} added</span>
+        <span style={{ color: '#ff6b7a' }}>−{diff.stats.removed} removed</span>
+        <span style={{ color: '#5a5a60' }}>{diff.stats.equal} unchanged</span>
+      </div>
+      {/* Inline diff */}
+      <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.9 }}>
+        {diff.hunks.map((hunk, i) => {
+          if (hunk.type === 'equal') {
+            return <span key={i} style={{ color: '#8a8a90' }}>{hunk.text}</span>;
+          }
+          if (hunk.type === 'insert') {
+            return (
+              <span key={i} style={{ background: 'rgba(34,197,94,0.15)',
+                color: '#22c55e', borderRadius: 2, padding: '0 1px' }}>
+                {hunk.text}
+              </span>
+            );
+          }
+          if (hunk.type === 'delete') {
+            return (
+              <span key={i} style={{ background: 'rgba(255,107,122,0.15)',
+                color: '#ff6b7a', textDecoration: 'line-through', borderRadius: 2, padding: '0 1px' }}>
+                {hunk.text}
+              </span>
+            );
+          }
+          // replace: show old (red strikethrough) then new (green)
+          return (
+            <span key={i}>
+              <span style={{ background: 'rgba(255,107,122,0.15)', color: '#ff6b7a',
+                textDecoration: 'line-through', borderRadius: 2, padding: '0 1px' }}>
+                {hunk.from_text}
+              </span>
+              <span style={{ background: 'rgba(34,197,94,0.15)', color: '#22c55e',
+                borderRadius: 2, padding: '0 1px', marginLeft: 2 }}>
+                {hunk.to_text}
+              </span>
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 export default function VersionHistoryPage({ params }: { params: { id: string } }) {
   const router = useRouter();
@@ -24,9 +75,32 @@ export default function VersionHistoryPage({ params }: { params: { id: string } 
 
   const [selectedVersion, setSelectedVersion] = useState<PromptVersion | null>(null);
   const [copied, setCopied] = useState(false);
+  const [diffFrom, setDiffFrom] = useState<number | null>(null);
 
   const sortedVersions = family ? [...family.versions].sort((a, b) => b.version - a.version) : [];
+
+  function versionRole(v: number): { label: string; color: string } {
+    if (v === 1) return { label: 'Original', color: '#5a5a60' };
+    if (v === 2) return { label: 'Optimized', color: '#7c5cff' };
+    return { label: `Feedback #${v - 2}`, color: '#f59e0b' };
+  }
+
   const activeVersion = selectedVersion ?? sortedVersions[0] ?? null;
+
+  const { data: diffData, isFetching: diffLoading } = useQuery({
+    queryKey: ['prompt-diff', params.id, diffFrom, activeVersion?.version],
+    queryFn: async () => {
+      const res = await api.get<{ data: PromptDiffResponse }>(
+        `/api/v1/prompts/versions/${params.id}/diff`,
+        { params: { from: diffFrom, to: activeVersion?.version } }
+      );
+      return res.data.data;
+    },
+    enabled:
+      diffFrom !== null &&
+      activeVersion !== null &&
+      diffFrom !== activeVersion?.version,
+  });
 
   const handleCopy = async () => {
     if (!activeVersion) return;
@@ -50,124 +124,213 @@ export default function VersionHistoryPage({ params }: { params: { id: string } 
 
   if (isLoading) {
     return (
-      <div className="flex h-full flex-col gap-4 p-6">
-        <Skeleton className="h-8 w-48" />
-        <div className="flex flex-1 gap-0 rounded-xl border border-border overflow-hidden">
-          <div className="w-64 shrink-0 border-r p-3 space-y-1.5">
-            {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-14 w-full rounded-lg" />)}
-          </div>
-          <div className="flex-1 p-6">
-            <Skeleton className="h-full w-full rounded-lg" />
-          </div>
-        </div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center',
+        height: '100%', color: '#8a8a90', gap: 8 }}>
+        <Loader2 style={{ width: 16, height: 16, animation: 'spin 1s linear infinite' }} />
+        <span style={{ fontSize: 13, fontFamily: 'var(--font-geist, ui-sans-serif)' }}>Loading…</span>
       </div>
     );
   }
 
   if (!family) {
     return (
-      <div className="flex h-full items-center justify-center text-muted-foreground">
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center',
+        height: '100%', color: '#8a8a90', fontSize: 13,
+        fontFamily: 'var(--font-geist, ui-sans-serif)' }}>
         Prompt family not found.
       </div>
     );
   }
 
   return (
-    <div className="flex h-full flex-col">
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%',
+      fontFamily: 'var(--font-geist, ui-sans-serif)' }}>
+
       {/* Header */}
-      <div className="shrink-0 flex items-center gap-3 px-6 py-4 border-b border-border/60">
-        <Link href="/versions" className={buttonVariants({ variant: 'ghost', size: 'icon' })}>
-          <ArrowLeft className="h-4 w-4" />
+      <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 12,
+        padding: '0 24px', height: 52, borderBottom: '1px solid #1f1f23' }}>
+        <Link href="/versions" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center',
+          width: 28, height: 28, borderRadius: 6, border: '1px solid #2a2a2e',
+          background: 'transparent', textDecoration: 'none', color: '#8a8a90',
+          transition: 'background 120ms' }}
+          onMouseEnter={e => (e.currentTarget.style.background = '#222226')}
+          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth="1.6"><path d="M15 6l-6 6 6 6"/></svg>
         </Link>
-        <div className="flex items-center gap-2 min-w-0">
-          <GitBranch className="h-4 w-4 text-primary shrink-0" />
-          <h1 className="text-lg font-semibold tracking-tight truncate">{family.name}</h1>
-          <span className="shrink-0 text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+
+        {/* Family name */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+            stroke="#7c5cff" strokeWidth="1.6" style={{ flexShrink: 0 }}>
+            <path d="M6 3v12M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 9v3a3 3 0 0 1-3 3H9"/>
+          </svg>
+          <span style={{ fontSize: 15, fontWeight: 500, color: '#ededed',
+            letterSpacing: '-0.005em', overflow: 'hidden', textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap' }}>{family.name}</span>
+          <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5,
+            padding: '2px 7px', borderRadius: 999, background: '#222226',
+            border: '1px solid #2a2a2e', color: '#7c5cff', flexShrink: 0 }}>
             {family.versions.length} version{family.versions.length !== 1 ? 's' : ''}
           </span>
         </div>
       </div>
 
       {/* Split panel */}
-      <div className="flex flex-1 min-h-0">
+      <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+
         {/* Left: version list */}
-        <div className="w-56 shrink-0 border-r border-border/60 overflow-y-auto bg-background/50">
-          <div className="p-2 space-y-0.5">
-            {sortedVersions.map((v) => {
-              const isActive = activeVersion?.version === v.version;
-              return (
-                <button
-                  key={v.version}
-                  type="button"
-                  onClick={() => setSelectedVersion(v)}
-                  className={`w-full text-left rounded-lg px-3 py-3 transition-colors group ${
-                    isActive
-                      ? 'bg-primary/10 border border-primary/25'
-                      : 'hover:bg-accent/60 border border-transparent'
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-1">
-                    <span className={`text-sm font-semibold ${isActive ? 'text-primary' : 'text-foreground'}`}>
-                      v{v.version}
-                    </span>
-                    {v.version === sortedVersions[0]?.version && (
-                      <span className="text-[10px] font-medium text-primary bg-primary/10 px-1.5 py-0.5 rounded-full leading-none">
-                        latest
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-[11px] text-muted-foreground leading-none">
-                    {formatDistanceToNow(new Date(v.created_at), { addSuffix: true })}
-                  </p>
-                </button>
-              );
-            })}
-          </div>
+        <div style={{ width: 200, flexShrink: 0, borderRight: '1px solid #1f1f23',
+          overflowY: 'auto', padding: 8, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {sortedVersions.map((v) => {
+            const isActive = activeVersion?.version === v.version;
+            const isLatest = v.version === sortedVersions[0]?.version;
+            const role = versionRole(v.version);
+            return (
+              <button key={v.version} type="button" onClick={() => { setSelectedVersion(v); setDiffFrom(null); }}
+                style={{ width: '100%', textAlign: 'left', padding: '10px 12px',
+                  borderRadius: 8, border: isActive ? '1px solid rgba(124,92,255,0.35)' : '1px solid transparent',
+                  background: isActive ? 'rgba(124,92,255,0.08)' : 'transparent',
+                  cursor: 'pointer', transition: 'background 120ms, border-color 120ms' }}
+                onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; }}
+                onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  marginBottom: 4 }}>
+                  <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 13,
+                    fontWeight: 600, color: isActive ? '#7c5cff' : '#ededed' }}>v{v.version}</span>
+                  {isLatest && (
+                    <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 9.5,
+                      color: '#7c5cff', background: 'rgba(124,92,255,0.12)', padding: '1px 5px',
+                      borderRadius: 3 }}>latest</span>
+                  )}
+                </div>
+                <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5,
+                  color: role.color, marginBottom: 3 }}>
+                  {role.label}
+                </div>
+                <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5,
+                  color: '#5a5a60' }}>
+                  {formatDistanceToNow(new Date(v.created_at), { addSuffix: true })}
+                </div>
+              </button>
+            );
+          })}
         </div>
 
-        {/* Right: content panel */}
+        {/* Right: content */}
         {activeVersion ? (
-          <div className="flex flex-1 flex-col min-w-0">
+          <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
             {/* Panel header */}
-            <div className="shrink-0 flex items-center justify-between px-6 py-3 border-b border-border/60 bg-card">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-semibold text-foreground">Version {activeVersion.version}</span>
-                <span className="text-xs text-muted-foreground">
+            <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center',
+              justifyContent: 'space-between', padding: '0 16px 0 24px', height: 44,
+              borderBottom: '1px solid #1f1f23', background: 'rgba(255,255,255,0.01)',
+              gap: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 12,
+                  fontWeight: 600, color: '#ededed' }}>v{activeVersion.version}</span>
+                <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5,
+                  padding: '1px 7px', borderRadius: 4,
+                  background: `${versionRole(activeVersion.version).color}18`,
+                  color: versionRole(activeVersion.version).color,
+                  border: `1px solid ${versionRole(activeVersion.version).color}30` }}>
+                  {versionRole(activeVersion.version).label}
+                </span>
+                <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 11,
+                  color: '#5a5a60' }}>
                   · {formatDistanceToNow(new Date(activeVersion.created_at), { addSuffix: true })}
                 </span>
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleCopy}
-                  className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors border border-border/60"
-                >
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
+                {/* Diff selector */}
+                {sortedVersions.length > 1 && (
+                  <>
+                    <select
+                      value={diffFrom ?? ''}
+                      onChange={e => {
+                        const v = parseInt(e.target.value, 10);
+                        setDiffFrom(isNaN(v) ? null : v);
+                      }}
+                      style={{ height: 28, padding: '0 8px', borderRadius: 6, fontSize: 11.5,
+                        border: '1px solid #2a2a2e', background: '#1a1a1a', color: '#b5b5ba',
+                        cursor: 'pointer', fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                      <option value="">Diff from…</option>
+                      {sortedVersions
+                        .filter(v => v.version !== activeVersion.version)
+                        .map(v => (
+                          <option key={v.version} value={v.version}>v{v.version}</option>
+                        ))}
+                    </select>
+                    {diffFrom !== null && (
+                      <button type="button" onClick={() => setDiffFrom(null)}
+                        style={{ height: 28, padding: '0 10px', borderRadius: 6, fontSize: 11.5,
+                          border: '1px solid rgba(255,107,122,0.3)', background: 'transparent',
+                          color: '#ff6b7a', cursor: 'pointer',
+                          fontFamily: 'var(--font-geist, ui-sans-serif)' }}>
+                        Clear
+                      </button>
+                    )}
+                  </>
+                )}
+
+                <button type="button" onClick={handleCopy}
+                  style={{ height: 28, padding: '0 10px', borderRadius: 6,
+                    border: '1px solid #2a2a2e', background: 'transparent', fontSize: 12,
+                    color: copied ? '#5cffb1' : '#b5b5ba', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    fontFamily: 'var(--font-geist, ui-sans-serif)',
+                    transition: 'color 120ms' }}>
                   {copied ? (
-                    <><CheckCheck className="h-3.5 w-3.5 text-green-500" /> Copied</>
+                    <>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" strokeWidth="1.6"><path d="M20 6L9 17l-5-5"/></svg>
+                      Copied
+                    </>
                   ) : (
-                    <><Copy className="h-3.5 w-3.5" /> Copy</>
+                    <>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" strokeWidth="1.6">
+                        <rect x="9" y="9" width="13" height="13" rx="2"/>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                      </svg>
+                      Copy
+                    </>
                   )}
                 </button>
-                <button
-                  type="button"
-                  onClick={handleOptimize}
-                  className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
-                >
-                  <Wand2 className="h-3.5 w-3.5" />
+                <button type="button" onClick={handleOptimize}
+                  style={{ height: 28, padding: '0 12px', borderRadius: 6,
+                    background: '#7c5cff', border: '1px solid #7c5cff', fontSize: 12,
+                    color: '#fff', cursor: 'pointer', display: 'flex',
+                    alignItems: 'center', gap: 6,
+                    fontFamily: 'var(--font-geist, ui-sans-serif)' }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" strokeWidth="1.6">
+                    <path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M5.6 18.4l2.8-2.8M15.6 8.4l2.8-2.8"/>
+                  </svg>
                   Optimize
                 </button>
               </div>
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-y-auto px-6 py-5">
-              <p className="text-sm leading-7 whitespace-pre-wrap text-foreground font-mono">
-                {activeVersion.content}
-              </p>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px' }}>
+              {diffFrom !== null && diffData ? (
+                <DiffView diff={diffData} />
+              ) : diffFrom !== null && diffLoading ? (
+                <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 12,
+                  color: '#5a5a60' }}>Computing diff…</div>
+              ) : (
+                <pre style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 13,
+                  lineHeight: 1.8, color: '#ededed', whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word', margin: 0 }}>
+                  {activeVersion.content}
+                </pre>
+              )}
             </div>
           </div>
         ) : (
-          <div className="flex flex-1 items-center justify-center text-muted-foreground text-sm">
+          <div style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'center',
+            color: '#8a8a90', fontSize: 13 }}>
             Select a version to view its content.
           </div>
         )}

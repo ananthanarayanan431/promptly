@@ -6,6 +6,7 @@ import { X, Copy, CheckCheck, ChevronDown, ChevronUp, Sparkles, GitBranch } from
 import { toast } from 'sonner';
 import { buttonVariants } from '@/components/ui/button';
 import type { JobResult } from '@/types/api';
+import { CouncilProposals } from './council-proposals';
 
 interface ResultPanelProps {
   result: JobResult;
@@ -75,6 +76,10 @@ export function ResultPanel({ result, onClose }: ResultPanelProps) {
       {/* Body */}
       <div className="flex-1 min-h-0 overflow-y-auto px-5 py-5 space-y-5">
         <p className="text-sm leading-7 whitespace-pre-wrap text-foreground">{result.optimized_prompt}</p>
+
+        {result.council_proposals && result.council_proposals.length > 0 && (
+          <CouncilProposals proposals={result.council_proposals} />
+        )}
 
         <div>
           <button

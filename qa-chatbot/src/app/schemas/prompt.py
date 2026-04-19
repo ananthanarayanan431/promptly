@@ -98,3 +98,29 @@ class PromptAdvisoryResponse(BaseModel):
     weaknesses: list[str]
     improvements: list[str]
     overall_assessment: str
+
+
+# --- Diff ---
+
+
+class DiffHunk(BaseModel):
+    type: str  # "equal" | "insert" | "delete" | "replace"
+    text: str | None = None
+    from_text: str | None = None
+    to_text: str | None = None
+
+
+class DiffStats(BaseModel):
+    added: int
+    removed: int
+    equal: int
+
+
+class PromptDiffResponse(BaseModel):
+    prompt_id: str
+    from_version: int
+    to_version: int
+    from_content: str
+    to_content: str
+    hunks: list[DiffHunk]
+    stats: DiffStats

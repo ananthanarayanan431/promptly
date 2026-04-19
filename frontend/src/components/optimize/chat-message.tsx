@@ -2,35 +2,29 @@
 
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { Copy, CheckCheck, AlertCircle, Sparkles, GitBranch, PanelRight } from 'lucide-react';
 import { LoadingWords } from './loading-words';
-import { cn } from '@/lib/utils';
 import { formatApiErrorDetail } from '@/lib/api-errors';
 import type { ChatTurn } from '@/types/api';
 
-// ── User message ─────────────────────────────────────────────────────────────
-
 function UserBubble({ text, isFeedback }: { text: string; isFeedback: boolean }) {
   return (
-    <div className="flex justify-end">
-      <div className="max-w-[75%] space-y-1.5">
-        <p className="text-right text-[10px] font-semibold uppercase tracking-widest pr-2 text-primary/60">
+    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+      <div style={{ maxWidth: '75%', display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
+        <p style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10, fontWeight: 600,
+          textTransform: 'uppercase', letterSpacing: '0.12em', color: isFeedback ? '#7c5cff' : '#5a5a60',
+          paddingRight: 4 }}>
           {isFeedback ? 'Feedback' : 'You'}
         </p>
-        <div className={cn(
-          'rounded-2xl rounded-tr-md px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap',
-          isFeedback
-            ? 'bg-primary text-primary-foreground'
-            : 'bg-foreground/80 text-primary-foreground'
-        )}>
+        <div style={{ borderRadius: '14px 14px 4px 14px', padding: '10px 14px', fontSize: 13.5,
+          lineHeight: 1.6, whiteSpace: 'pre-wrap', fontFamily: 'var(--font-geist, ui-sans-serif)',
+          background: isFeedback ? '#7c5cff' : '#2a2a2e',
+          color: isFeedback ? '#fff' : '#ededed' }}>
           {text}
         </div>
       </div>
     </div>
   );
 }
-
-// ── Assistant result ──────────────────────────────────────────────────────────
 
 const PREVIEW_MAX_CHARS = 360;
 
@@ -45,9 +39,10 @@ function AssistantResult({ turn, isTurnSelected, onSelectTurn }: AssistantResult
 
   if (turn.status === 'loading') {
     return (
-      <div className="flex gap-3">
+      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
         <PromptlyIcon />
-        <div className="flex-1 pt-1 bg-card rounded-2xl rounded-tl-md border border-border px-4 py-3 shadow-sm">
+        <div style={{ flex: 1, background: '#1a1a1a', borderRadius: '4px 14px 14px 14px',
+          border: '1px solid #1f1f23', padding: '14px 16px' }}>
           <LoadingWords />
         </div>
       </div>
@@ -56,13 +51,20 @@ function AssistantResult({ turn, isTurnSelected, onSelectTurn }: AssistantResult
 
   if (turn.status === 'failed') {
     return (
-      <div className="flex gap-3">
+      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
         <PromptlyIcon />
-        <div className="flex items-start gap-2 rounded-2xl rounded-tl-md border border-destructive/30 bg-destructive/8 px-4 py-3 shadow-sm">
-          <AlertCircle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8,
+          borderRadius: '4px 14px 14px 14px', border: '1px solid rgba(255,107,122,0.3)',
+          background: 'rgba(255,107,122,0.06)', padding: '12px 16px' }}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#ff6b7a" strokeWidth="1.7"
+            style={{ flexShrink: 0, marginTop: 1 }}>
+            <circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>
+          </svg>
           <div>
-            <p className="text-sm font-medium text-destructive">Optimization failed</p>
-            <p className="text-xs text-muted-foreground mt-0.5">
+            <p style={{ fontSize: 13, fontWeight: 500, color: '#ff6b7a', marginBottom: 3 }}>
+              Optimization failed
+            </p>
+            <p style={{ fontSize: 12, color: '#8a8a90', fontFamily: 'var(--font-geist-mono, monospace)' }}>
               {formatApiErrorDetail(turn.error, 'Something went wrong. Please try again.')}
             </p>
           </div>
@@ -74,12 +76,14 @@ function AssistantResult({ turn, isTurnSelected, onSelectTurn }: AssistantResult
   if (!turn.result) return null;
 
   const { result } = turn;
-  const versionNum = result.version;
+  const raw = result.optimized_prompt;
+  const isLong = raw.length > PREVIEW_MAX_CHARS;
+  const previewText = isLong ? `${raw.slice(0, PREVIEW_MAX_CHARS).trimEnd()}…` : raw;
 
   const handleCopy = async (e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      await navigator.clipboard.writeText(result.optimized_prompt);
+      await navigator.clipboard.writeText(raw);
       setCopied(true);
       toast.success('Copied');
       setTimeout(() => setCopied(false), 2000);
@@ -88,47 +92,45 @@ function AssistantResult({ turn, isTurnSelected, onSelectTurn }: AssistantResult
     }
   };
 
-  const raw = result.optimized_prompt;
-  const isLong = raw.length > PREVIEW_MAX_CHARS;
-  const previewText = isLong ? `${raw.slice(0, PREVIEW_MAX_CHARS).trimEnd()}…` : raw;
-
   return (
-    <div className="flex gap-3">
+    <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
       <PromptlyIcon />
-
-      <div className="flex-1 min-w-0">
-        <div
-          role="button"
-          tabIndex={0}
-          onClick={onSelectTurn}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              onSelectTurn();
-            }
-          }}
-          className={cn(
-            'rounded-2xl rounded-tl-md bg-card border text-left w-full cursor-pointer transition-all overflow-hidden shadow-sm',
-            isTurnSelected
-              ? 'border-primary/50 shadow-md shadow-primary/10 ring-1 ring-primary/20'
-              : 'border-border/70 hover:border-primary/30 hover:shadow-md hover:shadow-primary/8'
-          )}
-        >
-          {/* Coloured header strip */}
-          <div className="flex items-center justify-between px-4 py-2.5 bg-secondary/30 border-b border-border/50">
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-3.5 w-3.5 text-primary" />
-              <span className="text-xs font-semibold text-primary uppercase tracking-wider">Promptly</span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div role="button" tabIndex={0} onClick={onSelectTurn}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelectTurn(); } }}
+          style={{ borderRadius: '4px 14px 14px 14px', background: '#1a1a1a',
+            border: `1px solid ${isTurnSelected ? 'rgba(124,92,255,0.5)' : '#1f1f23'}`,
+            boxShadow: isTurnSelected ? '0 0 0 2px rgba(124,92,255,0.15)' : 'none',
+            cursor: 'pointer', overflow: 'hidden', transition: 'border-color 150ms, box-shadow 150ms',
+            outline: 'none' }}>
+          {/* Header strip */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '8px 14px', borderBottom: '1px solid #1f1f23',
+            background: 'rgba(124,92,255,0.04)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#7c5cff" strokeWidth="1.8">
+                <path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9c0-.46-.04-.92-.1-1.36a5.39 5.39 0 00-4.4-4.4A5.21 5.21 0 0012 3z"/>
+              </svg>
+              <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10,
+                fontWeight: 600, color: '#7c5cff', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                Promptly
+              </span>
             </div>
-            <div className="flex items-center gap-2">
-              {versionNum && (
-                <div className="inline-flex items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-semibold text-primary">
-                  <GitBranch className="h-2.5 w-2.5" />
-                  v{versionNum}
-                </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {result.version && (
+                <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10,
+                  fontWeight: 600, padding: '1px 7px', borderRadius: 999,
+                  background: 'rgba(124,92,255,0.12)', color: '#7c5cff',
+                  display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M6 3v12"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/>
+                    <path d="M18 9a9 9 0 01-9 9"/>
+                  </svg>
+                  v{result.version}
+                </span>
               )}
               {result.token_usage?.total_tokens ? (
-                <span className="text-[10px] text-muted-foreground/60">
+                <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10, color: '#3a3a40' }}>
                   {result.token_usage.total_tokens.toLocaleString()} tokens
                 </span>
               ) : null}
@@ -136,36 +138,50 @@ function AssistantResult({ turn, isTurnSelected, onSelectTurn }: AssistantResult
           </div>
 
           {/* Content */}
-          <div className="px-4 py-3 space-y-3">
-            <p className="text-sm leading-7 whitespace-pre-wrap text-foreground">{previewText}</p>
-
+          <div style={{ padding: '12px 14px' }}>
+            <p style={{ fontSize: 13.5, lineHeight: 1.7, whiteSpace: 'pre-wrap', color: '#ededed',
+              fontFamily: 'var(--font-geist, ui-sans-serif)', margin: 0 }}>{previewText}</p>
             {isLong && (
-              <p className="flex items-center gap-1.5 text-[11px] text-primary/70 font-medium">
-                <PanelRight className="h-3.5 w-3.5 shrink-0" />
+              <p style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 8,
+                fontSize: 11.5, color: '#7c5cff', fontWeight: 500 }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 12h6M12 9v6"/>
+                </svg>
                 Click to open full result in the side panel
               </p>
             )}
           </div>
 
           {/* Action row */}
-          <div
-            className="flex items-center gap-1 px-3 py-2 border-t border-border/40 bg-muted/20"
-            onClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => e.stopPropagation()}
-          >
-            <button
-              type="button"
-              onClick={handleCopy}
-              className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-            >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px',
+            borderTop: '1px solid #1f1f23', background: 'rgba(255,255,255,0.01)' }}
+            onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+            <button type="button" onClick={handleCopy}
+              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px',
+                borderRadius: 6, fontSize: 12, border: 'none', background: 'transparent',
+                cursor: 'pointer', color: '#8a8a90', fontFamily: 'inherit',
+                transition: 'color 100ms, background 100ms' }}
+              onMouseEnter={e => { e.currentTarget.style.color = '#ededed'; e.currentTarget.style.background = '#222226'; }}
+              onMouseLeave={e => { e.currentTarget.style.color = '#8a8a90'; e.currentTarget.style.background = 'transparent'; }}>
               {copied ? (
-                <><CheckCheck className="h-3.5 w-3.5 text-green-600" /> Copied</>
+                <>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2">
+                    <path d="M20 6L9 17l-5-5"/>
+                  </svg>
+                  Copied
+                </>
               ) : (
-                <><Copy className="h-3.5 w-3.5" /> Copy</>
+                <>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                    <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+                  </svg>
+                  Copy
+                </>
               )}
             </button>
             {!isLong && (
-              <span className="ml-auto text-[10px] text-muted-foreground/50 italic">
+              <span style={{ marginLeft: 'auto', fontFamily: 'var(--font-geist-mono, monospace)',
+                fontSize: 10.5, color: '#3a3a40', fontStyle: 'italic' }}>
                 Click card to open side panel
               </span>
             )}
@@ -176,17 +192,17 @@ function AssistantResult({ turn, isTurnSelected, onSelectTurn }: AssistantResult
   );
 }
 
-// ── Promptly avatar ───────────────────────────────────────────────────────────
-
 function PromptlyIcon() {
   return (
-    <div className="h-7 w-7 rounded-full bg-primary flex items-center justify-center shrink-0 mt-0.5 shadow-sm">
-      <Sparkles className="h-3.5 w-3.5 text-primary-foreground" />
+    <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#7c5cff',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 2,
+      boxShadow: '0 1px 0 rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.15)' }}>
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.8">
+        <path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9c0-.46-.04-.92-.1-1.36a5.39 5.39 0 00-4.4-4.4A5.21 5.21 0 0012 3z"/>
+      </svg>
     </div>
   );
 }
-
-// ── Combined turn ─────────────────────────────────────────────────────────────
 
 interface ChatMessageProps {
   turn: ChatTurn;
@@ -196,13 +212,9 @@ interface ChatMessageProps {
 
 export function ChatMessage({ turn, isTurnSelected, onSelectTurn }: ChatMessageProps) {
   return (
-    <div className="space-y-4">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <UserBubble text={turn.userText} isFeedback={turn.isFeedback} />
-      <AssistantResult
-        turn={turn}
-        isTurnSelected={isTurnSelected}
-        onSelectTurn={onSelectTurn}
-      />
+      <AssistantResult turn={turn} isTurnSelected={isTurnSelected} onSelectTurn={onSelectTurn} />
     </div>
   );
 }

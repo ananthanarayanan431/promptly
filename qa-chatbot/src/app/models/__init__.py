@@ -6,6 +6,7 @@
 from app.models.message import Message
 from app.models.prompt_version import PromptVersion
 from app.models.session import ChatSession
+from app.models.template import Template
 from app.models.user import User
 
-__all__ = ["User", "ChatSession", "Message", "PromptVersion"]
+__all__ = ["User", "ChatSession", "Message", "PromptVersion", "Template"]

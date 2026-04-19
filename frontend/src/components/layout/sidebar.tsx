@@ -1,93 +1,47 @@
 'use client';
 
-import {
-  LayoutDashboard,
-  History,
-  ActivitySquare,
-  LogOut,
-  Wand2,
-  Lightbulb,
-  MessageSquare,
-  SquarePen,
-  Coins,
-} from 'lucide-react';
-import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth-store';
 import { clearToken } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
+import Link from 'next/link';
 import type { SessionsGrouped, SessionSummary, User } from '@/types/api';
 
-const navigation = [
-  { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-  { name: 'Optimize Prompt', href: '/optimize', icon: Wand2 },
-  { name: 'Versions', href: '/versions', icon: History },
-  { name: 'Analyze', href: '/analyze', icon: ActivitySquare },
+const NAV = [
+  { key: 'dashboard', label: 'Dashboard', href: '/dashboard', kbd: 'D' },
+  { key: 'optimize',  label: 'Optimize',  href: '/optimize',  kbd: 'O' },
+  { key: 'analyze',   label: 'Analyze',   href: '/analyze',   kbd: 'A' },
+  { key: 'versions',  label: 'Versions',  href: '/versions',  kbd: 'V' },
+  { key: 'history',   label: 'History',   href: '/history' },
+  { key: 'billing',   label: 'Billing',   href: '/billing' },
 ];
 
 function deriveDisplayName(email: string): string {
-  const prefix = email.split('@')[0];
-  // Turn dots/underscores/hyphens into spaces, capitalize each word
-  return prefix
-    .replace(/[._-]/g, ' ')
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+  return email.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
-function UserInitials({ name }: { name: string }) {
-  const initials = name
-    .split(' ')
-    .slice(0, 2)
-    .map((w) => w[0])
-    .join('')
-    .toUpperCase();
-  return (
-    <div className="h-8 w-8 rounded-full bg-primary/15 border border-primary/25 flex items-center justify-center shrink-0">
-      <span className="text-xs font-semibold text-primary">{initials}</span>
-    </div>
-  );
+function deriveInitials(name: string): string {
+  return name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
 }
 
 function SessionItem({ session, isActive }: { session: SessionSummary; isActive: boolean }) {
   return (
-    <Link
-      href={`/optimize?session=${session.id}`}
-      className={cn(
-        'flex items-center gap-2 px-3 py-2 rounded-lg text-xs transition-colors truncate',
-        isActive
-          ? 'bg-foreground text-background font-medium'
-          : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground'
-      )}
-      title={session.title ?? undefined}
-    >
-      <MessageSquare className="h-3 w-3 shrink-0" />
-      <span className="truncate">{session.title || 'Untitled'}</span>
+    <Link href={`/optimize?session=${session.id}`}
+      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 14px',
+        margin: '0 8px', borderRadius: 6, fontSize: 13, textDecoration: 'none',
+        color: isActive ? '#ededed' : '#b5b5ba',
+        background: isActive ? '#222226' : 'transparent',
+        borderLeft: '2px solid transparent',
+        overflow: 'hidden', whiteSpace: 'nowrap' as const }}>
+      <span style={{ width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
+        background: isActive ? '#7c5cff' : '#5a5a60' }} />
+      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        {session.title || 'Untitled'}
+      </span>
     </Link>
-  );
-}
-
-function SessionGroup({
-  label,
-  sessions,
-  currentId,
-}: {
-  label: string;
-  sessions: SessionSummary[];
-  currentId: string | null;
-}) {
-  if (sessions.length === 0) return null;
-  return (
-    <div className="mb-2">
-      <p className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">
-        {label}
-      </p>
-      {sessions.map((s) => (
-        <SessionItem key={s.id} session={s} isActive={s.id === currentId} />
-      ))}
-    </div>
   );
 }
 
@@ -95,7 +49,6 @@ function SessionHistory() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const currentSessionId = searchParams.get('session');
-
   const isNewChat = pathname === '/optimize' && !currentSessionId;
 
   const { data: grouped } = useQuery<SessionsGrouped>({
@@ -107,45 +60,44 @@ function SessionHistory() {
     staleTime: 30_000,
   });
 
-  const hasHistory =
-    grouped &&
-    (grouped.today.length > 0 ||
-      grouped.last_7_days.length > 0 ||
-      grouped.last_30_days.length > 0 ||
-      grouped.older.length > 0);
+  const hasHistory = grouped && (
+    grouped.today.length > 0 || grouped.last_7_days.length > 0 ||
+    grouped.last_30_days.length > 0 || grouped.older.length > 0
+  );
 
   if (!hasHistory && !isNewChat) return null;
 
-  return (
-    <div className="flex-1 overflow-y-auto min-h-0">
-      <div className="flex items-center justify-between px-4 pt-3 pb-1">
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">
-          Chats
-        </span>
-        <Link
-          href="/optimize"
-          title="New chat"
-          className="h-5 w-5 flex items-center justify-center rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <SquarePen className="h-3.5 w-3.5" />
-        </Link>
-      </div>
+  const total =
+    (grouped?.today.length ?? 0) + (grouped?.last_7_days.length ?? 0) +
+    (grouped?.last_30_days.length ?? 0) + (grouped?.older.length ?? 0);
 
-      <div className="px-2 pb-2">
+  const allSessions = [
+    ...(grouped?.today ?? []),
+    ...(grouped?.last_7_days ?? []),
+    ...(grouped?.last_30_days ?? []),
+    ...(grouped?.older ?? []),
+  ];
+
+  return (
+    <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+      <div style={{ padding: '14px 16px 6px', fontFamily: 'var(--font-geist-mono, monospace)',
+        fontSize: 10, color: '#5a5a60', textTransform: 'uppercase', letterSpacing: '0.08em',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span>Recent sessions</span>
+        <span>{total}</span>
+      </div>
+      <div style={{ paddingBottom: 8 }}>
         {isNewChat && (
-          <div className="flex items-center gap-2 px-3 py-2 rounded-md text-xs bg-primary/10 text-primary">
-            <MessageSquare className="h-3 w-3 shrink-0" />
-            <span className="truncate italic">New chat</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 14px',
+            margin: '0 8px', borderRadius: 6, fontSize: 13, color: '#7c5cff',
+            background: 'rgba(124,92,255,0.1)' }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#7c5cff' }} />
+            <span>New chat</span>
           </div>
         )}
-        {hasHistory && (
-          <>
-            <SessionGroup label="Today" sessions={grouped!.today} currentId={currentSessionId} />
-            <SessionGroup label="Last 7 days" sessions={grouped!.last_7_days} currentId={currentSessionId} />
-            <SessionGroup label="Last 30 days" sessions={grouped!.last_30_days} currentId={currentSessionId} />
-            <SessionGroup label="Older" sessions={grouped!.older} currentId={currentSessionId} />
-          </>
-        )}
+        {allSessions.map(s => (
+          <SessionItem key={s.id} session={s} isActive={s.id === currentSessionId} />
+        ))}
       </div>
     </div>
   );
@@ -176,90 +128,156 @@ export function Sidebar() {
   };
 
   return (
-    <div className="flex h-screen w-64 flex-col border-r bg-card text-card-foreground overflow-hidden">
+    <aside style={{ width: 248, background: '#101014', borderRight: '1px solid #1f1f23',
+      display: 'flex', flexDirection: 'column', height: '100vh', flexShrink: 0,
+      fontFamily: 'var(--font-geist, ui-sans-serif)' }}>
+
       {/* Logo */}
-      <div className="flex h-14 items-center px-4 shrink-0 relative">
-        <Link href="/" className="flex items-center gap-2 font-bold text-lg text-primary">
-          <Lightbulb className="h-6 w-6" />
-          <span>Promptly</span>
+      <div style={{ padding: '16px 16px 12px', display: 'flex', alignItems: 'center',
+        justifyContent: 'space-between' }}>
+        <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: 9,
+          textDecoration: 'none', fontSize: 14, fontWeight: 600, color: '#ededed' }}>
+          <LogoMark />
+          promptly
         </Link>
-        <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-border/60 via-border/30 to-transparent" />
-      </div>
-
-      {/* New chat button */}
-      <div className="shrink-0 px-4 pt-4 pb-2">
-        <Link
-          href="/optimize"
-          className="flex w-full items-center justify-center gap-2 rounded-xl bg-foreground text-background text-sm font-semibold h-9 hover:bg-foreground/90 transition-colors"
-        >
-          <span className="text-base leading-none">+</span> New chat
+        <Link href="/optimize"
+          style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid #2a2a2e',
+            background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: '#8a8a90', textDecoration: 'none', fontSize: 16, lineHeight: 1 }}
+          title="New chat">
+          +
         </Link>
       </div>
 
-      {/* Nav links */}
-      <nav className="shrink-0 space-y-1 px-4 pb-2">
-        {navigation.map((item) => {
-          const isActive =
-            pathname === item.href ||
-            (item.href !== '/dashboard' && pathname.startsWith(item.href));
+      {/* Search */}
+      <div style={{ margin: '0 12px 10px', height: 30, padding: '0 10px', borderRadius: 6,
+        background: '#222226', border: '1px solid #1f1f23',
+        display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: '#5a5a60' }}>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+          <circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>
+        </svg>
+        <span>Search</span>
+        <span style={{ marginLeft: 'auto', display: 'flex', gap: 3 }}>
+          {['⌘', 'K'].map(k => (
+            <span key={k} style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10,
+              padding: '1px 4px', background: '#2a2a2e', border: '1px solid #2a2a2e',
+              borderRadius: 3, color: '#8a8a90' }}>{k}</span>
+          ))}
+        </span>
+      </div>
+
+      {/* Nav */}
+      <div style={{ padding: '4px 0' }}>
+        {NAV.map(n => {
+          const isActive = pathname === n.href ||
+            (n.href !== '/versions' && n.href !== '/dashboard' && pathname.startsWith(n.href));
           return (
-            <Link
-              key={item.name}
-              href={item.href}
-              className={cn(
-                'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
-                isActive
-                  ? 'bg-foreground text-background'
-                  : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground'
+            <Link key={n.key} href={n.href}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 14px',
+                margin: '0 8px', borderRadius: 6, fontSize: 13, textDecoration: 'none',
+                color: isActive ? '#ededed' : '#b5b5ba',
+                background: isActive ? '#222226' : 'transparent',
+                borderLeft: '2px solid transparent', transition: 'background 120ms, color 120ms' }}>
+              <NavIcon name={n.key} active={isActive} />
+              <span style={{ flex: 1 }}>{n.label}</span>
+              {n.kbd && (
+                <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5,
+                  color: '#5a5a60' }}>{n.kbd}</span>
               )}
-            >
-              <item.icon className="h-4 w-4" />
-              {item.name}
             </Link>
           );
         })}
-      </nav>
+      </div>
 
-      {/* Divider */}
-      <div className="mx-4 border-t" />
-
-      {/* Session history — scrollable middle section */}
-      <Suspense fallback={<div className="flex-1" />}>
+      {/* Session history */}
+      <div style={{ height: 1, background: '#1f1f23', margin: '8px 0' }} />
+      <Suspense fallback={<div style={{ flex: 1 }} />}>
         <SessionHistory />
       </Suspense>
 
-      {/* User profile footer */}
+      {/* User footer */}
       {displayUser && (
-        <div className="shrink-0 border-t p-3 space-y-2">
-          {/* Credits row */}
-          <div className="flex items-center gap-1.5 px-1">
-            <Coins className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className={cn(
-              'text-xs font-medium',
-              displayUser.credits < 20 ? 'text-destructive' : 'text-muted-foreground'
-            )}>
-              {displayUser.credits} credits remaining
-            </span>
-          </div>
-
-          {/* Avatar + name/email + logout */}
-          <div className="flex items-center gap-2.5 rounded-xl px-2 py-2 bg-muted/40">
-            <UserInitials name={displayName} />
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold text-foreground truncate">{displayName}</p>
-              <p className="text-[10px] text-muted-foreground truncate">{displayUser.email}</p>
+        <div style={{ borderTop: '1px solid #1f1f23', padding: 12, flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {/* Avatar */}
+            <div style={{ width: 28, height: 28, borderRadius: '50%',
+              background: 'linear-gradient(135deg, #7c5cff, #3a1eff)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 12, fontWeight: 600, color: '#fff', flexShrink: 0 }}>
+              {deriveInitials(displayName)}
             </div>
-            <button
-              type="button"
-              onClick={handleLogout}
-              title="Log out"
-              className="shrink-0 h-7 w-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-            >
-              <LogOut className="h-3.5 w-3.5" />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12.5, color: '#ededed',
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {displayName}
+              </div>
+              <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5, color: '#5a5a60' }}>
+                {displayUser.credits} cr.
+              </div>
+            </div>
+            <button onClick={handleLogout}
+              style={{ width: 28, height: 28, borderRadius: 6, border: 'none', background: 'transparent',
+                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: '#5a5a60' }}
+              title="Log out">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+                <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/>
+              </svg>
             </button>
           </div>
         </div>
       )}
+    </aside>
+  );
+}
+
+function LogoMark() {
+  return (
+    <div style={{ width: 22, height: 22, borderRadius: 6, background: '#7c5cff',
+      position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      flexShrink: 0, boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.3), 0 1px 0 rgba(0,0,0,0.3)' }}>
+      <div style={{ position: 'absolute', inset: 5, border: '1.5px solid #fff',
+        borderRight: '1.5px solid transparent', borderBottom: '1.5px solid transparent',
+        borderRadius: 2, transform: 'rotate(45deg)' }} />
     </div>
   );
+}
+
+function NavIcon({ name, active }: { name: string; active: boolean }) {
+  const color = active ? '#7c5cff' : '#8a8a90';
+  const icons: Record<string, React.ReactNode> = {
+    dashboard: (
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6">
+        <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+        <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+      </svg>
+    ),
+    optimize: (
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6">
+        <path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M5.6 18.4l2.8-2.8M15.6 8.4l2.8-2.8"/>
+      </svg>
+    ),
+    analyze: (
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6">
+        <path d="M3 3v18h18"/><path d="M7 14v4M12 10v8M17 6v12"/>
+      </svg>
+    ),
+    versions: (
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6">
+        <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5"/>
+      </svg>
+    ),
+    history: (
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6">
+        <path d="M3 12a9 9 0 109-9 9 9 0 00-6.4 2.6L3 8"/><path d="M3 3v5h5"/><path d="M12 8v4l3 2"/>
+      </svg>
+    ),
+    billing: (
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6">
+        <rect x="2" y="5" width="20" height="14" rx="2"/>
+        <path d="M2 10h20"/>
+      </svg>
+    ),
+  };
+  return <>{icons[name]}</>;
 }
