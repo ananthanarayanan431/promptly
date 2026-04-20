@@ -12,15 +12,15 @@ here as IRRELEVANT.
 """
 
 import asyncio
+import time
 from typing import Any
 
 from langchain_openai import ChatOpenAI
 
 from app.config.llm import get_llm_settings
+from app.core.cache import push_job_progress
 from app.graph.prompts import load_prompt
 from app.graph.state import GraphState
-
-llm_settings = get_llm_settings()
 
 _REJECTION_IRRELEVANT = (
     "Your input doesn't look like an existing prompt to optimize.\n\n"
@@ -43,6 +43,7 @@ def _get_classifier() -> ChatOpenAI:
     loop = asyncio.get_running_loop()
     lid = id(loop)
     if _loop_id != lid or _classifier is None:
+        llm_settings = get_llm_settings()
         _loop_id = lid
         _classifier = ChatOpenAI(
             model=llm_settings.DEFAULT_MODEL,
@@ -73,6 +74,9 @@ async def intent_classifier_node(state: GraphState) -> dict[str, Any]:
 
     verdict = str(response.content).strip().upper()
 
+    if job_id := state.get("job_id"):
+        await push_job_progress(job_id, {"step": "intent", "ts": time.time()})
+
     if verdict == "IRRELEVANT":
         return {
             "intent": "irrelevant",
@@ -80,5 +84,4 @@ async def intent_classifier_node(state: GraphState) -> dict[str, Any]:
             "final_response": _REJECTION_IRRELEVANT,
         }
 
-    # Default to optimize (covers OPTIMIZE and any unexpected model output)
     return {"intent": "optimize"}

@@ -141,11 +141,16 @@ export function Sidebar() {
           promptly
         </Link>
         <Link href="/optimize"
-          style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid #2a2a2e',
-            background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: '#8a8a90', textDecoration: 'none', fontSize: 16, lineHeight: 1 }}
+          style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px',
+            borderRadius: 7, border: '1px solid rgba(124,92,255,0.4)',
+            background: 'rgba(124,92,255,0.1)', color: '#7c5cff', textDecoration: 'none',
+            fontSize: 12, fontWeight: 500, lineHeight: 1,
+            transition: 'background 150ms, border-color 150ms' }}
           title="New chat">
-          +
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+            <path d="M12 5v14M5 12h14"/>
+          </svg>
+          New Chat
         </Link>
       </div>
 

@@ -23,6 +23,7 @@ class ChatService:
         session_id: str,
         feedback: str | None = None,
         title: str | None = None,
+        job_id: str | None = None,
     ) -> dict[str, Any]:
         await self.session_repo.get_or_create(
             session_id=session_id,
@@ -37,6 +38,7 @@ class ChatService:
             "session_id": session_id,
             "user_id": user_id,
             "feedback": feedback,
+            "job_id": job_id,
             "intent": None,
             "council_responses": [],
             "critic_responses": [],
@@ -76,6 +78,7 @@ class ChatService:
             "session_id": session_id,
             "user_id": user_id,
             "feedback": None,
+            "job_id": None,
             "intent": None,
             "council_responses": [],
             "critic_responses": [],

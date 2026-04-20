@@ -120,6 +120,7 @@ def process_chat_async(
                         session_id=session_id,
                         feedback=feedback,
                         title=_fallback_title(raw_prompt),  # initial placeholder
+                        job_id=job_id,
                     )
 
                 # Always commit session + message immediately so they're visible

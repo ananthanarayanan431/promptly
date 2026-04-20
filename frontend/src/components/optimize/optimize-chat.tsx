@@ -6,7 +6,7 @@ import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { PanelRight, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useJobPoller } from '@/hooks/use-job-poller';
+import { useJobStream } from '@/hooks/use-job-stream';
 import { api } from '@/lib/api';
 import { formatApiErrorDetail } from '@/lib/api-errors';
 import { cn } from '@/lib/utils';
@@ -179,6 +179,18 @@ export function OptimizeChat() {
   // (the session doesn't exist in the DB yet when the URL is first updated)
   const localSessions = useRef(new Set<string>());
 
+  // Reset to empty state when navigating to /optimize with no session (New Chat)
+  useEffect(() => {
+    if (urlSession) return;
+    setTurns([]);
+    setSessionId(null);
+    setActiveJobId(null);
+    setSelectedTurnId(null);
+    setDesktopPanelDismissed(false);
+    setMobilePanelOpen(false);
+    setVersionPromptId(null);
+  }, [urlSession]);
+
   // Load session history when URL has ?session= (sidebar navigation only)
   useEffect(() => {
     if (!urlSession) return;
@@ -245,16 +257,16 @@ export function OptimizeChat() {
       .finally(() => setIsLoadingSession(false));
   }, [urlSession]);
 
-  // Poll active job
-  const { data: jobData } = useJobPoller(activeJobId);
+  // Stream active job
+  const { status: streamStatus, result: streamResult, error: streamError, progress: streamProgress } =
+    useJobStream(activeJobId);
 
   useEffect(() => {
-    if (!jobData) return;
-
-    if (jobData.status === 'completed' && jobData.result) {
+    if (streamStatus === 'completed' && streamResult && activeJobId) {
       const completedJobId = activeJobId;
-      const completedResult = jobData.result;
+      const completedResult = streamResult;
       const completedTempId = turnsRef.current.find((t) => t.jobId === completedJobId)?.tempId;
+
       setTurns((prev) =>
         prev.map((t) =>
           t.jobId === completedJobId ? { ...t, status: 'completed', result: completedResult } : t
@@ -269,30 +281,32 @@ export function OptimizeChat() {
       if (sessionId) sessionStorage.removeItem(`pending_job_${sessionId}`);
       queryClient.invalidateQueries({ queryKey: ['user', 'me'] });
       queryClient.invalidateQueries({ queryKey: ['sessions'] });
+      queryClient.invalidateQueries({ queryKey: ['recent-sessions'] });
 
-      // Auto-version: on first result in a session, create the version family silently
       if (!versionPromptId && !completedResult.prompt_id) {
-        api.post<{ data: { prompt_id: string; name: string; version: number } }>(
-          '/api/v1/chat/save-version',
-          {
-            original_prompt: completedResult.original_prompt,
-            optimized_prompt: completedResult.optimized_prompt,
-          }
-        ).then((res) => {
-          const { prompt_id, version } = res.data.data;
-          setVersionPromptId(prompt_id);
-          // Patch the version metadata onto the completed turn
-          setTurns((prev) =>
-            prev.map((t) =>
-              t.jobId === completedJobId && t.result
-                ? { ...t, result: { ...t.result, prompt_id, version } }
-                : t
-            )
-          );
-        }).catch(() => {}); // silent — versioning failure shouldn't block the UX
+        api
+          .post<{ data: { prompt_id: string; name: string; version: number } }>(
+            '/api/v1/chat/save-version',
+            {
+              original_prompt: completedResult.original_prompt,
+              optimized_prompt: completedResult.optimized_prompt,
+            }
+          )
+          .then((res) => {
+            const { prompt_id, version } = res.data.data;
+            setVersionPromptId(prompt_id);
+            setTurns((prev) =>
+              prev.map((t) =>
+                t.jobId === completedJobId && t.result
+                  ? { ...t, result: { ...t.result, prompt_id, version } }
+                  : t
+              )
+            );
+          })
+          .catch(() => {});
       }
-    } else if (jobData.status === 'failed') {
-      const errMsg = formatApiErrorDetail(jobData.error, 'Optimization failed');
+    } else if (streamStatus === 'failed' && activeJobId) {
+      const errMsg = formatApiErrorDetail(streamError ?? undefined, 'Optimization failed');
       setTurns((prev) =>
         prev.map((t) =>
           t.jobId === activeJobId ? { ...t, status: 'failed', error: errMsg } : t
@@ -301,7 +315,8 @@ export function OptimizeChat() {
       setActiveJobId(null);
       if (sessionId) sessionStorage.removeItem(`pending_job_${sessionId}`);
     }
-  }, [jobData, activeJobId, queryClient]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [streamStatus, streamResult, streamError]);
 
   // Auto-scroll on new turns or status changes
   useEffect(() => {
@@ -365,6 +380,14 @@ export function OptimizeChat() {
     }
   };
 
+  const handleRetry = (tempId: string) => {
+    const turn = turnsRef.current.find((t) => t.tempId === tempId);
+    if (!turn) return;
+    // Remove the failed turn then resubmit its original text
+    setTurns((prev) => prev.filter((t) => t.tempId !== tempId));
+    void handleSubmit(turn.userText);
+  };
+
   const isAnyLoading = turns.some((t) => t.status === 'loading');
   const hasMessages = turns.length > 0;
 
@@ -398,18 +421,36 @@ export function OptimizeChat() {
           panelVisible && isDesktop ? 'lg:w-1/2 lg:shrink-0' : 'flex-1'
         )}
       >
-        {hasMessages && canShowPanel && isDesktop && desktopPanelDismissed && (
-          <div className="shrink-0 flex justify-end px-4 pt-3 pb-2 border-b border-border/50 bg-background/95 backdrop-blur-sm">
-            <Button
+        {hasMessages && (
+          <div className="shrink-0 flex justify-between items-center px-4 pt-3 pb-2 border-b border-border/50 bg-background/95 backdrop-blur-sm">
+            <button
               type="button"
-              variant="outline"
-              size="sm"
-              className="gap-2"
-              onClick={() => setDesktopPanelDismissed(false)}
+              onClick={() => router.push('/optimize')}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px',
+                borderRadius: 7, fontSize: 12, fontWeight: 500, cursor: 'pointer',
+                border: '1px solid rgba(124,92,255,0.4)', background: 'rgba(124,92,255,0.1)',
+                color: '#7c5cff', fontFamily: 'inherit',
+                transition: 'background 150ms, border-color 150ms' }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(124,92,255,0.18)'; e.currentTarget.style.borderColor = 'rgba(124,92,255,0.6)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(124,92,255,0.1)'; e.currentTarget.style.borderColor = 'rgba(124,92,255,0.4)'; }}
             >
-              <PanelRight className="h-4 w-4" />
-              View result
-            </Button>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 5v14M5 12h14"/>
+              </svg>
+              New Chat
+            </button>
+            {canShowPanel && isDesktop && desktopPanelDismissed && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={() => setDesktopPanelDismissed(false)}
+              >
+                <PanelRight className="h-4 w-4" />
+                View result
+              </Button>
+            )}
           </div>
         )}
       <div className="flex-1 overflow-y-auto min-h-0">
@@ -506,6 +547,8 @@ export function OptimizeChat() {
                 turn={turn}
                 isTurnSelected={turn.tempId === selectedTurnId}
                 onSelectTurn={() => handleSelectTurn(turn.tempId)}
+                progress={turn.jobId === activeJobId ? streamProgress : undefined}
+                onRetry={turn.status === 'failed' ? () => handleRetry(turn.tempId) : undefined}
               />
             ))}
             <div ref={messagesEndRef} />

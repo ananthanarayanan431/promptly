@@ -21,16 +21,22 @@ from app.repositories.prompt_version_repo import PromptVersionRepository
 
 logger = logging.getLogger(__name__)
 
-llm_settings = get_llm_settings()
-
 _health_score_prompt = load_prompt("prompt_health_score")
 _advisory_prompt = load_prompt("prompt_advisory")
 
-_analyser = ChatOpenAI(
-    model=llm_settings.DEFAULT_MODEL,
-    openai_api_base="https://openrouter.ai/api/v1",
-    openai_api_key=llm_settings.OPENROUTER_API_KEY.get_secret_value(),
-)
+_analyser: ChatOpenAI | None = None
+
+
+def _get_analyser() -> ChatOpenAI:
+    global _analyser
+    if _analyser is None:
+        llm_settings = get_llm_settings()
+        _analyser = ChatOpenAI(
+            model=llm_settings.DEFAULT_MODEL,
+            openai_api_base="https://openrouter.ai/api/v1",
+            openai_api_key=llm_settings.OPENROUTER_API_KEY.get_secret_value(),
+        )
+    return _analyser
 
 
 def _get_text_content(content: str | list | None) -> str:  # type: ignore[type-arg]
@@ -97,6 +103,7 @@ class PromptService:
             "session_id": "",
             "user_id": user_id,
             "feedback": None,
+            "job_id": None,
             "intent": None,
             "council_responses": [],
             "critic_responses": [],
@@ -123,7 +130,7 @@ class PromptService:
         await self._run_guardrails(prompt, user_id)
 
         try:
-            response = await _analyser.ainvoke(
+            response = await _get_analyser().ainvoke(
                 [
                     {"role": "system", "content": _health_score_prompt},
                     {
@@ -167,7 +174,7 @@ class PromptService:
         await self._run_guardrails(prompt, user_id)
 
         try:
-            response = await _analyser.ainvoke(
+            response = await _get_analyser().ainvoke(
                 [
                     {"role": "system", "content": _advisory_prompt},
                     {
@@ -245,6 +252,7 @@ class PromptVersioningService:
             "session_id": "",
             "user_id": user_id,
             "feedback": None,
+            "job_id": None,
             "intent": None,
             "council_responses": [],
             "critic_responses": [],
@@ -300,6 +308,7 @@ class PromptVersioningService:
             "session_id": thread_id,
             "user_id": user_id,
             "feedback": feedback,
+            "job_id": None,
             "intent": None,
             "council_responses": [],
             "critic_responses": [],

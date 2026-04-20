@@ -1,8 +1,12 @@
+import asyncio
+import json
 import uuid
+from collections.abc import AsyncGenerator
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,7 +18,14 @@ from app.api.v1.exceptions.chat import (
     SessionNotFoundException,
     VersionedPromptNotFoundException,
 )
-from app.core.cache import get_job_result, get_job_status, set_job_status
+from app.core.cache import (
+    get_job_owner,
+    get_job_progress_from,
+    get_job_result,
+    get_job_status,
+    set_job_owner,
+    set_job_status,
+)
 from app.dependencies import get_current_user, get_db
 from app.models.message import Message
 from app.models.session import ChatSession
@@ -101,6 +112,7 @@ async def create_chat(
     session_id = str(request.session_id) if request.session_id else str(uuid.uuid4())
 
     await set_job_status(job_id, "queued")
+    await set_job_owner(job_id, str(current_user.id))
 
     process_chat_async.apply_async(
         kwargs={
@@ -160,6 +172,71 @@ async def poll_chat_job(
 
     return SuccessResponse(
         data=JobPollResponse(job_id=job_id, status=status, result=result, error=error)
+    )
+
+
+@router.get(
+    "/jobs/{job_id}/stream",
+    response_class=StreamingResponse,
+)
+async def stream_job_progress(
+    job_id: str,
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> StreamingResponse:
+    """
+    SSE stream of real-time pipeline progress events.
+
+    Streams JSON events as ``data: {...}\\n\\n`` until the job completes or fails.
+    The terminal ``completed`` event embeds the full result so no second fetch is needed.
+    Poll interval on the server side: 250 ms.
+    """
+    owner = await get_job_owner(job_id)
+    if owner is None or owner != str(current_user.id):
+        raise JobNotFoundException()
+
+    async def generate() -> AsyncGenerator[str, None]:
+        # 120 s ceiling prevents open connections if the worker crashes mid-job
+        deadline = asyncio.get_event_loop().time() + 120
+        last_idx = 0
+        while asyncio.get_event_loop().time() < deadline:
+            events = await get_job_progress_from(job_id, last_idx)
+            for ev in events:
+                yield f"data: {json.dumps(ev)}\n\n"
+                last_idx += 1
+
+            status = await get_job_status(job_id)
+
+            if status == "completed":
+                # Drain any events written between last poll and the status check
+                events = await get_job_progress_from(job_id, last_idx)
+                for ev in events:
+                    yield f"data: {json.dumps(ev)}\n\n"
+                result_raw = await get_job_result(job_id)
+                if result_raw is None:
+                    ev_str = json.dumps({"step": "failed", "error": "Result unavailable"})
+                    yield f"data: {ev_str}\n\n"
+                    return
+                yield f"data: {json.dumps({'step': 'completed', 'result': result_raw})}\n\n"
+                return
+
+            if status == "failed":
+                result_raw = await get_job_result(job_id)
+                error = (result_raw or {}).get("error", "Unknown error")
+                yield f"data: {json.dumps({'step': 'failed', 'error': error})}\n\n"
+                return
+
+            if status is None:
+                yield f"data: {json.dumps({'step': 'failed', 'error': 'Job not found'})}\n\n"
+                return
+
+            await asyncio.sleep(0.25)
+
+        yield f"data: {json.dumps({'step': 'failed', 'error': 'Stream timeout'})}\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 
@@ -323,39 +400,6 @@ async def list_sessions(
 
 
 @router.get(
-    "/sessions/{session_id}",
-    response_model=SuccessResponse[SessionDetailResponse],
-)
-async def get_session(
-    session_id: str,
-    db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
-) -> SuccessResponse[SessionDetailResponse]:
-    """Return a specific session with all its messages (chronological order)."""
-    try:
-        sid = uuid.UUID(session_id)
-    except ValueError as exc:
-        raise InvalidSessionIDException() from exc
-
-    session_repo = SessionRepository(db)
-    session = await session_repo.get_by_id(sid)
-    if session is None or session.user_id != current_user.id:
-        raise SessionNotFoundException()
-
-    msg_repo = MessageRepository(db)
-    messages = await msg_repo.get_by_session(sid, limit=50)
-
-    return SuccessResponse(
-        data=SessionDetailResponse(
-            id=session.id,
-            title=session.title,
-            messages=[MessageOut.model_validate(m) for m in messages],
-            created_at=session.created_at,
-        )
-    )
-
-
-@router.get(
     "/sessions/recent",
     response_model=SuccessResponse[RecentSessionsResponse],
 )
@@ -418,3 +462,36 @@ async def get_recent_sessions(
         for row in rows
     ]
     return SuccessResponse(data=RecentSessionsResponse(sessions=sessions))
+
+
+@router.get(
+    "/sessions/{session_id}",
+    response_model=SuccessResponse[SessionDetailResponse],
+)
+async def get_session(
+    session_id: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> SuccessResponse[SessionDetailResponse]:
+    """Return a specific session with all its messages (chronological order)."""
+    try:
+        sid = uuid.UUID(session_id)
+    except ValueError as exc:
+        raise InvalidSessionIDException() from exc
+
+    session_repo = SessionRepository(db)
+    session = await session_repo.get_by_id(sid)
+    if session is None or session.user_id != current_user.id:
+        raise SessionNotFoundException()
+
+    msg_repo = MessageRepository(db)
+    messages = await msg_repo.get_by_session(sid, limit=50)
+
+    return SuccessResponse(
+        data=SessionDetailResponse(
+            id=session.id,
+            title=session.title,
+            messages=[MessageOut.model_validate(m) for m in messages],
+            created_at=session.created_at,
+        )
+    )

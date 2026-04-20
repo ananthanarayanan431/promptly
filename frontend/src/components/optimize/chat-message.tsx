@@ -4,7 +4,8 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { LoadingWords } from './loading-words';
 import { formatApiErrorDetail } from '@/lib/api-errors';
-import type { ChatTurn } from '@/types/api';
+import type { ChatTurn, JobProgressEvent } from '@/types/api';
+import { JobProgress } from './job-progress';
 
 function UserBubble({ text, isFeedback }: { text: string; isFeedback: boolean }) {
   return (
@@ -32,9 +33,11 @@ interface AssistantResultProps {
   turn: ChatTurn;
   isTurnSelected: boolean;
   onSelectTurn: () => void;
+  progress?: JobProgressEvent[];
+  onRetry?: () => void;
 }
 
-function AssistantResult({ turn, isTurnSelected, onSelectTurn }: AssistantResultProps) {
+function AssistantResult({ turn, isTurnSelected, onSelectTurn, progress, onRetry }: AssistantResultProps) {
   const [copied, setCopied] = useState(false);
 
   if (turn.status === 'loading') {
@@ -43,7 +46,11 @@ function AssistantResult({ turn, isTurnSelected, onSelectTurn }: AssistantResult
         <PromptlyIcon />
         <div style={{ flex: 1, background: '#1a1a1a', borderRadius: '4px 14px 14px 14px',
           border: '1px solid #1f1f23', padding: '14px 16px' }}>
-          <LoadingWords />
+          {progress && progress.length > 0 ? (
+            <JobProgress progress={progress} />
+          ) : (
+            <LoadingWords />
+          )}
         </div>
       </div>
     );
@@ -53,21 +60,41 @@ function AssistantResult({ turn, isTurnSelected, onSelectTurn }: AssistantResult
     return (
       <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
         <PromptlyIcon />
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8,
-          borderRadius: '4px 14px 14px 14px', border: '1px solid rgba(255,107,122,0.3)',
-          background: 'rgba(255,107,122,0.06)', padding: '12px 16px' }}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#ff6b7a" strokeWidth="1.7"
-            style={{ flexShrink: 0, marginTop: 1 }}>
-            <circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>
-          </svg>
-          <div>
-            <p style={{ fontSize: 13, fontWeight: 500, color: '#ff6b7a', marginBottom: 3 }}>
-              Optimization failed
-            </p>
-            <p style={{ fontSize: 12, color: '#8a8a90', fontFamily: 'var(--font-geist-mono, monospace)' }}>
-              {formatApiErrorDetail(turn.error, 'Something went wrong. Please try again.')}
-            </p>
+        <div style={{ borderRadius: '4px 14px 14px 14px', border: '1px solid rgba(255,107,122,0.3)',
+          background: 'rgba(255,107,122,0.06)', padding: '12px 16px', minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#ff6b7a" strokeWidth="1.7"
+              style={{ flexShrink: 0, marginTop: 1 }}>
+              <circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>
+            </svg>
+            <div>
+              <p style={{ fontSize: 13, fontWeight: 500, color: '#ff6b7a', marginBottom: 3 }}>
+                Optimization failed
+              </p>
+              <p style={{ fontSize: 12, color: '#8a8a90', fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                {formatApiErrorDetail(turn.error, 'Something went wrong. Please try again.')}
+              </p>
+            </div>
           </div>
+          {onRetry && (
+            <button
+              type="button"
+              onClick={onRetry}
+              style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 5,
+                padding: '5px 12px', borderRadius: 7, fontSize: 12, fontWeight: 500,
+                border: '1px solid rgba(255,107,122,0.35)', background: 'rgba(255,107,122,0.08)',
+                color: '#ff6b7a', cursor: 'pointer', fontFamily: 'inherit',
+                transition: 'background 150ms, border-color 150ms' }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,107,122,0.15)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,107,122,0.08)'; }}
+            >
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                <path d="M3 3v5h5"/>
+              </svg>
+              Try again
+            </button>
+          )}
         </div>
       </div>
     );
@@ -208,13 +235,21 @@ interface ChatMessageProps {
   turn: ChatTurn;
   isTurnSelected: boolean;
   onSelectTurn: () => void;
+  progress?: JobProgressEvent[];
+  onRetry?: () => void;
 }
 
-export function ChatMessage({ turn, isTurnSelected, onSelectTurn }: ChatMessageProps) {
+export function ChatMessage({ turn, isTurnSelected, onSelectTurn, progress, onRetry }: ChatMessageProps) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <UserBubble text={turn.userText} isFeedback={turn.isFeedback} />
-      <AssistantResult turn={turn} isTurnSelected={isTurnSelected} onSelectTurn={onSelectTurn} />
+      <AssistantResult
+        turn={turn}
+        isTurnSelected={isTurnSelected}
+        onSelectTurn={onSelectTurn}
+        progress={progress}
+        onRetry={onRetry}
+      />
     </div>
   );
 }

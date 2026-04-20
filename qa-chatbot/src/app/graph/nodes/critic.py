@@ -10,15 +10,15 @@ All 4 critiques run in parallel. Each returns a ranking + per-proposal critique 
 
 import asyncio
 import json
+import time
 from typing import Any
 
 from langchain_openai import ChatOpenAI
 
 from app.config.llm import get_llm_settings
+from app.core.cache import push_job_progress
 from app.graph.prompts import load_prompt
 from app.graph.state import GraphState
-
-llm_settings = get_llm_settings()
 
 _CRITIC_PROMPT = load_prompt("critic")
 
@@ -27,6 +27,7 @@ _critic_models: list[ChatOpenAI] | None = None
 
 
 def _build_critic_models() -> list[ChatOpenAI]:
+    llm_settings = get_llm_settings()
     return [
         ChatOpenAI(
             model=m,
@@ -96,6 +97,8 @@ async def critic_node(state: GraphState) -> dict[str, Any]:
 
     if len(proposals) < 2:
         # Not enough proposals to critique — skip this round
+        if job_id := state.get("job_id"):
+            await push_job_progress(job_id, {"step": "critic", "ts": time.time()})
         return {"critic_responses": []}
 
     async def critique(model: ChatOpenAI, reviewer_idx: int) -> dict[str, Any]:
@@ -108,7 +111,7 @@ async def critic_node(state: GraphState) -> dict[str, Any]:
         )
         parsed = _parse_critique(str(response.content))
         return {
-            "reviewer_model": llm_settings.COUNCIL_MODELS[reviewer_idx],
+            "reviewer_model": model.model_name,
             **parsed,
         }
 
@@ -118,4 +121,8 @@ async def critic_node(state: GraphState) -> dict[str, Any]:
     )
 
     valid = [r for r in results if isinstance(r, dict)]
+
+    if job_id := state.get("job_id"):
+        await push_job_progress(job_id, {"step": "critic", "ts": time.time()})
+
     return {"critic_responses": valid}
