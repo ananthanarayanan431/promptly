@@ -18,7 +18,14 @@ from app.api.v1.exceptions.chat import (
     SessionNotFoundException,
     VersionedPromptNotFoundException,
 )
-from app.core.cache import get_job_progress_from, get_job_result, get_job_status, set_job_status
+from app.core.cache import (
+    get_job_owner,
+    get_job_progress_from,
+    get_job_result,
+    get_job_status,
+    set_job_owner,
+    set_job_status,
+)
 from app.dependencies import get_current_user, get_db
 from app.models.message import Message
 from app.models.session import ChatSession
@@ -105,6 +112,7 @@ async def create_chat(
     session_id = str(request.session_id) if request.session_id else str(uuid.uuid4())
 
     await set_job_status(job_id, "queued")
+    await set_job_owner(job_id, str(current_user.id))
 
     process_chat_async.apply_async(
         kwargs={
@@ -182,6 +190,9 @@ async def stream_job_progress(
     The terminal ``completed`` event embeds the full result so no second fetch is needed.
     Poll interval on the server side: 250 ms.
     """
+    owner = await get_job_owner(job_id)
+    if owner is None or owner != str(current_user.id):
+        raise JobNotFoundException()
 
     async def generate() -> AsyncGenerator[str, None]:
         # 120 s ceiling prevents open connections if the worker crashes mid-job

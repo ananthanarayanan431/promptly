@@ -17,8 +17,6 @@ from app.core.cache import push_job_progress
 from app.graph.prompts import load_prompt
 from app.graph.state import GraphState
 
-llm_settings = get_llm_settings()
-
 _loop_id: int | None = None
 _synthesizer: ChatOpenAI | None = None
 
@@ -31,6 +29,7 @@ def _get_synthesizer() -> ChatOpenAI:
     loop = asyncio.get_running_loop()
     lid = id(loop)
     if _loop_id != lid or _synthesizer is None:
+        llm_settings = get_llm_settings()
         _loop_id = lid
         _synthesizer = ChatOpenAI(
             model=llm_settings.DEFAULT_MODEL,

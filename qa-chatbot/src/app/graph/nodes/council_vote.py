@@ -25,8 +25,6 @@ from app.graph.state import GraphState
 
 logger = logging.getLogger(__name__)
 
-llm_settings = get_llm_settings()
-
 # Load all 4 strategy prompts at module startup (file I/O once)
 _STRATEGY_PROMPTS: list[str] = [
     load_prompt("council_optimizer_analytical"),  # 0 — analytical
@@ -44,6 +42,7 @@ def _get_strategy(idx: int) -> str:
 
 
 def _build_models() -> list[ChatOpenAI]:
+    llm_settings = get_llm_settings()
     return [
         ChatOpenAI(
             model=m,
@@ -110,7 +109,7 @@ async def council_vote_node(state: GraphState) -> dict[str, Any]:
             ]
         )
         result: dict[str, Any] = {
-            "model": llm_settings.COUNCIL_MODELS[idx],
+            "model": _get_council_models()[idx].model_name,
             "optimized_prompt": str(response.content).strip(),
             "usage": getattr(response, "usage_metadata", {}) or {},
         }
@@ -134,8 +133,8 @@ async def council_vote_node(state: GraphState) -> dict[str, Any]:
             valid.append(r)
         else:
             logger.error(
-                "Council model %s failed: %s: %s",
-                llm_settings.COUNCIL_MODELS[i],
+                "Council model %d failed: %s: %s",
+                i,
                 type(r).__name__,
                 r,
             )

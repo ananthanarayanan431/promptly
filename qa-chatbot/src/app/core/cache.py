@@ -61,6 +61,21 @@ async def set_job_status(job_id: str, status: str, ttl: int | None = None) -> No
     )
 
 
+async def set_job_owner(job_id: str, user_id: str, ttl: int | None = None) -> None:
+    redis = await get_redis_client()
+    await redis.set(
+        f"{_job_key(job_id)}:owner",
+        user_id,
+        ex=ttl or redis_settings.REDIS_TTL_SECONDS,
+    )
+
+
+async def get_job_owner(job_id: str) -> str | None:
+    redis = await get_redis_client()
+    result: str | None = await redis.get(f"{_job_key(job_id)}:owner")
+    return result
+
+
 async def get_job_result(job_id: str) -> dict[str, Any] | None:
     redis = await get_redis_client()
     raw = await redis.get(_job_key(job_id))
