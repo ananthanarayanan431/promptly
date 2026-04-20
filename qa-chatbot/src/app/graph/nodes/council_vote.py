@@ -13,11 +13,13 @@ This diversity of angles gives the critic round and the chairman meaningful vari
 
 import asyncio
 import logging
+import time
 from typing import Any
 
 from langchain_openai import ChatOpenAI
 
 from app.config.llm import get_llm_settings
+from app.core.cache import push_job_progress
 from app.graph.prompts import load_prompt
 from app.graph.state import GraphState
 
@@ -85,13 +87,19 @@ async def council_vote_node(state: GraphState) -> dict[str, Any]:
     LangGraph node — Round 1.
 
     Sends the raw prompt to all 4 council models in parallel. Each model independently
-    produces its own optimized version using a different strategy.
+    produces its own optimized version using a different strategy. Emits a progress
+    event to Redis after each individual model completes.
 
     Returns:
         {"council_responses": [{model, optimized_prompt, usage}, ...]}
     """
     raw_prompt = state["raw_prompt"]
     feedback = state.get("feedback")
+    job_id = state.get("job_id")
+    models = _get_council_models()
+    total = len(models)
+    done_count = [0]
+    lock = asyncio.Lock()
 
     async def optimize(model: ChatOpenAI, idx: int) -> dict[str, Any]:
         system = _get_strategy(idx)
@@ -101,14 +109,22 @@ async def council_vote_node(state: GraphState) -> dict[str, Any]:
                 {"role": "user", "content": _build_user_message(raw_prompt, feedback)},
             ]
         )
-        return {
+        result: dict[str, Any] = {
             "model": llm_settings.COUNCIL_MODELS[idx],
             "optimized_prompt": str(response.content).strip(),
             "usage": getattr(response, "usage_metadata", {}) or {},
         }
+        if job_id:
+            async with lock:
+                done_count[0] += 1
+                n = done_count[0]
+            await push_job_progress(
+                job_id, {"step": "council", "done": n, "total": total, "ts": time.time()}
+            )
+        return result
 
     results = await asyncio.gather(
-        *[optimize(m, i) for i, m in enumerate(_get_council_models())],
+        *[optimize(m, i) for i, m in enumerate(models)],
         return_exceptions=True,
     )
 
