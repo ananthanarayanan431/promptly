@@ -98,6 +98,8 @@ async def critic_node(state: GraphState) -> dict[str, Any]:
 
     if len(proposals) < 2:
         # Not enough proposals to critique — skip this round
+        if job_id := state.get("job_id"):
+            await push_job_progress(job_id, {"step": "critic", "ts": time.time()})
         return {"critic_responses": []}
 
     async def critique(model: ChatOpenAI, reviewer_idx: int) -> dict[str, Any]:

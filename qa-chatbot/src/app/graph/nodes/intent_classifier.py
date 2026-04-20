@@ -75,6 +75,9 @@ async def intent_classifier_node(state: GraphState) -> dict[str, Any]:
 
     verdict = str(response.content).strip().upper()
 
+    if job_id := state.get("job_id"):
+        await push_job_progress(job_id, {"step": "intent", "ts": time.time()})
+
     if verdict == "IRRELEVANT":
         return {
             "intent": "irrelevant",
@@ -82,10 +85,4 @@ async def intent_classifier_node(state: GraphState) -> dict[str, Any]:
             "final_response": _REJECTION_IRRELEVANT,
         }
 
-    # Default to optimize (covers OPTIMIZE and any unexpected model output)
-    result: dict[str, Any] = {"intent": "optimize"}
-
-    if job_id := state.get("job_id"):
-        await push_job_progress(job_id, {"step": "intent", "ts": time.time()})
-
-    return result
+    return {"intent": "optimize"}
