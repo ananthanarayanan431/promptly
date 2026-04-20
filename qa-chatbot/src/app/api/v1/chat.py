@@ -184,8 +184,10 @@ async def stream_job_progress(
     """
 
     async def generate() -> AsyncGenerator[str, None]:
+        # 120 s ceiling prevents open connections if the worker crashes mid-job
+        deadline = asyncio.get_event_loop().time() + 120
         last_idx = 0
-        while True:
+        while asyncio.get_event_loop().time() < deadline:
             events = await get_job_progress_from(job_id, last_idx)
             for ev in events:
                 yield f"data: {json.dumps(ev)}\n\n"
@@ -194,10 +196,15 @@ async def stream_job_progress(
             status = await get_job_status(job_id)
 
             if status == "completed":
+                # Drain any events written between last poll and the status check
                 events = await get_job_progress_from(job_id, last_idx)
                 for ev in events:
                     yield f"data: {json.dumps(ev)}\n\n"
                 result_raw = await get_job_result(job_id)
+                if result_raw is None:
+                    ev_str = json.dumps({"step": "failed", "error": "Result unavailable"})
+                    yield f"data: {ev_str}\n\n"
+                    return
                 yield f"data: {json.dumps({'step': 'completed', 'result': result_raw})}\n\n"
                 return
 
@@ -212,6 +219,8 @@ async def stream_job_progress(
                 return
 
             await asyncio.sleep(0.25)
+
+        yield f"data: {json.dumps({'step': 'failed', 'error': 'Stream timeout'})}\n\n"
 
     return StreamingResponse(
         generate(),
