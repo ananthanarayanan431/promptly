@@ -4,7 +4,8 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { LoadingWords } from './loading-words';
 import { formatApiErrorDetail } from '@/lib/api-errors';
-import type { ChatTurn } from '@/types/api';
+import type { ChatTurn, JobProgressEvent } from '@/types/api';
+import { JobProgress } from './job-progress';
 
 function UserBubble({ text, isFeedback }: { text: string; isFeedback: boolean }) {
   return (
@@ -32,9 +33,10 @@ interface AssistantResultProps {
   turn: ChatTurn;
   isTurnSelected: boolean;
   onSelectTurn: () => void;
+  progress?: JobProgressEvent[];
 }
 
-function AssistantResult({ turn, isTurnSelected, onSelectTurn }: AssistantResultProps) {
+function AssistantResult({ turn, isTurnSelected, onSelectTurn, progress }: AssistantResultProps) {
   const [copied, setCopied] = useState(false);
 
   if (turn.status === 'loading') {
@@ -43,7 +45,11 @@ function AssistantResult({ turn, isTurnSelected, onSelectTurn }: AssistantResult
         <PromptlyIcon />
         <div style={{ flex: 1, background: '#1a1a1a', borderRadius: '4px 14px 14px 14px',
           border: '1px solid #1f1f23', padding: '14px 16px' }}>
-          <LoadingWords />
+          {progress && progress.length > 0 ? (
+            <JobProgress progress={progress} />
+          ) : (
+            <LoadingWords />
+          )}
         </div>
       </div>
     );
@@ -208,13 +214,14 @@ interface ChatMessageProps {
   turn: ChatTurn;
   isTurnSelected: boolean;
   onSelectTurn: () => void;
+  progress?: JobProgressEvent[];
 }
 
-export function ChatMessage({ turn, isTurnSelected, onSelectTurn }: ChatMessageProps) {
+export function ChatMessage({ turn, isTurnSelected, onSelectTurn, progress }: ChatMessageProps) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <UserBubble text={turn.userText} isFeedback={turn.isFeedback} />
-      <AssistantResult turn={turn} isTurnSelected={isTurnSelected} onSelectTurn={onSelectTurn} />
+      <AssistantResult turn={turn} isTurnSelected={isTurnSelected} onSelectTurn={onSelectTurn} progress={progress} />
     </div>
   );
 }

@@ -6,7 +6,7 @@ import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { PanelRight, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useJobPoller } from '@/hooks/use-job-poller';
+import { useJobStream } from '@/hooks/use-job-stream';
 import { api } from '@/lib/api';
 import { formatApiErrorDetail } from '@/lib/api-errors';
 import { cn } from '@/lib/utils';
@@ -245,16 +245,16 @@ export function OptimizeChat() {
       .finally(() => setIsLoadingSession(false));
   }, [urlSession]);
 
-  // Poll active job
-  const { data: jobData } = useJobPoller(activeJobId);
+  // Stream active job
+  const { status: streamStatus, result: streamResult, error: streamError, progress: streamProgress } =
+    useJobStream(activeJobId);
 
   useEffect(() => {
-    if (!jobData) return;
-
-    if (jobData.status === 'completed' && jobData.result) {
+    if (streamStatus === 'completed' && streamResult && activeJobId) {
       const completedJobId = activeJobId;
-      const completedResult = jobData.result;
+      const completedResult = streamResult;
       const completedTempId = turnsRef.current.find((t) => t.jobId === completedJobId)?.tempId;
+
       setTurns((prev) =>
         prev.map((t) =>
           t.jobId === completedJobId ? { ...t, status: 'completed', result: completedResult } : t
@@ -269,30 +269,32 @@ export function OptimizeChat() {
       if (sessionId) sessionStorage.removeItem(`pending_job_${sessionId}`);
       queryClient.invalidateQueries({ queryKey: ['user', 'me'] });
       queryClient.invalidateQueries({ queryKey: ['sessions'] });
+      queryClient.invalidateQueries({ queryKey: ['recent-sessions'] });
 
-      // Auto-version: on first result in a session, create the version family silently
       if (!versionPromptId && !completedResult.prompt_id) {
-        api.post<{ data: { prompt_id: string; name: string; version: number } }>(
-          '/api/v1/chat/save-version',
-          {
-            original_prompt: completedResult.original_prompt,
-            optimized_prompt: completedResult.optimized_prompt,
-          }
-        ).then((res) => {
-          const { prompt_id, version } = res.data.data;
-          setVersionPromptId(prompt_id);
-          // Patch the version metadata onto the completed turn
-          setTurns((prev) =>
-            prev.map((t) =>
-              t.jobId === completedJobId && t.result
-                ? { ...t, result: { ...t.result, prompt_id, version } }
-                : t
-            )
-          );
-        }).catch(() => {}); // silent — versioning failure shouldn't block the UX
+        api
+          .post<{ data: { prompt_id: string; name: string; version: number } }>(
+            '/api/v1/chat/save-version',
+            {
+              original_prompt: completedResult.original_prompt,
+              optimized_prompt: completedResult.optimized_prompt,
+            }
+          )
+          .then((res) => {
+            const { prompt_id, version } = res.data.data;
+            setVersionPromptId(prompt_id);
+            setTurns((prev) =>
+              prev.map((t) =>
+                t.jobId === completedJobId && t.result
+                  ? { ...t, result: { ...t.result, prompt_id, version } }
+                  : t
+              )
+            );
+          })
+          .catch(() => {});
       }
-    } else if (jobData.status === 'failed') {
-      const errMsg = formatApiErrorDetail(jobData.error, 'Optimization failed');
+    } else if (streamStatus === 'failed' && activeJobId) {
+      const errMsg = formatApiErrorDetail(streamError ?? undefined, 'Optimization failed');
       setTurns((prev) =>
         prev.map((t) =>
           t.jobId === activeJobId ? { ...t, status: 'failed', error: errMsg } : t
@@ -301,7 +303,8 @@ export function OptimizeChat() {
       setActiveJobId(null);
       if (sessionId) sessionStorage.removeItem(`pending_job_${sessionId}`);
     }
-  }, [jobData, activeJobId, queryClient]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [streamStatus, streamResult, streamError]);
 
   // Auto-scroll on new turns or status changes
   useEffect(() => {
@@ -506,6 +509,7 @@ export function OptimizeChat() {
                 turn={turn}
                 isTurnSelected={turn.tempId === selectedTurnId}
                 onSelectTurn={() => handleSelectTurn(turn.tempId)}
+                progress={turn.jobId === activeJobId ? streamProgress : undefined}
               />
             ))}
             <div ref={messagesEndRef} />
