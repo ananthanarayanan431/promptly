@@ -179,6 +179,18 @@ export function OptimizeChat() {
   // (the session doesn't exist in the DB yet when the URL is first updated)
   const localSessions = useRef(new Set<string>());
 
+  // Reset to empty state when navigating to /optimize with no session (New Chat)
+  useEffect(() => {
+    if (urlSession) return;
+    setTurns([]);
+    setSessionId(null);
+    setActiveJobId(null);
+    setSelectedTurnId(null);
+    setDesktopPanelDismissed(false);
+    setMobilePanelOpen(false);
+    setVersionPromptId(null);
+  }, [urlSession]);
+
   // Load session history when URL has ?session= (sidebar navigation only)
   useEffect(() => {
     if (!urlSession) return;
@@ -409,18 +421,36 @@ export function OptimizeChat() {
           panelVisible && isDesktop ? 'lg:w-1/2 lg:shrink-0' : 'flex-1'
         )}
       >
-        {hasMessages && canShowPanel && isDesktop && desktopPanelDismissed && (
-          <div className="shrink-0 flex justify-end px-4 pt-3 pb-2 border-b border-border/50 bg-background/95 backdrop-blur-sm">
-            <Button
+        {hasMessages && (
+          <div className="shrink-0 flex justify-between items-center px-4 pt-3 pb-2 border-b border-border/50 bg-background/95 backdrop-blur-sm">
+            <button
               type="button"
-              variant="outline"
-              size="sm"
-              className="gap-2"
-              onClick={() => setDesktopPanelDismissed(false)}
+              onClick={() => router.push('/optimize')}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px',
+                borderRadius: 7, fontSize: 12, fontWeight: 500, cursor: 'pointer',
+                border: '1px solid rgba(124,92,255,0.4)', background: 'rgba(124,92,255,0.1)',
+                color: '#7c5cff', fontFamily: 'inherit',
+                transition: 'background 150ms, border-color 150ms' }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(124,92,255,0.18)'; e.currentTarget.style.borderColor = 'rgba(124,92,255,0.6)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(124,92,255,0.1)'; e.currentTarget.style.borderColor = 'rgba(124,92,255,0.4)'; }}
             >
-              <PanelRight className="h-4 w-4" />
-              View result
-            </Button>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 5v14M5 12h14"/>
+              </svg>
+              New Chat
+            </button>
+            {canShowPanel && isDesktop && desktopPanelDismissed && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={() => setDesktopPanelDismissed(false)}
+              >
+                <PanelRight className="h-4 w-4" />
+                View result
+              </Button>
+            )}
           </div>
         )}
       <div className="flex-1 overflow-y-auto min-h-0">
