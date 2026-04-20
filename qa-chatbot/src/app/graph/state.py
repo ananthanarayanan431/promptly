@@ -14,6 +14,10 @@ class GraphState(TypedDict):
     # When set, it is injected into the council message as a high-priority directive.
     feedback: str | None
 
+    # Celery job id — set by process_chat_async; None for standalone PromptService calls.
+    # Nodes read this to write progress events to Redis without any out-of-band context.
+    job_id: str | None
+
     # Intent classification result: "optimize" | "create"
     intent: str | None
 
