@@ -1,6 +1,6 @@
 import hashlib
 import json
-from typing import Any, cast
+from typing import Any
 
 from app.config.redis import get_redis_settings
 from app.db.redis import get_redis_client
@@ -84,22 +84,15 @@ async def set_job_result(job_id: str, data: dict[str, Any], ttl: int | None = No
 
 async def push_job_progress(job_id: str, event: dict[str, Any]) -> None:
     """Append one progress event to the job's Redis list."""
-    from collections.abc import Awaitable
-
     redis = await get_redis_client()
     key = f"{_job_key(job_id)}:progress"
-    rpush_result = redis.rpush(key, json.dumps(event))
-    await cast(Awaitable[int], rpush_result)
-    expire_result = redis.expire(key, redis_settings.REDIS_TTL_SECONDS)
-    await cast(Awaitable[Any], expire_result)
+    await redis.rpush(key, json.dumps(event))  # type: ignore[misc]
+    await redis.expire(key, redis_settings.REDIS_TTL_SECONDS)
 
 
 async def get_job_progress_from(job_id: str, start: int) -> list[dict[str, Any]]:
     """Return all events at indices >= start from the job's progress list."""
-    from collections.abc import Awaitable
-
     redis = await get_redis_client()
     key = f"{_job_key(job_id)}:progress"
-    lrange_result = redis.lrange(key, start, -1)
-    raws: list[str | bytes] = await cast(Awaitable[list[str | bytes]], lrange_result)
+    raws: list[str] = await redis.lrange(key, start, -1)  # type: ignore[misc]
     return [json.loads(r) for r in raws]
