@@ -368,6 +368,14 @@ export function OptimizeChat() {
     }
   };
 
+  const handleRetry = (tempId: string) => {
+    const turn = turnsRef.current.find((t) => t.tempId === tempId);
+    if (!turn) return;
+    // Remove the failed turn then resubmit its original text
+    setTurns((prev) => prev.filter((t) => t.tempId !== tempId));
+    void handleSubmit(turn.userText);
+  };
+
   const isAnyLoading = turns.some((t) => t.status === 'loading');
   const hasMessages = turns.length > 0;
 
@@ -510,6 +518,7 @@ export function OptimizeChat() {
                 isTurnSelected={turn.tempId === selectedTurnId}
                 onSelectTurn={() => handleSelectTurn(turn.tempId)}
                 progress={turn.jobId === activeJobId ? streamProgress : undefined}
+                onRetry={turn.status === 'failed' ? () => handleRetry(turn.tempId) : undefined}
               />
             ))}
             <div ref={messagesEndRef} />

@@ -48,7 +48,13 @@ export function useJobStream(jobId: string | null): UseJobStreamResult {
         });
 
         if (!res.ok || !res.body) {
-          setError(`Stream request failed: ${res.status}`);
+          const msg =
+            res.status === 401
+              ? 'Session expired — please refresh the page'
+              : res.status === 404
+                ? 'Job not found — the server may still be starting up'
+                : 'Could not connect to the optimization service';
+          setError(msg);
           setStatus('failed');
           return;
         }
