@@ -12,11 +12,13 @@ here as IRRELEVANT.
 """
 
 import asyncio
+import time
 from typing import Any
 
 from langchain_openai import ChatOpenAI
 
 from app.config.llm import get_llm_settings
+from app.core.cache import push_job_progress
 from app.graph.prompts import load_prompt
 from app.graph.state import GraphState
 
@@ -81,4 +83,9 @@ async def intent_classifier_node(state: GraphState) -> dict[str, Any]:
         }
 
     # Default to optimize (covers OPTIMIZE and any unexpected model output)
-    return {"intent": "optimize"}
+    result: dict[str, Any] = {"intent": "optimize"}
+
+    if job_id := state.get("job_id"):
+        await push_job_progress(job_id, {"step": "intent", "ts": time.time()})
+
+    return result

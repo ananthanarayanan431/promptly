@@ -10,11 +10,13 @@ All 4 critiques run in parallel. Each returns a ranking + per-proposal critique 
 
 import asyncio
 import json
+import time
 from typing import Any
 
 from langchain_openai import ChatOpenAI
 
 from app.config.llm import get_llm_settings
+from app.core.cache import push_job_progress
 from app.graph.prompts import load_prompt
 from app.graph.state import GraphState
 
@@ -118,4 +120,8 @@ async def critic_node(state: GraphState) -> dict[str, Any]:
     )
 
     valid = [r for r in results if isinstance(r, dict)]
+
+    if job_id := state.get("job_id"):
+        await push_job_progress(job_id, {"step": "critic", "ts": time.time()})
+
     return {"critic_responses": valid}

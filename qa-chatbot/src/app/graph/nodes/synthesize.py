@@ -7,11 +7,13 @@ weaknesses, and produce the single definitive optimized prompt.
 """
 
 import asyncio
+import time
 from typing import Any
 
 from langchain_openai import ChatOpenAI
 
 from app.config.llm import get_llm_settings
+from app.core.cache import push_job_progress
 from app.graph.prompts import load_prompt
 from app.graph.state import GraphState
 
@@ -105,6 +107,9 @@ async def synthesize_node(state: GraphState) -> dict[str, Any]:
     total_tokens = sum(
         r.get("usage", {}).get("total_tokens", 0) for r in state["council_responses"]
     )
+
+    if job_id := state.get("job_id"):
+        await push_job_progress(job_id, {"step": "synthesize", "ts": time.time()})
 
     return {
         "final_response": str(response.content).strip(),
