@@ -46,6 +46,23 @@ export interface JobStatusResponse {
   error?: string;
 }
 
+export type ProgressStep =
+  | 'intent'
+  | 'council'
+  | 'critic'
+  | 'synthesize'
+  | 'completed'
+  | 'failed';
+
+export interface JobProgressEvent {
+  step: ProgressStep;
+  done?: number;      // council only: which model just finished (1-4)
+  total?: number;     // council only: total council size (always 4)
+  ts?: number;        // unix timestamp from server
+  result?: JobResult; // completed only: full result embedded
+  error?: string;     // failed only
+}
+
 export interface PromptVersion {
   version_id: string;
   prompt_id: string;
