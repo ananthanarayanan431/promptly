@@ -1,14 +1,10 @@
 """
 Council Vote node — Round 1: Gather Opinions.
 
-Each of the 4 council models independently optimizes the raw prompt using a distinct strategy:
-  - Index 0 (GPT-4o-mini)       → analytical: precision, constraints, output format
-  - Index 1 (Claude Haiku)      → creative:   context, persona depth, exemplars
-  - Index 2 (Gemini Flash)      → concise:    radical conciseness, maximum signal density
-  - Index 3 (Grok)              → structured: logical decomposition, output schemas
-
-No model sees any other model's output in this round. Responses are fully independent.
-This diversity of angles gives the critic round and the chairman meaningful variation to work with.
+Each council model independently optimizes the raw prompt using the same unified
+optimization framework. No model sees any other model's output in this round —
+responses are fully independent. The diversity of model architectures and training
+gives the critic round and the chairman meaningful variation to work with.
 """
 
 import asyncio
@@ -25,20 +21,7 @@ from app.graph.state import GraphState
 
 logger = logging.getLogger(__name__)
 
-# Load all 4 strategy prompts at module startup (file I/O once)
-_STRATEGY_PROMPTS: list[str] = [
-    load_prompt("council_optimizer_analytical"),  # 0 — analytical
-    load_prompt("council_optimizer_creative"),  # 1 — creative
-    load_prompt("council_optimizer_concise"),  # 2 — concise
-    load_prompt("council_optimizer_structured"),  # 3 — structured
-]
-
-
-def _get_strategy(idx: int) -> str:
-    """Return the strategy prompt for a given council member index."""
-    if idx < len(_STRATEGY_PROMPTS):
-        return _STRATEGY_PROMPTS[idx]
-    return _STRATEGY_PROMPTS[0]  # analytical as fallback for any extra models
+_COUNCIL_PROMPT: str = load_prompt("council_optimizer")
 
 
 def _build_models() -> list[ChatOpenAI]:
@@ -85,9 +68,10 @@ async def council_vote_node(state: GraphState) -> dict[str, Any]:
     """
     LangGraph node — Round 1.
 
-    Sends the raw prompt to all 4 council models in parallel. Each model independently
-    produces its own optimized version using a different strategy. Emits a progress
-    event to Redis after each individual model completes.
+    Sends the raw prompt to all council models in parallel. Each model independently
+    produces its own optimized version using the same unified framework — model
+    architecture diversity provides variation without strategy coupling.
+    Emits a progress event to Redis after each individual model completes.
 
     Returns:
         {"council_responses": [{model, optimized_prompt, usage}, ...]}
@@ -101,10 +85,9 @@ async def council_vote_node(state: GraphState) -> dict[str, Any]:
     lock = asyncio.Lock()
 
     async def optimize(model: ChatOpenAI, idx: int) -> dict[str, Any]:
-        system = _get_strategy(idx)
         response = await model.ainvoke(
             [
-                {"role": "system", "content": system},
+                {"role": "system", "content": _COUNCIL_PROMPT},
                 {"role": "user", "content": _build_user_message(raw_prompt, feedback)},
             ]
         )

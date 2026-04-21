@@ -60,6 +60,9 @@ ignore = [
     "S106",    # False positive on token_type="bearer"
 ]
 
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S101", "ANN", "N802"]
+
 [tool.mypy]
 python_version = "3.12"
 strict = true
