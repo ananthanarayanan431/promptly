@@ -84,7 +84,7 @@ async def council_vote_node(state: GraphState) -> dict[str, Any]:
     done_count = [0]
     lock = asyncio.Lock()
 
-    async def optimize(model: ChatOpenAI, idx: int) -> dict[str, Any]:
+    async def optimize(model: ChatOpenAI) -> dict[str, Any]:
         response = await model.ainvoke(
             [
                 {"role": "system", "content": _COUNCIL_PROMPT},
@@ -106,7 +106,7 @@ async def council_vote_node(state: GraphState) -> dict[str, Any]:
         return result
 
     results = await asyncio.gather(
-        *[optimize(m, i) for i, m in enumerate(models)],
+        *[optimize(m) for m in models],
         return_exceptions=True,
     )
 

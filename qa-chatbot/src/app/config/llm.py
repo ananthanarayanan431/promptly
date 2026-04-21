@@ -17,10 +17,10 @@ class LLMSettings(BaseSettings):
     # Four models — each independently optimizes with the same unified prompt.
     # All are routed through OpenRouter.
     COUNCIL_MODELS: list[str] = [
-        "openai/gpt-4o-mini",  # 0 → analytical
-        "anthropic/claude-3.5-haiku",  # 1 → creative
-        "google/gemini-2.5-flash",  # 2 → concise
-        "x-ai/grok-4.1-fast",  # 3 → structured
+        "openai/gpt-4o-mini",
+        "anthropic/claude-3.5-haiku",
+        "google/gemini-2.5-flash",
+        "x-ai/grok-4.1-fast",
     ]
 
 
