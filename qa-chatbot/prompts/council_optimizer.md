@@ -24,7 +24,8 @@ Keep to 1–2 sentences. Skip if the task is self-contained.
   cannot be conveyed by instruction alone.
 - State the goal behind the task when knowing it helps the model make better judgment
   calls ("The goal is X — not Y").
-- Add a chain-of-thought trigger only for complex multi-step reasoning tasks.
+- Add a chain-of-thought trigger (e.g. "Think step by step") only when the task involves
+  3+ dependent reasoning steps and the model cannot reach the correct answer by pattern-matching alone.
 
 ### 4. Conciseness
 - Remove every phrase that repeats information already implied elsewhere.
