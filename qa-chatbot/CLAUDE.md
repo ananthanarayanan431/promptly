@@ -69,11 +69,8 @@ intent_classifier → IRRELEVANT → END (rejection)
                   → OPTIMIZE   → council_vote → critic → synthesize → END
 ```
 
-**Round 1 — council_vote:** 4 models optimize the prompt in parallel, each with a distinct strategy:
-- Index 0 `gpt-4o-mini` → `council_optimizer_analytical.md` (precision, constraints, output format)
-- Index 1 `claude-3.5-haiku` → `council_optimizer_creative.md` (context, persona, exemplars)
-- Index 2 `gemini-2.0-flash` → `council_optimizer_concise.md` (radical conciseness, signal density)
-- Index 3 `grok-2` → `council_optimizer_structured.md` (logical decomposition, output schemas)
+**Round 1 — council_vote:** 4 models optimize the prompt in parallel.
+All models receive the same unified `council_optimizer.md` prompt — model architecture diversity provides variation.
 
 **Round 2 — critic:** Each model blind-reviews the other 3 proposals (not its own). Proposals are anonymised as A/B/C. Returns JSON: `{ranking, critiques, ranking_rationale}`.
 
@@ -90,10 +87,7 @@ All LLM system prompts live in `prompts/` as `.md` files and are loaded once at 
 | File | Used by | Purpose |
 |------|---------|---------|
 | `intent_classifier.md` | `intent_classifier` node | OPTIMIZE vs IRRELEVANT classification |
-| `council_optimizer_analytical.md` | `council_vote` node (idx 0) | Precision, constraints, output format |
-| `council_optimizer_creative.md` | `council_vote` node (idx 1) | Context, persona depth, exemplars |
-| `council_optimizer_concise.md` | `council_vote` node (idx 2) | Radical conciseness, signal density |
-| `council_optimizer_structured.md` | `council_vote` node (idx 3) | Logical decomposition, schemas |
+| `council_optimizer.md` | `council_vote` node (all models) | Unified optimization framework — all four council models receive this |
 | `critic.md` | `critic` node | Blind peer-review, returns JSON ranking |
 | `synthesize_best.md` | `synthesize` node | Chairman synthesis from proposals + critiques |
 | `prompt_health_score.md` | `PromptService.health_score()` | Eight-dimension quality scoring |

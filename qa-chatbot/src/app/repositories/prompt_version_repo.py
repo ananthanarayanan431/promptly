@@ -1,7 +1,7 @@
 import uuid
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.models.prompt_version import PromptVersion
 from app.repositories.base import BaseRepository
@@ -80,6 +80,14 @@ class PromptVersionRepository(BaseRepository[PromptVersion]):
             )
         )
         return result.scalar_one_or_none()
+
+    async def update_family_name(self, prompt_id: UUID, user_id: UUID, name: str) -> None:
+        """Rename all versions in a family to the given name."""
+        await self.db.execute(
+            update(PromptVersion)
+            .where(PromptVersion.prompt_id == prompt_id, PromptVersion.user_id == user_id)
+            .values(name=name)
+        )
 
     async def create_version(
         self,

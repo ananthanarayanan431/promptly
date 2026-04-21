@@ -1,15 +1,5 @@
 from pydantic import BaseModel, Field
 
-
-class PromptEnhanceRequest(BaseModel):
-    raw_prompt: str = Field(..., min_length=1)
-
-
-class PromptEnhanceResponse(BaseModel):
-    raw_prompt: str
-    enhanced_prompt: str
-
-
 # --- Health Score ---
 
 
@@ -45,14 +35,6 @@ class PromptVersionCreateRequest(BaseModel):
     prompt: str = Field(..., min_length=1, description="The initial prompt text (becomes v1)")
 
 
-class PromptVersionOptimizeRequest(BaseModel):
-    feedback: str | None = Field(
-        default=None,
-        max_length=2000,
-        description="Optional guidance that shapes how the council optimizes this version",
-    )
-
-
 class PromptVersionOut(BaseModel):
     version_id: str
     prompt_id: str
@@ -67,12 +49,6 @@ class PromptVersionOut(BaseModel):
 class PromptVersionCreateResponse(BaseModel):
     prompt_id: str
     version: PromptVersionOut
-
-
-class PromptVersionOptimizeResponse(BaseModel):
-    prompt_id: str
-    original: PromptVersionOut
-    optimized: PromptVersionOut
 
 
 class PromptVersionListResponse(BaseModel):
