@@ -13,7 +13,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.llm import get_llm_settings
 from app.core.exceptions import GuardrailException, LLMException, NotFoundException
-from app.graph.nodes.enhance_prompt import enhance_prompt_node
 from app.graph.nodes.guardrails import guardrails_node
 from app.graph.prompts import load_prompt
 from app.graph.state import GraphState
@@ -117,14 +116,6 @@ class PromptService:
             raise GuardrailException(detail=result["error"])
         state.update(result)  # type: ignore[typeddict-item]
         return state
-
-    async def enhance(self, raw_prompt: str, user_id: str) -> dict[str, Any]:
-        state = await self._run_guardrails(raw_prompt, user_id)
-        enhance_result = await enhance_prompt_node(state)
-        return {
-            "raw_prompt": raw_prompt,
-            "enhanced_prompt": enhance_result["enhanced_prompt"],
-        }
 
     async def health_score(self, prompt: str, user_id: str) -> dict[str, Any]:
         await self._run_guardrails(prompt, user_id)
@@ -282,61 +273,6 @@ class PromptVersioningService:
             content=content,
         )
         return {"prompt_id": str(prompt_id), "version": self._fmt(v)}
-
-    async def optimize(
-        self,
-        prompt_id: UUID,
-        user_id: str,
-        feedback: str | None,
-        graph: Any,  # noqa: ANN401
-    ) -> dict[str, Any]:
-        """
-        Optimize the latest version of a prompt through the full LangGraph council
-        pipeline and save the result as the next version.
-
-        Raises:
-            NotFoundException if prompt_id does not exist or belongs to another user.
-            GuardrailException / LLMException propagated from the graph.
-        """
-        latest = await self.repo.get_latest_by_prompt_id(prompt_id, UUID(user_id))
-        if latest is None:
-            raise NotFoundException(detail="Prompt not found.")
-
-        thread_id = str(uuid.uuid4())
-        initial_state: GraphState = {
-            "raw_prompt": latest.content,
-            "session_id": thread_id,
-            "user_id": user_id,
-            "feedback": feedback,
-            "job_id": None,
-            "intent": None,
-            "council_responses": [],
-            "critic_responses": [],
-            "final_response": "",
-            "messages": [],
-            "token_usage": {},
-            "error": None,
-        }
-        result = await graph.ainvoke(
-            initial_state, config={"configurable": {"thread_id": thread_id}}
-        )
-
-        if result.get("error"):
-            raise GuardrailException(detail=result["error"])
-
-        next_version = await self.repo.create_version(
-            prompt_id=prompt_id,
-            user_id=UUID(user_id),
-            name=latest.name,
-            version=latest.version + 1,
-            content=result["final_response"],
-        )
-
-        return {
-            "prompt_id": str(prompt_id),
-            "original": self._fmt(latest),
-            "optimized": self._fmt(next_version),
-        }
 
     async def list_families(self, user_id: str) -> list[dict[str, Any]]:
         """
