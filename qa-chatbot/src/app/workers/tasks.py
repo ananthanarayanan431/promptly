@@ -128,7 +128,8 @@ def process_chat_async(
                 # LLM call or versioning completes.
                 await db.commit()
 
-                # Update session title with the LLM-generated value (best-effort)
+                # Resolve LLM-generated title (best-effort; falls back to truncated prompt)
+                llm_title: str = _fallback_title(raw_prompt)
                 try:
                     llm_title = await asyncio.wait_for(title_task, timeout=10.0)
                     session_repo = SessionRepository(db)
@@ -143,15 +144,26 @@ def process_chat_async(
                 saved_prompt_id: str | None = None
                 saved_version: int | None = None
 
-                if prompt_id or name:
+                # Auto-generate a versioning entry for every chat that lacks explicit
+                # versioning context. Use "SESSION:<id>" as a stable, unique family name
+                # so follow-up optimizations on the same session append to the same family.
+                # After saving, rename to the human-readable LLM-generated title.
+                effective_name = name
+                effective_prompt_id = prompt_id
+                auto_versioned = False
+                if not effective_prompt_id and not effective_name:
+                    effective_name = f"SESSION:{session_id}"
+                    auto_versioned = True
+
+                if effective_prompt_id or effective_name:
                     version_repo = PromptVersionRepository(db)
 
-                    if prompt_id:
+                    if effective_prompt_id:
                         # Append to existing version family
-                        pid = UUID(prompt_id)
+                        pid = UUID(effective_prompt_id)
                         latest = await version_repo.get_latest_by_prompt_id(pid, UUID(user_id))
                         next_ver = (latest.version + 1) if latest else 1
-                        vname = name or (latest.name if latest else "unnamed")
+                        vname = effective_name or (latest.name if latest else "unnamed")
 
                         v = await version_repo.create_version(
                             prompt_id=pid,
@@ -162,14 +174,16 @@ def process_chat_async(
                         )
                     else:
                         # name supplied without prompt_id
-                        existing = await version_repo.get_latest_by_name(name, UUID(user_id))  # type: ignore[arg-type]
+                        existing = await version_repo.get_latest_by_name(  # type: ignore[arg-type]
+                            effective_name, UUID(user_id)
+                        )
                         if existing:
                             # Append to the existing family
                             pid = existing.prompt_id
                             v = await version_repo.create_version(
                                 prompt_id=pid,
                                 user_id=UUID(user_id),
-                                name=name,  # type: ignore[arg-type]
+                                name=effective_name,  # type: ignore[arg-type]
                                 version=existing.version + 1,
                                 content=result["optimized_prompt"],
                             )
@@ -179,17 +193,21 @@ def process_chat_async(
                             await version_repo.create_version(
                                 prompt_id=pid,
                                 user_id=UUID(user_id),
-                                name=name,  # type: ignore[arg-type]
+                                name=effective_name,  # type: ignore[arg-type]
                                 version=1,
                                 content=raw_prompt,
                             )
                             v = await version_repo.create_version(
                                 prompt_id=pid,
                                 user_id=UUID(user_id),
-                                name=name,  # type: ignore[arg-type]
+                                name=effective_name,  # type: ignore[arg-type]
                                 version=2,
                                 content=result["optimized_prompt"],
                             )
+
+                    # For auto-created families, rename to the human-readable LLM title
+                    if auto_versioned:
+                        await version_repo.update_family_name(pid, UUID(user_id), llm_title)
 
                     await db.commit()
                     saved_prompt_id = str(v.prompt_id)

@@ -277,7 +277,8 @@ class PromptVersioningService:
     async def list_families(self, user_id: str) -> list[dict[str, Any]]:
         """
         Return all prompt families (grouped by prompt_id) for a user,
-        each with their full version history in ascending order.
+        each with their full version history in ascending order,
+        sorted by the latest version's created_at descending (most-recently updated first).
         """
         all_versions = await self.repo.get_all_by_user_id(UUID(user_id))
 
@@ -293,7 +294,12 @@ class PromptVersioningService:
                 }
             families[key]["versions"].append(self._fmt(v))
 
-        return list(families.values())
+        # Sort by latest version's created_at descending (most-recently updated first)
+        return sorted(
+            families.values(),
+            key=lambda f: f["versions"][-1]["created_at"] if f["versions"] else "",
+            reverse=True,
+        )
 
     async def list_versions(self, prompt_id: UUID, user_id: str) -> dict[str, Any]:
         """
