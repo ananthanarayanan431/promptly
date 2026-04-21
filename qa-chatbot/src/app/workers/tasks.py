@@ -162,8 +162,12 @@ def process_chat_async(
                         # Append to existing version family
                         pid = UUID(effective_prompt_id)
                         latest = await version_repo.get_latest_by_prompt_id(pid, UUID(user_id))
-                        next_ver = (latest.version + 1) if latest else 1
-                        vname = effective_name or (latest.name if latest else "unnamed")
+                        if latest is None:
+                            raise ValueError(
+                                f"prompt_id {effective_prompt_id} not found for this user"
+                            )
+                        next_ver = latest.version + 1
+                        vname = effective_name or latest.name
 
                         v = await version_repo.create_version(
                             prompt_id=pid,
