@@ -11,12 +11,13 @@ import Link from 'next/link';
 import type { SessionsGrouped, SessionSummary, User } from '@/types/api';
 
 const NAV = [
-  { key: 'dashboard', label: 'Dashboard', href: '/dashboard', kbd: 'D' },
-  { key: 'optimize',  label: 'Optimize',  href: '/optimize',  kbd: 'O' },
-  { key: 'analyze',   label: 'Analyze',   href: '/analyze',   kbd: 'A' },
-  { key: 'versions',  label: 'Versions',  href: '/versions',  kbd: 'V' },
-  { key: 'history',   label: 'History',   href: '/history' },
-  { key: 'billing',   label: 'Billing',   href: '/billing' },
+  { key: 'dashboard',      label: 'Dashboard',      href: '/dashboard',      kbd: 'D' },
+  { key: 'optimize',       label: 'Optimize',       href: '/optimize',       kbd: 'O' },
+  { key: 'analyze',        label: 'Analyze',        href: '/analyze',        kbd: 'A' },
+  { key: 'versions',       label: 'Versions',       href: '/versions',       kbd: 'V' },
+  { key: 'prompt-project', label: 'Prompt Project', href: '/prompt-project' },
+  { key: 'history',        label: 'History',        href: '/history' },
+  { key: 'billing',        label: 'Billing',        href: '/billing' },
 ];
 
 function deriveDisplayName(email: string): string {
@@ -175,7 +176,7 @@ export function Sidebar() {
       <div style={{ padding: '4px 0' }}>
         {NAV.map(n => {
           const isActive = pathname === n.href ||
-            (n.href !== '/versions' && n.href !== '/dashboard' && pathname.startsWith(n.href));
+            (n.href !== '/versions' && n.href !== '/dashboard' && n.href !== '/prompt-project' && pathname.startsWith(n.href));
           return (
             <Link key={n.key} href={n.href}
               style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 14px',
@@ -275,6 +276,12 @@ function NavIcon({ name, active }: { name: string; active: boolean }) {
     history: (
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6">
         <path d="M3 12a9 9 0 109-9 9 9 0 00-6.4 2.6L3 8"/><path d="M3 3v5h5"/><path d="M12 8v4l3 2"/>
+      </svg>
+    ),
+    'prompt-project': (
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6">
+        <rect x="3" y="3" width="18" height="18" rx="2"/>
+        <path d="M8 12h8M8 8h5M8 16h6"/>
       </svg>
     ),
     billing: (
