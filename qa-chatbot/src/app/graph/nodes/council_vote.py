@@ -92,7 +92,7 @@ async def council_vote_node(state: GraphState) -> dict[str, Any]:
             ]
         )
         result: dict[str, Any] = {
-            "model": _get_council_models()[idx].model_name,
+            "model": model.model_name,
             "optimized_prompt": str(response.content).strip(),
             "usage": getattr(response, "usage_metadata", {}) or {},
         }

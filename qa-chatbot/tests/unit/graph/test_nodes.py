@@ -44,6 +44,7 @@ def test_council_vote_all_models_receive_same_system_prompt():
     assert (
         n_unique == 1
     ), f"Expected all models to receive the same prompt, got {n_unique} different prompts"
+    assert system_prompts[0] == council_vote._COUNCIL_PROMPT
     assert len(result["council_responses"]) == 4
 
 
