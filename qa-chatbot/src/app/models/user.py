@@ -8,6 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .base import Base, TimestampMixin, UUIDMixin
 
 if TYPE_CHECKING:
+    from .favorite_prompt import FavoritePrompt
     from .prompt_version import PromptVersion
     from .session import ChatSession
 
@@ -28,6 +29,9 @@ class User(Base, UUIDMixin, TimestampMixin):
         back_populates="user", cascade="all, delete-orphan"
     )
     prompt_versions: Mapped[list[PromptVersion]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    favorite_prompts: Mapped[list[FavoritePrompt]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
 
