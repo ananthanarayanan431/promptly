@@ -177,8 +177,10 @@ def process_chat_async(
                             content=result["optimized_prompt"],
                         )
                     else:
-                        # name supplied without prompt_id
-                        existing = await version_repo.get_latest_by_name(  # type: ignore[arg-type]
+                        # name supplied without prompt_id; guaranteed non-None by outer condition
+                        if effective_name is None:
+                            raise RuntimeError("effective_name must not be None here")
+                        existing = await version_repo.get_latest_by_name(
                             effective_name, UUID(user_id)
                         )
                         if existing:
@@ -187,7 +189,7 @@ def process_chat_async(
                             v = await version_repo.create_version(
                                 prompt_id=pid,
                                 user_id=UUID(user_id),
-                                name=effective_name,  # type: ignore[arg-type]
+                                name=effective_name,
                                 version=existing.version + 1,
                                 content=result["optimized_prompt"],
                             )
@@ -197,14 +199,14 @@ def process_chat_async(
                             await version_repo.create_version(
                                 prompt_id=pid,
                                 user_id=UUID(user_id),
-                                name=effective_name,  # type: ignore[arg-type]
+                                name=effective_name,
                                 version=1,
                                 content=raw_prompt,
                             )
                             v = await version_repo.create_version(
                                 prompt_id=pid,
                                 user_id=UUID(user_id),
-                                name=effective_name,  # type: ignore[arg-type]
+                                name=effective_name,
                                 version=2,
                                 content=result["optimized_prompt"],
                             )
