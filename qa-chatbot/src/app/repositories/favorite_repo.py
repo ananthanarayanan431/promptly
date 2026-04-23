@@ -78,11 +78,8 @@ class FavoriteRepository(BaseRepository[FavoritePrompt]):
         order = sort_map.get(sort, FavoritePrompt.liked_at.desc())
         stmt = stmt.order_by(pinned_first, order)
 
-        count_stmt = (
-            select(func.count())
-            .select_from(FavoritePrompt)
-            .where(FavoritePrompt.user_id == user_id)
-        )
+        # Count the filtered rows (before pagination) so the total reflects active filters.
+        count_stmt = select(func.count()).select_from(stmt.subquery())
         total = (await self.db.execute(count_stmt)).scalar_one()
 
         stmt = stmt.limit(limit).offset(offset)
