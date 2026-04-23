@@ -100,7 +100,7 @@ All endpoints require auth via the existing `get_current_user` dependency. All q
 ### Backend changes to existing endpoints
 
 - `PromptVersion` list/detail responses (`GET /api/v1/prompts/versions`, `GET /api/v1/prompts/versions/{id}`) gain `is_favorited: bool` and `favorite_id: uuid | null` per version.
-- `JobResult` (chat job polling response) must expose `prompt_version_id` so the like button on `ResultPanel` has the id to POST. Audit current shape; add if missing.
+- `JobResult` (chat job polling response) must expose `prompt_version_id` so the like button on `ResultPanel` has the id to POST. Audit current shape; if missing, add to both the `JobResult` Pydantic schema and the Celery task in `src/app/workers/tasks.py` (the task already knows the created version's id after the versioning branch runs).
 
 ---
 
