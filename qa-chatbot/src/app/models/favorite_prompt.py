@@ -41,6 +41,8 @@ class FavoritePrompt(Base, UUIDMixin, TimestampMixin):
     use_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
     def __init__(self, **kw: Any) -> None:
+        # mapped_column(default=...) does not populate Python attributes until the ORM
+        # flushes to the database; set eager defaults so pre-flush access is safe.
         if "tags" not in kw:
             kw["tags"] = []
         if "category" not in kw:
