@@ -1,6 +1,8 @@
 from app.graph.prompts.council_optimizer import council_optimizer_messages
 from app.graph.prompts.critic import critic_messages
 from app.graph.prompts.intent_classifier import intent_classifier_messages
+from app.graph.prompts.prompt_advisory import prompt_advisory_messages
+from app.graph.prompts.prompt_health_score import prompt_health_score_messages
 from app.graph.prompts.synthesize_best import synthesize_messages
 
 
@@ -90,3 +92,21 @@ def test_synthesize_messages_with_feedback():
     user = msgs[1]["content"]
     assert "Keep it under 50 words" in user
     assert "Feedback Directive" in user
+
+
+def test_prompt_health_score_messages():
+    msgs = prompt_health_score_messages("You are a helpful assistant.")
+    assert len(msgs) == 2
+    assert msgs[0]["role"] == "system"
+    assert "<prompt_to_evaluate>" in msgs[1]["content"]
+    assert "You are a helpful assistant." in msgs[1]["content"]
+    assert "</prompt_to_evaluate>" in msgs[1]["content"]
+
+
+def test_prompt_advisory_messages():
+    msgs = prompt_advisory_messages("You are a helpful assistant.")
+    assert len(msgs) == 2
+    assert msgs[0]["role"] == "system"
+    assert "<prompt_to_evaluate>" in msgs[1]["content"]
+    assert "You are a helpful assistant." in msgs[1]["content"]
+    assert "</prompt_to_evaluate>" in msgs[1]["content"]
