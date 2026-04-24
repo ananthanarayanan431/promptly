@@ -222,6 +222,8 @@ export function OptimizeChat() {
                   optimized_prompt: msg.response!,
                   council_proposals: msg.council_votes ?? [],
                   token_usage: msg.token_usage ?? { total_tokens: 0 },
+                  prompt_version_id: msg.prompt_version_id ?? null,
+                  prompt_id: msg.prompt_family_id ?? undefined,
                 } as JobResult)
               : undefined,
           };
@@ -283,7 +285,9 @@ export function OptimizeChat() {
       queryClient.invalidateQueries({ queryKey: ['sessions'] });
       queryClient.invalidateQueries({ queryKey: ['recent-sessions'] });
 
-      if (!versionPromptId && !completedResult.prompt_id) {
+      // Auto-versioning now happens in the Celery task — prompt_id is returned directly.
+      // Only fall back to save-version if the task somehow didn't create a version.
+      if (!versionPromptId && !completedResult.prompt_id && !completedResult.prompt_version_id) {
         api
           .post<{ data: { prompt_id: string; name: string; version: number } }>(
             '/api/v1/chat/save-version',
@@ -304,6 +308,10 @@ export function OptimizeChat() {
             );
           })
           .catch(() => {});
+      }
+      // Seed versionPromptId from the task result so feedback turns append correctly
+      if (!versionPromptId && completedResult.prompt_id) {
+        setVersionPromptId(completedResult.prompt_id);
       }
     } else if (streamStatus === 'failed' && activeJobId) {
       const errMsg = formatApiErrorDetail(streamError ?? undefined, 'Optimization failed');

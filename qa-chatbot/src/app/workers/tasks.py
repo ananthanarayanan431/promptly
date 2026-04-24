@@ -216,6 +216,18 @@ def process_chat_async(
                     if auto_versioned:
                         await version_repo.update_family_name(pid, UUID(user_id), llm_title)
 
+                    # Back-patch the assistant message so session history carries both IDs
+                    from app.repositories.message_repo import MessageRepository
+
+                    msg_repo = MessageRepository(db)
+                    last_msgs = await msg_repo.get_last_n(UUID(session_id), n=1)
+                    if last_msgs:
+                        await msg_repo.update(
+                            last_msgs[0],
+                            prompt_version_id=v.id,
+                            prompt_family_id=v.prompt_id,
+                        )
+
                     await db.commit()
                     saved_prompt_id = str(v.prompt_id)
                     saved_version = v.version

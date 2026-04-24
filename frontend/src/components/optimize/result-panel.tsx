@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { buttonVariants } from '@/components/ui/button';
 import type { JobResult } from '@/types/api';
 import { LikeButton } from '@/components/optimize/like-button';
+import { useFavoriteStatus } from '@/hooks/use-favorites';
 
 interface ResultPanelProps {
   result: JobResult;
@@ -16,8 +17,20 @@ interface ResultPanelProps {
 export function ResultPanel({ result, onClose }: ResultPanelProps) {
   const [copied, setCopied] = useState(false);
   const [showOriginal, setShowOriginal] = useState(false);
+
+  // Query the real favorite status from the backend so the heart reflects
+  // the true state even when switching between result panel versions.
+  const { data: statusData } = useFavoriteStatus(result.prompt_version_id ?? null);
   const [isFavorited, setIsFavorited] = useState(false);
   const [favoriteId, setFavoriteId] = useState<string | null>(null);
+
+  // Sync local state whenever the backend status resolves or the version changes
+  useEffect(() => {
+    if (statusData) {
+      setIsFavorited(statusData.is_favorited);
+      setFavoriteId(statusData.prompt_store_id ?? null);
+    }
+  }, [statusData]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

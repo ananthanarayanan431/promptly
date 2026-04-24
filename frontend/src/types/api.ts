@@ -179,6 +179,8 @@ export interface SessionMessage {
   response: string | null;
   council_votes: CouncilProposal[] | null;
   token_usage: { total_tokens: number } | null;
+  prompt_version_id: string | null;
+  prompt_family_id: string | null;
   created_at: string;
 }
 
