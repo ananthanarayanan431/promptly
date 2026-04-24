@@ -1,5 +1,6 @@
 from app.graph.prompts.council_optimizer import council_optimizer_messages
 from app.graph.prompts.critic import critic_messages
+from app.graph.prompts.favorite_auto_tag import favorite_auto_tag_messages
 from app.graph.prompts.intent_classifier import intent_classifier_messages
 from app.graph.prompts.prompt_advisory import prompt_advisory_messages
 from app.graph.prompts.prompt_health_score import prompt_health_score_messages
@@ -110,3 +111,10 @@ def test_prompt_advisory_messages():
     assert "<prompt_to_evaluate>" in msgs[1]["content"]
     assert "You are a helpful assistant." in msgs[1]["content"]
     assert "</prompt_to_evaluate>" in msgs[1]["content"]
+
+
+def test_favorite_auto_tag_messages_user_only():
+    msgs = favorite_auto_tag_messages("You are a helpful assistant.")
+    assert len(msgs) == 1
+    assert msgs[0]["role"] == "user"
+    assert "You are a helpful assistant." in msgs[0]["content"]
