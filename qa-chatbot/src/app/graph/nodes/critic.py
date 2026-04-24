@@ -17,10 +17,8 @@ from langchain_openai import ChatOpenAI
 
 from app.config.llm import get_llm_settings
 from app.core.cache import push_job_progress
-from app.graph.prompts import load_prompt
+from app.graph.prompts import critic_messages
 from app.graph.state import GraphState
-
-_CRITIC_PROMPT = load_prompt("critic")
 
 _critic_loop_id: int | None = None
 _critic_models: list[ChatOpenAI] | None = None
@@ -49,33 +47,10 @@ def _get_critic_models() -> list[ChatOpenAI]:
     return _critic_models
 
 
-def _build_review_message(
-    raw_prompt: str,
-    proposals: list[dict[str, Any]],
-    reviewer_idx: int,
-) -> str:
-    """
-    Build the user message for one critic.
-
-    The reviewer sees every proposal EXCEPT its own (reviewer_idx is excluded).
-    Proposals are re-labelled A / B / C so the reviewer cannot infer authorship.
-    """
-    others = [p for i, p in enumerate(proposals) if i != reviewer_idx]
-    labels = [chr(ord("A") + i) for i in range(len(others))]  # A, B, C
-
-    proposal_block = "\n\n".join(
-        f"Proposal {label}:\n{p['optimized_prompt']}"
-        for label, p in zip(labels, others, strict=False)
-    )
-
-    return f"Original prompt:\n{raw_prompt}\n\n---\n\n{proposal_block}"
-
-
 def _parse_critique(raw: str) -> dict[str, Any]:
     """Strip accidental markdown fences and parse JSON."""
     text = raw.strip()
     if text.startswith("```"):
-        # ```json ... ``` or ``` ... ```
         inner = text.split("```")[1]
         if inner.startswith("json"):
             inner = inner[4:]
@@ -95,20 +70,21 @@ async def critic_node(state: GraphState) -> dict[str, Any]:
     proposals = state["council_responses"]
     raw_prompt = state["raw_prompt"]
 
-    if len(proposals) < 2:
-        # Not enough proposals to critique — skip this round
+    if len(proposals) < 4:
         if job_id := state.get("job_id"):
             await push_job_progress(job_id, {"step": "critic", "ts": time.time()})
         return {"critic_responses": []}
 
     async def critique(model: ChatOpenAI, reviewer_idx: int) -> dict[str, Any]:
-        user_msg = _build_review_message(raw_prompt, proposals, reviewer_idx)
-        response = await model.ainvoke(
-            [
-                {"role": "system", "content": _CRITIC_PROMPT},
-                {"role": "user", "content": user_msg},
-            ]
+        others = [p for i, p in enumerate(proposals) if i != reviewer_idx]
+        # others always has exactly 3 items: proposals has 4 and we exclude one
+        messages = critic_messages(
+            raw_prompt=raw_prompt,
+            proposal_a=others[0]["optimized_prompt"],
+            proposal_b=others[1]["optimized_prompt"],
+            proposal_c=others[2]["optimized_prompt"],
         )
+        response = await model.ainvoke(messages)
         parsed = _parse_critique(str(response.content))
         return {
             "reviewer_model": model.model_name,

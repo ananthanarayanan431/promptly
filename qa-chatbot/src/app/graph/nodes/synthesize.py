@@ -14,13 +14,11 @@ from langchain_openai import ChatOpenAI
 
 from app.config.llm import get_llm_settings
 from app.core.cache import push_job_progress
-from app.graph.prompts import load_prompt
+from app.graph.prompts import synthesize_messages
 from app.graph.state import GraphState
 
 _loop_id: int | None = None
 _synthesizer: ChatOpenAI | None = None
-
-_SYSTEM_PROMPT = load_prompt("synthesize_best")
 
 
 def _get_synthesizer() -> ChatOpenAI:
@@ -39,51 +37,28 @@ def _get_synthesizer() -> ChatOpenAI:
     return _synthesizer
 
 
-def _build_user_message(state: GraphState) -> str:
-    # --- Round 1: council proposals ---
-    proposals_block = "\n\n".join(
-        f"[Proposal from {r['model']}]:\n{r['optimized_prompt']}"
-        for r in state["council_responses"]
+def _build_proposals_block(council_responses: list[dict[str, Any]]) -> str:
+    return "\n\n".join(
+        f"[Proposal from {r['model']}]:\n{r['optimized_prompt']}" for r in council_responses
     )
 
-    # --- Round 2: critic reviews ---
-    critic_responses = state.get("critic_responses") or []
-    if critic_responses:
-        reviews = []
-        for cr in critic_responses:
-            ranking = ", ".join(cr.get("ranking", []))
-            critiques = cr.get("critiques", {})
-            critique_lines = "\n".join(f"  {label}: {text}" for label, text in critiques.items())
-            rationale = cr.get("ranking_rationale", "")
-            reviews.append(
-                f"[Critic: {cr['reviewer_model']}]\n"
-                f"Ranking: {ranking}\n"
-                f"Critiques:\n{critique_lines}\n"
-                f"Rationale: {rationale}"
-            )
-        critiques_block = "\n\n".join(reviews)
-    else:
-        critiques_block = "(No critic reviews available — synthesize from proposals only.)"
 
-    # --- Optional user feedback directive ---
-    feedback = state.get("feedback")
-    feedback_section = ""
-    if feedback:
-        feedback_section = (
-            f"\n\n---\n\n"
-            f"User Feedback Directive "
-            f"(highest priority — must be reflected in the final output):\n"
-            f"{feedback}"
+def _build_critiques_block(critic_responses: list[dict[str, Any]]) -> str:
+    if not critic_responses:
+        return "(No critic reviews available — synthesize from proposals only.)"
+    reviews = []
+    for cr in critic_responses:
+        ranking = ", ".join(cr.get("ranking", []))
+        critiques = cr.get("critiques", {})
+        critique_lines = "\n".join(f"  {label}: {text}" for label, text in critiques.items())
+        rationale = cr.get("ranking_rationale", "")
+        reviews.append(
+            f"[Critic: {cr['reviewer_model']}]\n"
+            f"Ranking: {ranking}\n"
+            f"Critiques:\n{critique_lines}\n"
+            f"Rationale: {rationale}"
         )
-
-    return (
-        f"Original prompt:\n{state['raw_prompt']}\n\n"
-        f"---\n\n"
-        f"Round 1 — Council proposals:\n\n{proposals_block}\n\n"
-        f"---\n\n"
-        f"Round 2 — Peer critiques:\n\n{critiques_block}"
-        f"{feedback_section}"
-    )
+    return "\n\n".join(reviews)
 
 
 async def synthesize_node(state: GraphState) -> dict[str, Any]:
@@ -96,11 +71,16 @@ async def synthesize_node(state: GraphState) -> dict[str, Any]:
     Returns:
         {"final_response": <best_optimized_prompt>, "token_usage": {"total_tokens": N}}
     """
+    proposals_block = _build_proposals_block(state["council_responses"])
+    critiques_block = _build_critiques_block(state.get("critic_responses") or [])
+
     response = await _get_synthesizer().ainvoke(
-        [
-            {"role": "system", "content": _SYSTEM_PROMPT},
-            {"role": "user", "content": _build_user_message(state)},
-        ]
+        synthesize_messages(
+            raw_prompt=state["raw_prompt"],
+            proposals_block=proposals_block,
+            critiques_block=critiques_block,
+            feedback=state.get("feedback"),
+        )
     )
 
     total_tokens = sum(

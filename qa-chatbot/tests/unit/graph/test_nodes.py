@@ -1,6 +1,8 @@
 import asyncio
 from unittest.mock import MagicMock, patch
 
+from app.graph.prompts.council_optimizer import _SYSTEM as COUNCIL_SYSTEM_PROMPT
+
 
 def test_council_vote_all_models_receive_same_system_prompt():
     """All council models must receive the identical system prompt."""
@@ -44,7 +46,7 @@ def test_council_vote_all_models_receive_same_system_prompt():
     assert (
         n_unique == 1
     ), f"Expected all models to receive the same prompt, got {n_unique} different prompts"
-    assert system_prompts[0] == council_vote._COUNCIL_PROMPT
+    assert system_prompts[0] == COUNCIL_SYSTEM_PROMPT
     assert len(result["council_responses"]) == 4
 
 

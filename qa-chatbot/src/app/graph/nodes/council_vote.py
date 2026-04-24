@@ -16,12 +16,13 @@ from langchain_openai import ChatOpenAI
 
 from app.config.llm import get_llm_settings
 from app.core.cache import push_job_progress
-from app.graph.prompts import load_prompt
+from app.graph.prompts import council_optimizer_messages
 from app.graph.state import GraphState
 
 logger = logging.getLogger(__name__)
 
-_COUNCIL_PROMPT: str = load_prompt("council_optimizer")
+_council_loop_id: int | None = None
+_council_models: list[ChatOpenAI] | None = None
 
 
 def _build_models() -> list[ChatOpenAI]:
@@ -36,10 +37,6 @@ def _build_models() -> list[ChatOpenAI]:
     ]
 
 
-_council_loop_id: int | None = None
-_council_models: list[ChatOpenAI] | None = None
-
-
 def _get_council_models() -> list[ChatOpenAI]:
     """Models bind httpx to the running loop; Celery uses a new loop per task."""
     global _council_loop_id, _council_models
@@ -51,26 +48,12 @@ def _get_council_models() -> list[ChatOpenAI]:
     return _council_models
 
 
-def _build_user_message(raw_prompt: str, feedback: str | None) -> str:
-    """Combine the raw prompt with optional user feedback."""
-    if not feedback:
-        return raw_prompt
-    return (
-        f"{raw_prompt}\n\n"
-        f"---\n"
-        f"Optimization Feedback "
-        f"(high-priority directive — override general heuristics if needed):\n"
-        f"{feedback}"
-    )
-
-
 async def council_vote_node(state: GraphState) -> dict[str, Any]:
     """
     LangGraph node — Round 1.
 
     Sends the raw prompt to all council models in parallel. Each model independently
-    produces its own optimized version using the same unified framework — model
-    architecture diversity provides variation without strategy coupling.
+    produces its own optimized version using the same unified framework.
     Emits a progress event to Redis after each individual model completes.
 
     Returns:
@@ -85,12 +68,7 @@ async def council_vote_node(state: GraphState) -> dict[str, Any]:
     lock = asyncio.Lock()
 
     async def optimize(model: ChatOpenAI) -> dict[str, Any]:
-        response = await model.ainvoke(
-            [
-                {"role": "system", "content": _COUNCIL_PROMPT},
-                {"role": "user", "content": _build_user_message(raw_prompt, feedback)},
-            ]
-        )
+        response = await model.ainvoke(council_optimizer_messages(raw_prompt, feedback))
         result: dict[str, Any] = {
             "model": model.model_name,
             "optimized_prompt": str(response.content).strip(),

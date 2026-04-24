@@ -19,7 +19,7 @@ from langchain_openai import ChatOpenAI
 
 from app.config.llm import get_llm_settings
 from app.core.cache import push_job_progress
-from app.graph.prompts import load_prompt
+from app.graph.prompts import intent_classifier_messages
 from app.graph.state import GraphState
 
 _REJECTION_IRRELEVANT = (
@@ -33,8 +33,6 @@ _REJECTION_IRRELEVANT = (
 
 _loop_id: int | None = None
 _classifier: ChatOpenAI | None = None
-
-_SYSTEM_PROMPT = load_prompt("intent_classifier")
 
 
 def _get_classifier() -> ChatOpenAI:
@@ -50,7 +48,7 @@ def _get_classifier() -> ChatOpenAI:
             openai_api_base="https://openrouter.ai/api/v1",
             openai_api_key=llm_settings.OPENROUTER_API_KEY.get_secret_value(),
             max_tokens=5,
-            temperature=0,  # deterministic — classification, not generation
+            temperature=0,
         )
     return _classifier
 
@@ -65,12 +63,7 @@ async def intent_classifier_node(state: GraphState) -> dict[str, Any]:
     """
     raw = state.get("raw_prompt", "").strip()
 
-    response = await _get_classifier().ainvoke(
-        [
-            {"role": "system", "content": _SYSTEM_PROMPT},
-            {"role": "user", "content": raw},
-        ]
-    )
+    response = await _get_classifier().ainvoke(intent_classifier_messages(raw))
 
     verdict = str(response.content).strip().upper()
 
