@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.llm import get_llm_settings
-from app.graph.prompts import load_prompt
+from app.graph.prompts import favorite_auto_tag_messages
 from app.models.favorite_prompt import FavoritePrompt
 from app.models.prompt_version import PromptVersion
 from app.repositories.favorite_repo import FavoriteRepository
@@ -20,7 +20,6 @@ from app.repositories.favorite_repo import FavoriteRepository
 logger = logging.getLogger(__name__)
 _VALID_CATEGORIES = {"Writing", "Coding", "Analysis", "Other"}
 _LLM_TIMEOUT_SECONDS = 2.0
-_AUTO_TAG_PROMPT = load_prompt("favorite_auto_tag")
 
 
 class FavoriteService:
@@ -111,9 +110,8 @@ class FavoriteService:
             temperature=0,
         )
 
-        prompt = _AUTO_TAG_PROMPT.replace("{prompt}", content[:4000])
         response = await asyncio.wait_for(
-            model.ainvoke([{"role": "user", "content": prompt}]),
+            model.ainvoke(favorite_auto_tag_messages(content[:4000])),
             timeout=_LLM_TIMEOUT_SECONDS,
         )
         raw = str(response.content).strip()
