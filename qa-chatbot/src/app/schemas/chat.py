@@ -64,6 +64,7 @@ class ChatResponse(BaseModel):
     # Populated only when the result was saved as a new prompt version
     prompt_id: str | None = None
     version: int | None = None
+    prompt_version_id: str | None = None
 
 
 class MessageOut(BaseModel):
@@ -73,6 +74,8 @@ class MessageOut(BaseModel):
     response: str | None
     council_votes: list[Any] | None = None
     token_usage: dict[str, Any] | None = None
+    prompt_version_id: uuid.UUID | None = None
+    prompt_family_id: uuid.UUID | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

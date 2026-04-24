@@ -9,6 +9,7 @@ from uuid import UUID
 
 from langchain_openai import ChatOpenAI
 from openai import APIStatusError as OpenAIAPIError
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.llm import get_llm_settings
@@ -16,6 +17,7 @@ from app.core.exceptions import GuardrailException, LLMException, NotFoundExcept
 from app.graph.nodes.guardrails import guardrails_node
 from app.graph.prompts import load_prompt
 from app.graph.state import GraphState
+from app.models.favorite_prompt import FavoritePrompt
 from app.repositories.prompt_version_repo import PromptVersionRepository
 
 logger = logging.getLogger(__name__)
@@ -224,7 +226,23 @@ class PromptVersioningService:
             "version": v.version,
             "content": v.content,
             "created_at": v.created_at.isoformat(),
+            "is_favorited": False,
+            "favorite_id": None,
         }
+
+    async def _favorites_by_version_id(
+        self, user_id: UUID, version_ids: list[UUID]
+    ) -> dict[UUID, FavoritePrompt]:
+        """Return a mapping of prompt_version_id → FavoritePrompt for the given user."""
+        if not version_ids:
+            return {}
+        result = await self.db.execute(
+            select(FavoritePrompt).where(
+                FavoritePrompt.user_id == user_id,
+                FavoritePrompt.prompt_version_id.in_(version_ids),
+            )
+        )
+        return {fav.prompt_version_id: fav for fav in result.scalars().all()}
 
     async def create(self, name: str, content: str, user_id: str) -> dict[str, Any]:
         """
@@ -272,7 +290,12 @@ class PromptVersioningService:
             version=next_version,
             content=content,
         )
-        return {"prompt_id": str(prompt_id), "version": self._fmt(v)}
+        favs = await self._favorites_by_version_id(UUID(user_id), [v.id])
+        version_dict = self._fmt(v)
+        if v.id in favs:
+            version_dict["is_favorited"] = True
+            version_dict["favorite_id"] = str(favs[v.id].id)
+        return {"prompt_id": str(prompt_id), "version": version_dict}
 
     async def list_families(self, user_id: str) -> list[dict[str, Any]]:
         """
@@ -281,6 +304,9 @@ class PromptVersioningService:
         sorted by the latest version's created_at descending (most-recently updated first).
         """
         all_versions = await self.repo.get_all_by_user_id(UUID(user_id))
+
+        version_ids = [v.id for v in all_versions]
+        favs = await self._favorites_by_version_id(UUID(user_id), version_ids)
 
         # Group by prompt_id preserving insertion order
         families: dict[str, dict[str, Any]] = {}
@@ -292,7 +318,11 @@ class PromptVersioningService:
                     "name": v.name,
                     "versions": [],
                 }
-            families[key]["versions"].append(self._fmt(v))
+            version_dict = self._fmt(v)
+            if v.id in favs:
+                version_dict["is_favorited"] = True
+                version_dict["favorite_id"] = str(favs[v.id].id)
+            families[key]["versions"].append(version_dict)
 
         # Sort by latest version's created_at descending (most-recently updated first)
         return sorted(
@@ -312,8 +342,19 @@ class PromptVersioningService:
         if not versions:
             raise NotFoundException(detail="Prompt not found.")
 
+        version_ids = [v.id for v in versions]
+        favs = await self._favorites_by_version_id(UUID(user_id), version_ids)
+
+        version_list = []
+        for v in versions:
+            version_dict = self._fmt(v)
+            if v.id in favs:
+                version_dict["is_favorited"] = True
+                version_dict["favorite_id"] = str(favs[v.id].id)
+            version_list.append(version_dict)
+
         return {
             "prompt_id": str(prompt_id),
             "name": versions[0].name,
-            "versions": [self._fmt(v) for v in versions],
+            "versions": version_list,
         }

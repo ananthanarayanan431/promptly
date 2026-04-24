@@ -143,6 +143,7 @@ def process_chat_async(
                 # --- Versioning save (same DB session, after pipeline) ---
                 saved_prompt_id: str | None = None
                 saved_version: int | None = None
+                saved_prompt_version_id: str | None = None
 
                 # Auto-generate a versioning entry for every chat that lacks explicit
                 # versioning context. Use "SESSION:<id>" as a stable, unique family name
@@ -177,8 +178,10 @@ def process_chat_async(
                             content=result["optimized_prompt"],
                         )
                     else:
-                        # name supplied without prompt_id
-                        existing = await version_repo.get_latest_by_name(  # type: ignore[arg-type]
+                        # name supplied without prompt_id; guaranteed non-None by outer condition
+                        if effective_name is None:
+                            raise RuntimeError("effective_name must not be None here")
+                        existing = await version_repo.get_latest_by_name(
                             effective_name, UUID(user_id)
                         )
                         if existing:
@@ -187,7 +190,7 @@ def process_chat_async(
                             v = await version_repo.create_version(
                                 prompt_id=pid,
                                 user_id=UUID(user_id),
-                                name=effective_name,  # type: ignore[arg-type]
+                                name=effective_name,
                                 version=existing.version + 1,
                                 content=result["optimized_prompt"],
                             )
@@ -197,14 +200,14 @@ def process_chat_async(
                             await version_repo.create_version(
                                 prompt_id=pid,
                                 user_id=UUID(user_id),
-                                name=effective_name,  # type: ignore[arg-type]
+                                name=effective_name,
                                 version=1,
                                 content=raw_prompt,
                             )
                             v = await version_repo.create_version(
                                 prompt_id=pid,
                                 user_id=UUID(user_id),
-                                name=effective_name,  # type: ignore[arg-type]
+                                name=effective_name,
                                 version=2,
                                 content=result["optimized_prompt"],
                             )
@@ -213,12 +216,26 @@ def process_chat_async(
                     if auto_versioned:
                         await version_repo.update_family_name(pid, UUID(user_id), llm_title)
 
+                    # Back-patch the assistant message so session history carries both IDs
+                    from app.repositories.message_repo import MessageRepository
+
+                    msg_repo = MessageRepository(db)
+                    last_msgs = await msg_repo.get_last_n(UUID(session_id), n=1)
+                    if last_msgs:
+                        await msg_repo.update(
+                            last_msgs[0],
+                            prompt_version_id=v.id,
+                            prompt_family_id=v.prompt_id,
+                        )
+
                     await db.commit()
                     saved_prompt_id = str(v.prompt_id)
                     saved_version = v.version
+                    saved_prompt_version_id = str(v.id)
 
                 result["prompt_id"] = saved_prompt_id
                 result["version"] = saved_version
+                result["prompt_version_id"] = saved_prompt_version_id
 
             await set_job_result(job_id, result)
             await set_job_status(job_id, "completed")

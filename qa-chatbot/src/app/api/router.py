@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1 import auth, chat, health, prompts, stats, templates, users
+from app.api.v1 import auth, chat, favorites, health, prompts, stats, templates, users
 
 api_router = APIRouter()
 
@@ -11,3 +11,4 @@ api_router.include_router(templates.router)
 api_router.include_router(stats.router)
 api_router.include_router(auth.router)
 api_router.include_router(users.router)
+api_router.include_router(favorites.router)

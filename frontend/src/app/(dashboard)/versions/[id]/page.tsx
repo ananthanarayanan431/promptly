@@ -5,7 +5,8 @@ import { useState } from 'react';
 import { api } from '@/lib/api';
 import type { PromptFamily, PromptVersion, PromptDiffResponse } from '@/types/api';
 import { formatDistanceToNow } from 'date-fns';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Heart } from 'lucide-react';
+import { LikeButton } from '@/components/optimize/like-button';
 import { toast } from 'sonner';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -196,8 +197,15 @@ export default function VersionHistoryPage({ params }: { params: { id: string } 
                 onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                   marginBottom: 4 }}>
-                  <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 13,
-                    fontWeight: 600, color: isActive ? '#7c5cff' : '#ededed' }}>v{v.version}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 13,
+                      fontWeight: 600, color: isActive ? '#7c5cff' : '#ededed' }}>v{v.version}</span>
+                    {v.is_favorited && (
+                      <Heart
+                        style={{ width: 10, height: 10, color: '#f43f5e', fill: '#f43f5e', flexShrink: 0 }}
+                      />
+                    )}
+                  </div>
                   {isLatest && (
                     <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 9.5,
                       color: '#7c5cff', background: 'rgba(124,92,255,0.12)', padding: '1px 5px',
@@ -242,6 +250,14 @@ export default function VersionHistoryPage({ params }: { params: { id: string } 
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
+                {activeVersion.version_id && (
+                  <LikeButton
+                    promptVersionId={activeVersion.version_id}
+                    isFavorited={activeVersion.is_favorited ?? false}
+                    favoriteId={activeVersion.favorite_id ?? null}
+                    size="sm"
+                  />
+                )}
                 {/* Diff selector */}
                 {sortedVersions.length > 1 && (
                   <>

@@ -42,6 +42,8 @@ class PromptVersionOut(BaseModel):
     version: int
     content: str
     created_at: str
+    is_favorited: bool = False
+    favorite_id: str | None = None
 
     model_config = {"from_attributes": True}
 

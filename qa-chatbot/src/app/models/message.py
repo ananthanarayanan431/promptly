@@ -23,5 +23,9 @@ class Message(Base, UUIDMixin, TimestampMixin):
     council_votes: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     model_used: Mapped[str | None] = mapped_column(String(100))
     token_usage: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    prompt_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("prompt_versions.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    prompt_family_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
 
     session: Mapped[ChatSession] = relationship(back_populates="messages")
