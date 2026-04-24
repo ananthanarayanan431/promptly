@@ -143,6 +143,7 @@ def process_chat_async(
                 # --- Versioning save (same DB session, after pipeline) ---
                 saved_prompt_id: str | None = None
                 saved_version: int | None = None
+                saved_prompt_version_id: str | None = None
 
                 # Auto-generate a versioning entry for every chat that lacks explicit
                 # versioning context. Use "SESSION:<id>" as a stable, unique family name
@@ -218,9 +219,11 @@ def process_chat_async(
                     await db.commit()
                     saved_prompt_id = str(v.prompt_id)
                     saved_version = v.version
+                    saved_prompt_version_id = str(v.id)
 
                 result["prompt_id"] = saved_prompt_id
                 result["version"] = saved_version
+                result["prompt_version_id"] = saved_prompt_version_id
 
             await set_job_result(job_id, result)
             await set_job_status(job_id, "completed")

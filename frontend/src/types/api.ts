@@ -37,6 +37,7 @@ export interface JobResult {
   };
   prompt_id?: string;
   version?: number;
+  prompt_version_id: string | null;
 }
 
 export interface JobStatusResponse {
@@ -70,6 +71,8 @@ export interface PromptVersion {
   version: number;
   content: string;
   created_at: string;
+  is_favorited: boolean;
+  favorite_id: string | null;
 }
 
 export interface PromptFamily {
@@ -250,4 +253,52 @@ export interface AdvisoryResponse {
   weaknesses: string[];
   improvements: string[];
   overall_assessment: string;
+}
+
+// ── Favorites (Prompt Store) ───────────────────────────────────────────────
+
+export type FavoriteCategory = "Work" | "Personal" | "Research" | "Creative" | "Other";
+
+export interface FavoriteResponse {
+  id: string;
+  prompt_version_id: string;
+  prompt_id: string;
+  family_name: string;
+  version: number;
+  content: string;
+  version_created_at: string;
+  note: string | null;
+  tags: string[];
+  category: FavoriteCategory;
+  is_pinned: boolean;
+  use_count: number;
+  liked_at: string;
+  last_used_at: string | null;
+  token_usage: Record<string, number> | null;
+}
+
+export interface FavoriteListResponse {
+  items: FavoriteResponse[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface FavoriteStatusResponse {
+  is_favorited: boolean;
+  prompt_store_id: string | null;
+}
+
+export interface FavoriteCreateRequest {
+  prompt_version_id: string;
+  note?: string;
+  tags?: string[];
+  category?: FavoriteCategory;
+}
+
+export interface FavoriteUpdateRequest {
+  note?: string;
+  tags?: string[];
+  category?: FavoriteCategory;
+  is_pinned?: boolean;
 }

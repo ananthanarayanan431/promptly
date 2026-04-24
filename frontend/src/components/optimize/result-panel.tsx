@@ -6,6 +6,7 @@ import { X, Copy, CheckCheck, ChevronDown, ChevronUp, Sparkles, GitBranch } from
 import { toast } from 'sonner';
 import { buttonVariants } from '@/components/ui/button';
 import type { JobResult } from '@/types/api';
+import { LikeButton } from '@/components/optimize/like-button';
 
 interface ResultPanelProps {
   result: JobResult;
@@ -15,6 +16,8 @@ interface ResultPanelProps {
 export function ResultPanel({ result, onClose }: ResultPanelProps) {
   const [copied, setCopied] = useState(false);
   const [showOriginal, setShowOriginal] = useState(false);
+  const [isFavorited, setIsFavorited] = useState(false);
+  const [favoriteId, setFavoriteId] = useState<string | null>(null);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -60,6 +63,17 @@ export function ResultPanel({ result, onClose }: ResultPanelProps) {
                 v{result.version}
               </div>
             )}
+            <LikeButton
+              promptVersionId={result.prompt_version_id ?? ''}
+              isFavorited={isFavorited}
+              favoriteId={favoriteId}
+              size="sm"
+              disabled={!result.prompt_version_id}
+              onToggled={(nowFavorited, newFavoriteId) => {
+                setIsFavorited(nowFavorited);
+                setFavoriteId(newFavoriteId);
+              }}
+            />
             <button
               type="button"
               onClick={onClose}

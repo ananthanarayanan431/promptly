@@ -28,6 +28,7 @@ function getBucket(dateStr: string): Bucket {
 
 function FamilyRow({ f }: { f: PromptFamily }) {
   const latestVersion = f.versions[f.versions.length - 1];
+  const starredCount = f.versions.filter(v => v.is_favorited).length;
   const updated = latestVersion?.created_at
     ? formatDistanceToNow(new Date(latestVersion.created_at), { addSuffix: true })
     : 'Unknown';
@@ -61,6 +62,14 @@ function FamilyRow({ f }: { f: PromptFamily }) {
 
       <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 11,
         color: '#5a5a60', display: 'flex', gap: 40, alignItems: 'center' }}>
+        {starredCount > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="#f43f5e" stroke="#f43f5e" strokeWidth="1.6">
+              <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+            </svg>
+            <span style={{ color: '#f43f5e' }}>{starredCount}</span>
+          </div>
+        )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <div style={{ display: 'flex', gap: 3 }}>
             {Array.from({ length: f.versions.length }).map((_, i) => (

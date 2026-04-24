@@ -64,6 +64,7 @@ class ChatResponse(BaseModel):
     # Populated only when the result was saved as a new prompt version
     prompt_id: str | None = None
     version: int | None = None
+    prompt_version_id: str | None = None
 
 
 class MessageOut(BaseModel):
