@@ -118,3 +118,23 @@ def test_favorite_auto_tag_messages_user_only():
     assert len(msgs) == 1
     assert msgs[0]["role"] == "user"
     assert "You are a helpful assistant." in msgs[0]["content"]
+
+
+def test_all_builders_importable_from_package():
+    from app.graph.prompts import (  # noqa: PLC0415
+        council_optimizer_messages,
+        critic_messages,
+        favorite_auto_tag_messages,
+        intent_classifier_messages,
+        prompt_advisory_messages,
+        prompt_health_score_messages,
+        synthesize_messages,
+    )
+
+    assert callable(intent_classifier_messages)
+    assert callable(council_optimizer_messages)
+    assert callable(critic_messages)
+    assert callable(synthesize_messages)
+    assert callable(prompt_health_score_messages)
+    assert callable(prompt_advisory_messages)
+    assert callable(favorite_auto_tag_messages)
