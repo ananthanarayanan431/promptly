@@ -1,4 +1,5 @@
 from app.graph.prompts.council_optimizer import council_optimizer_messages
+from app.graph.prompts.critic import critic_messages
 from app.graph.prompts.intent_classifier import intent_classifier_messages
 
 
@@ -32,3 +33,32 @@ def test_council_optimizer_with_feedback():
 def test_council_optimizer_system_not_empty():
     msgs = council_optimizer_messages("test", None)
     assert len(msgs[0]["content"]) > 100
+
+
+def test_critic_messages_structure():
+    msgs = critic_messages(
+        raw_prompt="Summarize this.",
+        proposal_a="Proposal A text",
+        proposal_b="Proposal B text",
+        proposal_c="Proposal C text",
+    )
+    assert len(msgs) == 2
+    assert msgs[0]["role"] == "system"
+    assert msgs[1]["role"] == "user"
+
+
+def test_critic_messages_proposals_present():
+    msgs = critic_messages(
+        raw_prompt="Original",
+        proposal_a="AAA",
+        proposal_b="BBB",
+        proposal_c="CCC",
+    )
+    user = msgs[1]["content"]
+    assert "Original" in user
+    assert "AAA" in user
+    assert "BBB" in user
+    assert "CCC" in user
+    assert "Proposal A:" in user
+    assert "Proposal B:" in user
+    assert "Proposal C:" in user
