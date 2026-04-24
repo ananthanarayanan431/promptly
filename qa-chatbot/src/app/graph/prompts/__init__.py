@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from app.graph.prompts.council_optimizer import council_optimizer_messages
 from app.graph.prompts.critic import critic_messages
 from app.graph.prompts.favorite_auto_tag import favorite_auto_tag_messages
@@ -17,9 +15,3 @@ __all__ = [
     "prompt_health_score_messages",
     "synthesize_messages",
 ]
-
-_PROMPTS_DIR = Path(__file__).parents[4] / "prompts"
-
-
-def load_prompt(name: str) -> str:
-    return (_PROMPTS_DIR / f"{name}.md").read_text(encoding="utf-8").strip()
