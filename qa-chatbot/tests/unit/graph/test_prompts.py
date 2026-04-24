@@ -1,6 +1,7 @@
 from app.graph.prompts.council_optimizer import council_optimizer_messages
 from app.graph.prompts.critic import critic_messages
 from app.graph.prompts.intent_classifier import intent_classifier_messages
+from app.graph.prompts.synthesize_best import synthesize_messages
 
 
 def test_intent_classifier_messages_structure():
@@ -62,3 +63,30 @@ def test_critic_messages_proposals_present():
     assert "Proposal A:" in user
     assert "Proposal B:" in user
     assert "Proposal C:" in user
+
+
+def test_synthesize_messages_no_feedback():
+    msgs = synthesize_messages(
+        raw_prompt="Original",
+        proposals_block="Proposal 1\n\nProposal 2",
+        critiques_block="Critique 1\n\nCritique 2",
+        feedback=None,
+    )
+    assert len(msgs) == 2
+    user = msgs[1]["content"]
+    assert "Original" in user
+    assert "Proposal 1" in user
+    assert "Critique 1" in user
+    assert "Feedback Directive" not in user
+
+
+def test_synthesize_messages_with_feedback():
+    msgs = synthesize_messages(
+        raw_prompt="Original",
+        proposals_block="props",
+        critiques_block="crits",
+        feedback="Keep it under 50 words",
+    )
+    user = msgs[1]["content"]
+    assert "Keep it under 50 words" in user
+    assert "Feedback Directive" in user
