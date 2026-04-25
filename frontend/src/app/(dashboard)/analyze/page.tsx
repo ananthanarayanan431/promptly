@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import type { HealthScoreResponse, AdvisoryResponse } from '@/types/api';
 import { Loader2 } from 'lucide-react';
+import { DIMENSION_LABELS, parseSeverity, SEVERITY_COLOR, DIM_SCORE_COLOR, ADVISORY_OVERALL_COLOR } from '@/lib/advisory';
 
 function scoreColor(n: number) {
   if (n < 4) return '#ff6b7a';
@@ -321,32 +322,6 @@ function HealthScorePanel({ score }: { score: HealthScoreResponse }) {
   );
 }
 
-const SEVERITY_COLOR: Record<string, string> = {
-  CRITICAL: '#ff6b7a', MAJOR: '#ffb85c', MINOR: '#7c9fff',
-};
-const DIM_SCORE_COLOR: Record<string, string> = {
-  STRONG: '#5cffb1', ADEQUATE: '#7c5cff', WEAK: '#ffb85c', MISSING: '#ff6b7a',
-};
-const ADVISORY_OVERALL_COLOR: Record<string, string> = {
-  HIGH: '#5cffb1', MODERATE: '#ffb85c', LOW: '#ff6b7a',
-};
-
-function parseSeverity(item: string): { severity: string | null; text: string } {
-  const m = item.match(/^\[([A-Z /]+)\]\s*/);
-  if (!m) return { severity: null, text: item };
-  const tag = m[1].trim();
-  return { severity: ['CRITICAL','MAJOR','MINOR'].includes(tag) ? tag : null, text: item.slice(m[0].length) };
-}
-
-const DIMENSION_LABELS: Record<string, string> = {
-  role_and_persona: 'Role & Persona',
-  task_clarity: 'Task Clarity',
-  output_format: 'Output Format',
-  constraints_and_guardrails: 'Constraints & Guardrails',
-  context_and_grounding: 'Context & Grounding',
-  conciseness_and_signal_density: 'Conciseness & Signal',
-  injection_robustness: 'Injection Robustness',
-};
 
 function AdvisoryPanel({ advisory }: { advisory: AdvisoryResponse }) {
   const sections = [

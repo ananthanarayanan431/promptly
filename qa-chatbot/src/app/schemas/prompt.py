@@ -36,9 +36,9 @@ class PromptHealthScoreResponse(BaseModel):
     prompt: str
     meta: HealthMeta
     scores: HealthScores
-    critical_failures: list[str]
-    top_improvements: list[str]
-    deploy_verdict: str
+    critical_failures: list[str] = Field(default_factory=list)
+    top_improvements: list[str] = Field(default_factory=list)
+    deploy_verdict: str = ""
 
 
 # --- Prompt Versioning ---
@@ -105,11 +105,11 @@ class AdvisoryDimensionScores(BaseModel):
 class PromptAdvisoryResponse(BaseModel):
     prompt: str
     meta: AdvisoryMeta
-    strengths: list[str]
-    weaknesses: list[str]
-    improvements: list[str]
-    dimension_scores: AdvisoryDimensionScores
-    overall_assessment: str
+    strengths: list[str] = Field(default_factory=list)
+    weaknesses: list[str] = Field(default_factory=list)
+    improvements: list[str] = Field(default_factory=list)
+    dimension_scores: AdvisoryDimensionScores | None = None
+    overall_assessment: str = ""
 
 
 # --- Diff ---

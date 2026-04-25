@@ -2,6 +2,7 @@ import { AdvisoryResponse } from '@/types/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CheckCircle2, XCircle, MessageSquareQuote, LayoutGrid } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { DIMENSION_LABELS, parseSeverity, parseDimensionScore } from '@/lib/advisory';
 
 const SCORE_CLS: Record<string, string> = {
   STRONG:   'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400',
@@ -33,32 +34,6 @@ const SEVERITY_BADGE: Record<string, string> = {
   CRITICAL: 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400',
   MAJOR:    'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
   MINOR:    'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-};
-
-// Items are prefixed "[CRITICAL]", "[MAJOR]", "[MINOR]" or "[severity N/A]"
-function parseSeverity(item: string): { severity: string | null; text: string } {
-  const m = item.match(/^\[([A-Z /]+)\]\s*/);
-  if (!m) return { severity: null, text: item };
-  const tag = m[1].trim();
-  const severity = ['CRITICAL', 'MAJOR', 'MINOR'].includes(tag) ? tag : null;
-  return { severity, text: item.slice(m[0].length) };
-}
-
-// Parse "STRONG — explanation" → { label, explanation }
-function parseDimensionScore(value: string): { label: string; explanation: string } {
-  const sep = value.indexOf(' — ');
-  if (sep === -1) return { label: value.trim(), explanation: '' };
-  return { label: value.slice(0, sep).trim(), explanation: value.slice(sep + 3).trim() };
-}
-
-const DIMENSION_LABELS: Record<string, string> = {
-  role_and_persona:              'Role & Persona',
-  task_clarity:                  'Task Clarity',
-  output_format:                 'Output Format',
-  constraints_and_guardrails:    'Constraints & Guardrails',
-  context_and_grounding:         'Context & Grounding',
-  conciseness_and_signal_density:'Conciseness & Signal Density',
-  injection_robustness:          'Injection Robustness',
 };
 
 export function AdvisoryDisplay({ advisory }: { advisory: AdvisoryResponse }) {
