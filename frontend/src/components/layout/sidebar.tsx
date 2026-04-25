@@ -16,6 +16,7 @@ const NAV = [
   { key: 'analyze',        label: 'Analyze',        href: '/analyze',        kbd: 'A' },
   { key: 'versions',       label: 'Versions',       href: '/versions',       kbd: 'V' },
   { key: 'prompt-store',   label: 'Prompt Store',   href: '/prompt-store',   kbd: 'S' },
+  { key: 'prompts-media',  label: 'Prompts Media',  href: '/prompts-media' },
   { key: 'prompt-project', label: 'Prompt Project', href: '/prompt-project' },
   { key: 'history',        label: 'History',        href: '/history' },
   { key: 'billing',        label: 'Billing',        href: '/billing' },
@@ -288,6 +289,15 @@ function NavIcon({ name, active }: { name: string; active: boolean }) {
     'prompt-store': (
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6">
         <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+      </svg>
+    ),
+    'prompts-media': (
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6">
+        <rect x="3" y="3" width="7" height="5" rx="1"/>
+        <rect x="14" y="3" width="7" height="5" rx="1"/>
+        <rect x="3" y="11" width="7" height="5" rx="1"/>
+        <rect x="14" y="11" width="7" height="5" rx="1"/>
+        <rect x="3" y="19" width="18" height="2" rx="1"/>
       </svg>
     ),
     billing: (

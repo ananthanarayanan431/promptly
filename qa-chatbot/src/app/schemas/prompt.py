@@ -12,8 +12,14 @@ class PromptHealthScoreRequest(BaseModel):
     prompt: str = Field(..., min_length=1)
 
 
-class PromptHealthScoreResponse(BaseModel):
-    prompt: str
+class HealthMeta(BaseModel):
+    overall_score: float
+    grade: str
+    deploy_ready: bool
+    injection_risk: str
+
+
+class HealthScores(BaseModel):
     clarity: MetricScore
     specificity: MetricScore
     completeness: MetricScore
@@ -22,7 +28,17 @@ class PromptHealthScoreResponse(BaseModel):
     actionability: MetricScore
     context_richness: MetricScore
     goal_alignment: MetricScore
-    overall_score: float
+    injection_robustness: MetricScore
+    reusability: MetricScore
+
+
+class PromptHealthScoreResponse(BaseModel):
+    prompt: str
+    meta: HealthMeta
+    scores: HealthScores
+    critical_failures: list[str]
+    top_improvements: list[str]
+    deploy_verdict: str
 
 
 # --- Prompt Versioning ---
@@ -70,11 +86,29 @@ class PromptAdvisoryRequest(BaseModel):
     prompt: str = Field(..., min_length=1)
 
 
+class AdvisoryMeta(BaseModel):
+    overall_score: str  # LOW | MODERATE | HIGH
+    injection_risk: str
+    dimensions_evaluated: list[str]
+
+
+class AdvisoryDimensionScores(BaseModel):
+    role_and_persona: str
+    task_clarity: str
+    output_format: str
+    constraints_and_guardrails: str
+    context_and_grounding: str
+    conciseness_and_signal_density: str
+    injection_robustness: str
+
+
 class PromptAdvisoryResponse(BaseModel):
     prompt: str
+    meta: AdvisoryMeta
     strengths: list[str]
     weaknesses: list[str]
     improvements: list[str]
+    dimension_scores: AdvisoryDimensionScores
     overall_assessment: str
 
 

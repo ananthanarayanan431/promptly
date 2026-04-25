@@ -37,9 +37,13 @@ def _get_synthesizer() -> ChatOpenAI:
     return _synthesizer
 
 
+_LABELS = ["A", "B", "C", "D"]
+
+
 def _build_proposals_block(council_responses: list[dict[str, Any]]) -> str:
     return "\n\n".join(
-        f"[Proposal from {r['model']}]:\n{r['optimized_prompt']}" for r in council_responses
+        f"[Proposal {_LABELS[i]}]:\n{r['optimized_prompt']}"
+        for i, r in enumerate(council_responses)
     )
 
 
@@ -47,13 +51,13 @@ def _build_critiques_block(critic_responses: list[dict[str, Any]]) -> str:
     if not critic_responses:
         return "(No critic reviews available — synthesize from proposals only.)"
     reviews = []
-    for cr in critic_responses:
+    for i, cr in enumerate(critic_responses):
         ranking = ", ".join(cr.get("ranking", []))
         critiques = cr.get("critiques", {})
         critique_lines = "\n".join(f"  {label}: {text}" for label, text in critiques.items())
         rationale = cr.get("ranking_rationale", "")
         reviews.append(
-            f"[Critic: {cr['reviewer_model']}]\n"
+            f"[Critic {_LABELS[i]}]\n"
             f"Ranking: {ranking}\n"
             f"Critiques:\n{critique_lines}\n"
             f"Rationale: {rationale}"

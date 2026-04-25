@@ -86,15 +86,19 @@ export interface CreateVersionResponse {
   version: PromptVersion;
 }
 
-// Each dimension returns a score (1–10) and a rationale string
 export interface MetricScore {
   score: number;
   rationale: string;
 }
 
-// Matches backend PromptHealthScoreResponse exactly
-export interface HealthScoreResponse {
-  prompt: string;
+export interface HealthMeta {
+  overall_score: number;
+  grade: 'A' | 'B' | 'C' | 'D' | 'F';
+  deploy_ready: boolean;
+  injection_risk: 'NONE' | 'LOW' | 'MODERATE' | 'HIGH';
+}
+
+export interface HealthScores {
   clarity: MetricScore;
   specificity: MetricScore;
   completeness: MetricScore;
@@ -103,7 +107,17 @@ export interface HealthScoreResponse {
   actionability: MetricScore;
   context_richness: MetricScore;
   goal_alignment: MetricScore;
-  overall_score: number; // float 1–10
+  injection_robustness: MetricScore;
+  reusability: MetricScore;
+}
+
+export interface HealthScoreResponse {
+  prompt: string;
+  meta: HealthMeta;
+  scores: HealthScores;
+  critical_failures: string[];
+  top_improvements: string[];
+  deploy_verdict: string;
 }
 
 // --- Dashboard Stats ---
@@ -248,12 +262,29 @@ export interface TemplateListResponse {
   total: number;
 }
 
-// Matches backend PromptAdvisoryResponse exactly
+export interface AdvisoryMeta {
+  overall_score: 'LOW' | 'MODERATE' | 'HIGH';
+  injection_risk: 'NONE' | 'LOW' | 'MODERATE' | 'HIGH';
+  dimensions_evaluated: string[];
+}
+
+export interface AdvisoryDimensionScores {
+  role_and_persona: string;
+  task_clarity: string;
+  output_format: string;
+  constraints_and_guardrails: string;
+  context_and_grounding: string;
+  conciseness_and_signal_density: string;
+  injection_robustness: string;
+}
+
 export interface AdvisoryResponse {
   prompt: string;
+  meta: AdvisoryMeta;
   strengths: string[];
   weaknesses: string[];
   improvements: string[];
+  dimension_scores: AdvisoryDimensionScores;
   overall_assessment: string;
 }
 

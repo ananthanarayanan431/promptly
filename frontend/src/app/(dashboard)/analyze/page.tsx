@@ -69,7 +69,7 @@ export default function AnalyzePage() {
                 Health score &<br /><em style={{ color: '#7c5cff', fontStyle: 'italic' }}>advisory</em> for your prompt.
               </h1>
               <p style={{ fontSize: 14, color: '#8a8a90', lineHeight: 1.5 }}>
-                Paste a prompt below. Run a Health Score (8 dimensions) or Advisory review. Each costs 5 credits.
+                Paste a prompt below. Run a Health Score (10 dimensions) or Advisory review. Each costs 5 credits.
               </p>
             </div>
           </div>
@@ -166,17 +166,28 @@ export default function AnalyzePage() {
   );
 }
 
+const GRADE_COLOR: Record<string, string> = {
+  A: '#5cffb1', B: '#7c5cff', C: '#ffb85c', D: '#ff9a3c', F: '#ff6b7a',
+};
+const RISK_COLOR: Record<string, string> = {
+  NONE: '#5cffb1', LOW: '#7c5cff', MODERATE: '#ffb85c', HIGH: '#ff6b7a',
+};
+
 function HealthScorePanel({ score }: { score: HealthScoreResponse }) {
-  const overall = score.overall_score ?? 5;
+  const overall = score.meta.overall_score ?? 5;
   const pct = (overall / 10) * 100;
   const circumference = 2 * Math.PI * 78;
   const dash = (pct / 100) * circumference;
 
-  const METRIC_KEYS = ['clarity','specificity','completeness','conciseness','tone','actionability','context_richness','goal_alignment'] as const;
+  const METRIC_KEYS = [
+    'clarity','specificity','completeness','conciseness','tone',
+    'actionability','context_richness','goal_alignment',
+    'injection_robustness','reusability',
+  ] as const;
   const dims = METRIC_KEYS.map(k => ({
     name: k.replace(/_/g, ' ').replace(/^\w/, c => c.toUpperCase()),
-    score: score[k]?.score ?? 0,
-    rationale: score[k]?.rationale ?? '',
+    score: score.scores[k]?.score ?? 0,
+    rationale: score.scores[k]?.rationale ?? '',
   }));
 
   return (
@@ -206,13 +217,23 @@ function HealthScorePanel({ score }: { score: HealthScoreResponse }) {
                 color: '#8a8a90', textTransform: 'uppercase', letterSpacing: '0.1em' }}>/ 10</div>
             </div>
           </div>
-          <div style={{ marginTop: 22, textAlign: 'center' }}>
-            <div style={{ fontSize: 15, fontWeight: 500, color: '#ededed', marginBottom: 6 }}>
-              {overall < 4 ? 'Needs work' : overall < 7 ? 'Below median' : 'Strong'}
-            </div>
-            <div style={{ fontSize: 12.5, color: '#8a8a90', lineHeight: 1.5 }}>
-              Structure and constraints are the main gaps.
-            </div>
+          {/* Grade + badges */}
+          <div style={{ marginTop: 18, display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
+            <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 11,
+              color: GRADE_COLOR[score.meta.grade] ?? '#ededed',
+              background: 'rgba(255,255,255,0.05)', borderRadius: 4, padding: '2px 8px' }}>
+              Grade {score.meta.grade}
+            </span>
+            <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 11,
+              color: RISK_COLOR[score.meta.injection_risk] ?? '#ededed',
+              background: 'rgba(255,255,255,0.05)', borderRadius: 4, padding: '2px 8px' }}>
+              Injection: {score.meta.injection_risk}
+            </span>
+            <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 11,
+              color: score.meta.deploy_ready ? '#5cffb1' : '#ff6b7a',
+              background: 'rgba(255,255,255,0.05)', borderRadius: 4, padding: '2px 8px' }}>
+              {score.meta.deploy_ready ? '✓ Deploy ready' : '✗ Not ready'}
+            </span>
           </div>
         </div>
 
@@ -224,7 +245,7 @@ function HealthScorePanel({ score }: { score: HealthScoreResponse }) {
               {dims.length} dimensions
             </div>
             {dims.map((d, i) => (
-              <div key={d.name} style={{ display: 'grid', gridTemplateColumns: '160px 1fr 44px',
+              <div key={d.name} style={{ display: 'grid', gridTemplateColumns: '180px 1fr 44px',
                 gap: 14, alignItems: 'center', padding: '10px 0',
                 borderBottom: i < dims.length - 1 ? '1px solid #1f1f23' : 'none' }}>
                 <div>
@@ -245,9 +266,87 @@ function HealthScorePanel({ score }: { score: HealthScoreResponse }) {
           </div>
         )}
       </div>
+
+      {/* Critical failures */}
+      {score.critical_failures.length > 0 && (
+        <div style={{ marginTop: 16, background: '#1a1a1a', border: '1px solid #2a1a1a',
+          borderRadius: 10, padding: 16 }}>
+          <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5,
+            color: '#ff6b7a', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 10 }}>
+            Critical Failures
+          </div>
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {score.critical_failures.map((item, i) => (
+              <li key={i} style={{ fontSize: 12.5, color: '#ff9a9a', lineHeight: 1.5,
+                paddingLeft: 12, borderLeft: '2px solid #ff6b7a' }}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Top improvements */}
+      {score.top_improvements.length > 0 && (
+        <div style={{ marginTop: 16, background: '#1a1a1a', border: '1px solid #1f1f23',
+          borderRadius: 10, padding: 16 }}>
+          <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5,
+            color: '#ffb85c', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 10 }}>
+            Top Improvements
+          </div>
+          <ol style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {score.top_improvements.map((item, i) => (
+              <li key={i} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 11,
+                  color: '#ffb85c', minWidth: 22 }}>{String(i + 1).padStart(2, '0')}</span>
+                <span style={{ fontSize: 12.5, color: '#b5b5ba', lineHeight: 1.5 }}>{item}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+
+      {/* Deploy verdict */}
+      {score.deploy_verdict && (
+        <div style={{ marginTop: 16, background: '#1a1a1a', border: '1px solid #1f1f23',
+          borderRadius: 10, padding: 16 }}>
+          <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5,
+            color: '#8a8a90', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 8 }}>
+            Deploy Verdict
+          </div>
+          <p style={{ fontSize: 12.5, color: '#b5b5ba', lineHeight: 1.6, margin: 0 }}>
+            {score.deploy_verdict}
+          </p>
+        </div>
+      )}
     </div>
   );
 }
+
+const SEVERITY_COLOR: Record<string, string> = {
+  CRITICAL: '#ff6b7a', MAJOR: '#ffb85c', MINOR: '#7c9fff',
+};
+const DIM_SCORE_COLOR: Record<string, string> = {
+  STRONG: '#5cffb1', ADEQUATE: '#7c5cff', WEAK: '#ffb85c', MISSING: '#ff6b7a',
+};
+const ADVISORY_OVERALL_COLOR: Record<string, string> = {
+  HIGH: '#5cffb1', MODERATE: '#ffb85c', LOW: '#ff6b7a',
+};
+
+function parseSeverity(item: string): { severity: string | null; text: string } {
+  const m = item.match(/^\[([A-Z /]+)\]\s*/);
+  if (!m) return { severity: null, text: item };
+  const tag = m[1].trim();
+  return { severity: ['CRITICAL','MAJOR','MINOR'].includes(tag) ? tag : null, text: item.slice(m[0].length) };
+}
+
+const DIMENSION_LABELS: Record<string, string> = {
+  role_and_persona: 'Role & Persona',
+  task_clarity: 'Task Clarity',
+  output_format: 'Output Format',
+  constraints_and_guardrails: 'Constraints & Guardrails',
+  context_and_grounding: 'Context & Grounding',
+  conciseness_and_signal_density: 'Conciseness & Signal',
+  injection_robustness: 'Injection Robustness',
+};
 
 function AdvisoryPanel({ advisory }: { advisory: AdvisoryResponse }) {
   const sections = [
@@ -258,6 +357,21 @@ function AdvisoryPanel({ advisory }: { advisory: AdvisoryResponse }) {
 
   return (
     <div style={{ marginTop: 12 }}>
+      {/* Meta badges */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+        <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 11,
+          color: ADVISORY_OVERALL_COLOR[advisory.meta.overall_score] ?? '#ededed',
+          background: 'rgba(255,255,255,0.05)', borderRadius: 4, padding: '2px 8px' }}>
+          Overall: {advisory.meta.overall_score}
+        </span>
+        <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 11,
+          color: RISK_COLOR[advisory.meta.injection_risk] ?? '#ededed',
+          background: 'rgba(255,255,255,0.05)', borderRadius: 4, padding: '2px 8px' }}>
+          Injection risk: {advisory.meta.injection_risk}
+        </span>
+      </div>
+
+      {/* Overall assessment */}
       {advisory.overall_assessment && (
         <div style={{ padding: '12px 16px', marginBottom: 12, background: '#1a1a1a',
           border: '1px solid #1f1f23', borderRadius: 10,
@@ -266,31 +380,74 @@ function AdvisoryPanel({ advisory }: { advisory: AdvisoryResponse }) {
           {advisory.overall_assessment}
         </div>
       )}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-      {sections.map(s => (
-        <div key={s.key}
-          style={{ gridColumn: s.key === 'improvements' ? '1 / -1' : 'auto',
-            padding: 16, border: '1px solid #1f1f23', borderRadius: 10, background: '#1a1a1a' }}>
-          <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 11,
-            textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 10,
-            display: 'flex', alignItems: 'center', gap: 8, color: s.color }}>
-            {s.label}
+
+      {/* Dimension scores */}
+      {advisory.dimension_scores && (
+        <div style={{ marginBottom: 12, background: '#1a1a1a', border: '1px solid #1f1f23',
+          borderRadius: 10, padding: 16 }}>
+          <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5,
+            color: '#8a8a90', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 10 }}>
+            Dimension Scores
           </div>
-          <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-            {(s.items as string[]).map((item: string, i: number) => (
-              <li key={i} style={{ display: 'grid', gridTemplateColumns: '18px 1fr', gap: 10,
-                padding: '8px 0', borderBottom: i < s.items.length - 1 ? '1px dashed #1f1f23' : 'none',
-                fontSize: 12.5, lineHeight: 1.5, color: '#b5b5ba' }}>
-                <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5,
-                  color: '#5a5a60', paddingTop: 2 }}>
-                  {String.fromCharCode(65 + i)}
-                </span>
-                <span>{item}</span>
-              </li>
-            ))}
-          </ul>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            {(Object.keys(DIMENSION_LABELS) as (keyof typeof DIMENSION_LABELS)[]).map(key => {
+              const raw = advisory.dimension_scores[key as keyof typeof advisory.dimension_scores] ?? '';
+              const sep = raw.indexOf(' — ');
+              const label = sep === -1 ? raw.trim() : raw.slice(0, sep).trim();
+              const explanation = sep === -1 ? '' : raw.slice(sep + 3).trim();
+              return (
+                <div key={key} style={{ padding: '8px 10px', borderRadius: 6, background: '#141414',
+                  border: '1px solid #1f1f23' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                    <span style={{ fontSize: 12, color: '#ededed' }}>{DIMENSION_LABELS[key]}</span>
+                    <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5,
+                      color: DIM_SCORE_COLOR[label] ?? '#8a8a90',
+                      background: 'rgba(255,255,255,0.04)', borderRadius: 3, padding: '1px 6px', whiteSpace: 'nowrap' }}>
+                      {label}
+                    </span>
+                  </div>
+                  {explanation && (
+                    <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5,
+                      color: '#5a5a60', marginTop: 4, lineHeight: 1.4 }}>{explanation}</div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
-      ))}
+      )}
+
+      {/* Strengths / Weaknesses / Improvements */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        {sections.map(s => (
+          <div key={s.key}
+            style={{ gridColumn: s.key === 'improvements' ? '1 / -1' : 'auto',
+              padding: 16, border: '1px solid #1f1f23', borderRadius: 10, background: '#1a1a1a' }}>
+            <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 11,
+              textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 10,
+              display: 'flex', alignItems: 'center', gap: 8, color: s.color }}>
+              {s.label}
+            </div>
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+              {(s.items as string[]).map((item: string, i: number) => {
+                const { severity, text } = parseSeverity(item);
+                return (
+                  <li key={i} style={{ display: 'flex', flexDirection: 'column', gap: 3,
+                    padding: '8px 0', borderBottom: i < s.items.length - 1 ? '1px dashed #1f1f23' : 'none' }}>
+                    {severity && (
+                      <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10,
+                        color: SEVERITY_COLOR[severity], alignSelf: 'flex-start',
+                        background: 'rgba(255,255,255,0.04)', borderRadius: 3, padding: '1px 6px' }}>
+                        {severity}
+                      </span>
+                    )}
+                    <span style={{ fontSize: 12.5, lineHeight: 1.5, color: '#b5b5ba' }}>{text}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))}
       </div>
     </div>
   );

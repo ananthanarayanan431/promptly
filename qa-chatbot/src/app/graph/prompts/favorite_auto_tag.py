@@ -1,27 +1,27 @@
 _USER = """\
-You generate concise tag/category metadata for prompts that a user has saved as a favorite.
+Classify the prompt below into tags and a category. Return a SINGLE valid JSON object. No prose, no markdown fences, no commentary.
 
-Return a SINGLE JSON object. No prose, no code fences, no commentary.
-
-Schema:
+<schema>
 {
-  "tags": string[],     // 2-4 short, lowercase, hyphen-separated keywords describing the
-                        // prompt's subject. No quotes, no emoji.
-  "category": string    // Exactly one of: "Writing", "Coding", "Analysis", "Other"
+  "tags": string[],   // 2–4 lowercase, hyphen-separated keywords describing the prompt's
+                      // subject or use case. Not style. Not tone. Not format.
+                      // Examples: "email", "cold-outreach", "python", "summarization", "seo"
+  "category": string  // Exactly one of: "Writing", "Coding", "Analysis", "Other"
+                      // If the prompt spans multiple categories, pick the dominant one.
+                      // If genuinely ambiguous, return "Other".
 }
+</schema>
 
-Rules:
-- Tags should describe the SUBJECT or USE CASE (e.g. "email", "cold-outreach",
-  "summarization"), not the style.
-- Prefer specific single words or short compounds. Examples: "email", "python", "research",
-  "marketing".
-- Never return more than 4 tags.
-- If unsure about the category, return "Other".
+<rules>
+- Tags describe WHAT the prompt does or WHO it's for — not HOW it does it.
+- Prefer the most specific accurate term: "python" over "programming", "cold-outreach" over "email".
+- Never fewer than 2 tags, never more than 4.
+- No duplicates, no synonyms, no overlap between tags.
+- Tags must be grounded in the prompt text — do not infer or invent context.
+</rules>
 
-Prompt to classify:
----
-{{prompt}}
----
+
+Prompt to classify: {{prompt}}
 
 Respond with JSON only.\
 """
