@@ -9,6 +9,7 @@ from app.api.v1.exceptions.favorites import (
     FavoriteNotFoundException,
     FavoriteVersionNotFoundException,
 )
+from app.core.rate_limit import RateLimiter
 from app.dependencies import get_current_user, get_db
 from app.models.favorite_prompt import FavoritePrompt
 from app.models.user import User
@@ -23,6 +24,7 @@ from app.schemas.favorite import (
 from app.services.favorite_service import FavoriteService
 
 router = APIRouter(prefix="/favorites", tags=["favorites"])
+_default_limiter = RateLimiter(requests=60, window_seconds=60)
 
 
 def _to_response(fav: FavoritePrompt) -> FavoriteResponse:
@@ -46,7 +48,9 @@ def _to_response(fav: FavoritePrompt) -> FavoriteResponse:
     )
 
 
-@router.post("", response_model=SuccessResponse[FavoriteResponse])
+@router.post(
+    "", response_model=SuccessResponse[FavoriteResponse], dependencies=[Depends(_default_limiter)]
+)
 async def like(
     request: FavoriteCreateRequest,
     response: Response,
@@ -70,7 +74,11 @@ async def like(
     return SuccessResponse(data=_to_response(fav))
 
 
-@router.get("/status", response_model=SuccessResponse[FavoriteStatusResponse])
+@router.get(
+    "/status",
+    response_model=SuccessResponse[FavoriteStatusResponse],
+    dependencies=[Depends(_default_limiter)],
+)
 async def status_endpoint(
     prompt_version_id: Annotated[uuid.UUID, Query()],
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -81,7 +89,11 @@ async def status_endpoint(
     return SuccessResponse(data=FavoriteStatusResponse(is_favorited=is_fav, prompt_store_id=pid))
 
 
-@router.get("", response_model=SuccessResponse[FavoriteListResponse])
+@router.get(
+    "",
+    response_model=SuccessResponse[FavoriteListResponse],
+    dependencies=[Depends(_default_limiter)],
+)
 async def list_favorites(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
@@ -112,7 +124,11 @@ async def list_favorites(
     )
 
 
-@router.get("/tags", response_model=SuccessResponse[FavoriteTagsResponse])
+@router.get(
+    "/tags",
+    response_model=SuccessResponse[FavoriteTagsResponse],
+    dependencies=[Depends(_default_limiter)],
+)
 async def list_tags(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
@@ -122,7 +138,11 @@ async def list_tags(
     return SuccessResponse(data=FavoriteTagsResponse(tags=tags))
 
 
-@router.delete("/by-version/{prompt_version_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/by-version/{prompt_version_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(_default_limiter)],
+)
 async def unlike_by_version(
     prompt_version_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -138,7 +158,11 @@ async def unlike_by_version(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.get("/{favorite_id}", response_model=SuccessResponse[FavoriteResponse])
+@router.get(
+    "/{favorite_id}",
+    response_model=SuccessResponse[FavoriteResponse],
+    dependencies=[Depends(_default_limiter)],
+)
 async def get_favorite(
     favorite_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -151,7 +175,11 @@ async def get_favorite(
     return SuccessResponse(data=_to_response(fav))
 
 
-@router.patch("/{favorite_id}", response_model=SuccessResponse[FavoriteResponse])
+@router.patch(
+    "/{favorite_id}",
+    response_model=SuccessResponse[FavoriteResponse],
+    dependencies=[Depends(_default_limiter)],
+)
 async def update_favorite(
     favorite_id: uuid.UUID,
     request: FavoriteUpdateRequest,
@@ -182,7 +210,11 @@ async def update_favorite(
     return SuccessResponse(data=_to_response(fav))
 
 
-@router.post("/{favorite_id}/use", status_code=status.HTTP_204_NO_CONTENT)
+@router.post(
+    "/{favorite_id}/use",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(_default_limiter)],
+)
 async def use_favorite(
     favorite_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -196,7 +228,11 @@ async def use_favorite(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.delete("/{favorite_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{favorite_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(_default_limiter)],
+)
 async def unlike(
     favorite_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],

@@ -4,15 +4,21 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.types.response import SuccessResponse
+from app.core.rate_limit import RateLimiter
 from app.dependencies import get_current_user, get_db
 from app.models.user import User
 from app.repositories.template_repo import TemplateRepository
 from app.schemas.template import TemplateCategoryGroup, TemplateListResponse, TemplateOut
 
 router = APIRouter(prefix="/templates", tags=["templates"])
+_default_limiter = RateLimiter(requests=60, window_seconds=60)
 
 
-@router.get("", response_model=SuccessResponse[TemplateListResponse])
+@router.get(
+    "",
+    response_model=SuccessResponse[TemplateListResponse],
+    dependencies=[Depends(_default_limiter)],
+)
 async def list_templates(
     db: Annotated[AsyncSession, Depends(get_db)],
     _: Annotated[User, Depends(get_current_user)],

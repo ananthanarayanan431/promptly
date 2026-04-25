@@ -7,6 +7,7 @@ from sqlalchemy import Date, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.types.response import SuccessResponse
+from app.core.rate_limit import RateLimiter
 from app.dependencies import get_current_user, get_db
 from app.models.message import Message
 from app.models.prompt_version import PromptVersion
@@ -16,6 +17,7 @@ from app.repositories.health_score_repo import HealthScoreRepository
 from app.schemas.stats import DailyActivity, DashboardStats, ModelStats, QualityTrendPoint
 
 router = APIRouter(prefix="/stats", tags=["stats"])
+_default_limiter = RateLimiter(requests=60, window_seconds=60)
 
 # Blended cost per 1M tokens (input+output average) by council model
 _MODEL_COST_PER_M: dict[str, float] = {
@@ -34,7 +36,9 @@ _MODEL_DISPLAY: dict[str, str] = {
 }
 
 
-@router.get("", response_model=SuccessResponse[DashboardStats])
+@router.get(
+    "", response_model=SuccessResponse[DashboardStats], dependencies=[Depends(_default_limiter)]
+)
 async def get_dashboard_stats(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
