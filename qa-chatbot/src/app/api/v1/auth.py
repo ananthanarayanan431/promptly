@@ -2,15 +2,22 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 from fastapi.security import OAuth2PasswordRequestForm
+from jose import JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.types.response import SuccessResponse
 from app.api.v1.exceptions.auth import InactiveUserException, InvalidCredentialsException
 from app.core.exceptions import UserAlreadyExistException
-from app.core.security import create_access_token, hash_password, verify_password
+from app.core.security import (
+    create_access_token,
+    create_refresh_token,
+    decode_refresh_token,
+    hash_password,
+    verify_password,
+)
 from app.db.session import get_async_session
 from app.repositories.user_repo import UserRepository
-from app.schemas.auth import Token, UserCreate, UserResponse
+from app.schemas.auth import RefreshRequest, Token, UserCreate, UserResponse
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -51,4 +58,30 @@ async def login_access_token(
         raise InactiveUserException()
 
     access_token = create_access_token(subject=str(user.id))
-    return SuccessResponse(data=Token(access_token=access_token, token_type="bearer"))
+    refresh_token = create_refresh_token(subject=str(user.id))
+    return SuccessResponse(
+        data=Token(access_token=access_token, refresh_token=refresh_token, token_type="bearer")
+    )
+
+
+@router.post("/refresh", response_model=SuccessResponse[Token])
+async def refresh_access_token(
+    body: RefreshRequest,
+    db: Annotated[AsyncSession, Depends(get_async_session)],
+) -> SuccessResponse[Token]:
+    """Exchange a valid refresh token for a new access + refresh token pair."""
+    try:
+        user_id = decode_refresh_token(body.refresh_token)
+    except JWTError as exc:
+        raise InvalidCredentialsException() from exc
+
+    user_repo = UserRepository(db)
+    user = await user_repo.get_by_id(__import__("uuid").UUID(user_id))
+    if user is None or not user.is_active:
+        raise InvalidCredentialsException()
+
+    access_token = create_access_token(subject=user_id)
+    new_refresh_token = create_refresh_token(subject=user_id)
+    return SuccessResponse(
+        data=Token(access_token=access_token, refresh_token=new_refresh_token, token_type="bearer")
+    )

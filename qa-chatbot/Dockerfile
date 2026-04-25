@@ -9,6 +9,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
 COPY src/ ./src/
+COPY prompts/ ./prompts/
 COPY alembic.ini ./
 
 RUN uv sync --frozen --no-dev
@@ -21,8 +22,9 @@ RUN groupadd --gid 1001 appgroup && \
 
 WORKDIR /app
 
-COPY --from=builder /app/.venv /app/.venv
-COPY --from=builder /app/src   /app/src
+COPY --from=builder /app/.venv      /app/.venv
+COPY --from=builder /app/src        /app/src
+COPY --from=builder /app/prompts    /app/prompts
 COPY --from=builder /app/alembic.ini /app/alembic.ini
 
 # Copy entrypoint

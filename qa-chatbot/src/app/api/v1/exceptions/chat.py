@@ -24,3 +24,8 @@ class InvalidSessionIDException(HTTPException):
 class SessionNotFoundException(HTTPException):
     def __init__(self, detail: str = "Session not found.") -> None:
         super().__init__(status_code=status.HTTP_404_NOT_FOUND, detail=detail)
+
+
+class LLMTimeoutException(HTTPException):
+    def __init__(self, detail: str = "Name generation timed out. Please try again.") -> None:
+        super().__init__(status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail=detail)

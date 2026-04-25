@@ -30,7 +30,18 @@ def create_access_token(subject: str, expires_delta: timedelta | None = None) ->
     expire = datetime.now(UTC) + (
         expires_delta or timedelta(minutes=auth_settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     )
-    payload = {"sub": subject, "exp": expire, "iat": datetime.now(UTC)}
+    payload = {"sub": subject, "exp": expire, "iat": datetime.now(UTC), "type": "access"}
+    token: str = jwt.encode(
+        payload,
+        auth_settings.SECRET_KEY.get_secret_value(),
+        algorithm=auth_settings.ALGORITHM,
+    )
+    return token
+
+
+def create_refresh_token(subject: str) -> str:
+    expire = datetime.now(UTC) + timedelta(minutes=auth_settings.REFRESH_TOKEN_EXPIRE_MINUTES)
+    payload = {"sub": subject, "exp": expire, "iat": datetime.now(UTC), "type": "refresh"}
     token: str = jwt.encode(
         payload,
         auth_settings.SECRET_KEY.get_secret_value(),
@@ -46,6 +57,21 @@ def decode_access_token(token: str) -> str:
         auth_settings.SECRET_KEY.get_secret_value(),
         algorithms=[auth_settings.ALGORITHM],
     )
+    sub: str | None = payload.get("sub")
+    if sub is None:
+        raise JWTError("Missing subject")
+    return sub
+
+
+def decode_refresh_token(token: str) -> str:
+    """Validates a refresh token and returns the subject (user id) or raises JWTError."""
+    payload = jwt.decode(
+        token,
+        auth_settings.SECRET_KEY.get_secret_value(),
+        algorithms=[auth_settings.ALGORITHM],
+    )
+    if payload.get("type") != "refresh":
+        raise JWTError("Not a refresh token")
     sub: str | None = payload.get("sub")
     if sub is None:
         raise JWTError("Missing subject")

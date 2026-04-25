@@ -253,6 +253,19 @@ def process_chat_async(
         except Exception as exc:
             await set_job_status(job_id, "failed")
             await set_job_result(job_id, {"error": str(exc)})
+            # Refund the 10 credits deducted at submission — the user got nothing.
+            # Best-effort: swallow refund errors so the original exception propagates.
+            try:
+                from uuid import UUID as _UUID
+
+                from app.repositories.user_repo import UserRepository
+
+                async with AsyncSessionLocal() as refund_db:
+                    repo = UserRepository(refund_db)
+                    await repo.refund_credits(_UUID(user_id), 10)
+                    await refund_db.commit()
+            except Exception:  # noqa: S110
+                pass
             raise self.retry(exc=exc) from exc
 
     try:
