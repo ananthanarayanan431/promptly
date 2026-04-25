@@ -35,3 +35,7 @@ node_modules/
 
 # Git worktrees
 .worktrees/
+
+# Pitch deck build artifacts
+docs/pitch-deck/*.pptx
+docs/pitch-deck/*.pdf
