@@ -27,6 +27,7 @@ from app.core.cache import (
     set_job_owner,
     set_job_status,
 )
+from app.core.rate_limit import RateLimiter
 from app.dependencies import get_current_user, get_db
 from app.models.message import Message
 from app.models.session import ChatSession
@@ -53,6 +54,8 @@ from app.schemas.chat import (
 )
 from app.workers.tasks import process_chat_async
 
+_chat_limiter = RateLimiter(requests=10, window_seconds=60)
+
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 
@@ -60,6 +63,7 @@ router = APIRouter(prefix="/chat", tags=["chat"])
     "/",
     response_model=SuccessResponse[ChatJobAcceptedResponse],
     status_code=202,
+    dependencies=[Depends(_chat_limiter)],
 )
 async def create_chat(
     request: ChatRequest,
