@@ -2,7 +2,6 @@ import asyncio
 import uuid
 from typing import Any
 
-import redis.asyncio as aioredis
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -10,7 +9,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from app.api.types.response import ResponseError
 from app.config.app import get_app_settings
 from app.config.rate_limit import get_rate_limit_settings
-from app.config.redis import get_redis_settings
+from app.db.redis import get_redis_client
 
 
 class CorrelationIdMiddleware(BaseHTTPMiddleware):
@@ -25,41 +24,53 @@ class CorrelationIdMiddleware(BaseHTTPMiddleware):
             return JSONResponse(status_code=e.error.code, content={"detail": e.error.message})
 
 
-class RateLimitMiddleware(BaseHTTPMiddleware):
-    """Redis-backed sliding-window rate limiter keyed by client IP."""
+_HEALTH_PATHS = {"/health", "/ready"}
+_AUTH_PATHS = {"/api/v1/auth/login", "/api/v1/auth/register"}
 
-    def __init__(self, app: Any) -> None:
-        super().__init__(app)
-        redis_settings = get_redis_settings()
-        self._redis: aioredis.Redis = aioredis.from_url(
-            str(redis_settings.REDIS_URL),
-            encoding="utf-8",
-            decode_responses=True,
-        )
+
+class RateLimitMiddleware(BaseHTTPMiddleware):
+    """Redis-backed sliding-window rate limiter keyed by client IP.
+
+    - /health and /ready are bypassed entirely.
+    - Auth endpoints use a tight per-IP bucket (RATE_LIMIT_AUTH_REQUESTS / window).
+    - All other routes share the global per-IP bucket (RATE_LIMIT_REQUESTS / window).
+    """
 
     async def dispatch(self, request: Request, call_next: Any) -> Any:
+        path = request.url.path
+
+        if path in _HEALTH_PATHS:
+            return await call_next(request)
+
         settings = get_rate_limit_settings()
         client_ip = request.client.host if request.client else "unknown"
-        key = f"rl:{client_ip}"
 
-        pipe = self._redis.pipeline()
-        await pipe.incr(key)
-        await pipe.expire(key, settings.RATE_LIMIT_WINDOW_SECONDS, nx=True)
+        if path in _AUTH_PATHS:
+            limit = settings.RATE_LIMIT_AUTH_REQUESTS
+            window = settings.RATE_LIMIT_AUTH_WINDOW_SECONDS
+            key = f"rl:auth:{client_ip}"
+        else:
+            limit = settings.RATE_LIMIT_REQUESTS
+            window = settings.RATE_LIMIT_WINDOW_SECONDS
+            key = f"rl:{client_ip}"
+
+        redis = await get_redis_client()
+        pipe = redis.pipeline()
+        pipe.incr(key)
+        pipe.expire(key, window, nx=True)
         results: list[int] = await pipe.execute()
         count: int = results[0]
 
-        if count > settings.RATE_LIMIT_REQUESTS:
+        if count > limit:
             return JSONResponse(
                 status_code=429,
                 content={"detail": "Rate limit exceeded. Please slow down."},
-                headers={"Retry-After": str(settings.RATE_LIMIT_WINDOW_SECONDS)},
+                headers={"Retry-After": str(window)},
             )
 
         response = await call_next(request)
-        response.headers["X-RateLimit-Limit"] = str(settings.RATE_LIMIT_REQUESTS)
-        response.headers["X-RateLimit-Remaining"] = str(
-            max(0, settings.RATE_LIMIT_REQUESTS - count)
-        )
+        response.headers["X-RateLimit-Limit"] = str(limit)
+        response.headers["X-RateLimit-Remaining"] = str(max(0, limit - count))
         return response
 
 
