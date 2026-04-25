@@ -9,6 +9,7 @@ from app.api.v1.exceptions.prompts import (
     PromptInsufficientCreditsException,
     PromptVersionNotFoundException,
 )
+from app.core.rate_limit import RateLimiter
 from app.dependencies import get_current_user, get_db
 from app.models.user import User
 from app.repositories.prompt_version_repo import PromptVersionRepository
@@ -26,6 +27,9 @@ from app.schemas.prompt import (
 from app.services.prompt_service import PromptService, PromptVersioningService
 from app.utils.diff import compute_diff
 
+_expensive_limiter = RateLimiter(requests=20, window_seconds=60)
+_default_limiter = RateLimiter(requests=60, window_seconds=60)
+
 router = APIRouter(prefix="/prompts", tags=["prompts"])
 
 
@@ -34,7 +38,11 @@ router = APIRouter(prefix="/prompts", tags=["prompts"])
 # ---------------------------------------------------------------------------
 
 
-@router.post("/health-score", response_model=SuccessResponse[PromptHealthScoreResponse])
+@router.post(
+    "/health-score",
+    response_model=SuccessResponse[PromptHealthScoreResponse],
+    dependencies=[Depends(_expensive_limiter)],
+)
 async def prompt_health_score(
     request: PromptHealthScoreRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -58,7 +66,11 @@ async def prompt_health_score(
     return SuccessResponse(data=PromptHealthScoreResponse(**result))
 
 
-@router.post("/advisory", response_model=SuccessResponse[PromptAdvisoryResponse])
+@router.post(
+    "/advisory",
+    response_model=SuccessResponse[PromptAdvisoryResponse],
+    dependencies=[Depends(_expensive_limiter)],
+)
 async def prompt_advisory(
     request: PromptAdvisoryRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -87,7 +99,11 @@ async def prompt_advisory(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/versions", response_model=SuccessResponse[PromptFamilyListResponse])
+@router.get(
+    "/versions",
+    response_model=SuccessResponse[PromptFamilyListResponse],
+    dependencies=[Depends(_default_limiter)],
+)
 async def list_prompt_families(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
@@ -101,7 +117,11 @@ async def list_prompt_families(
     return SuccessResponse(data=PromptFamilyListResponse(families=families))
 
 
-@router.post("/versions", response_model=SuccessResponse[PromptVersionCreateResponse])
+@router.post(
+    "/versions",
+    response_model=SuccessResponse[PromptVersionCreateResponse],
+    dependencies=[Depends(_default_limiter)],
+)
 async def create_prompt_version(
     request: PromptVersionCreateRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -124,6 +144,7 @@ async def create_prompt_version(
 @router.get(
     "/versions/{prompt_id}",
     response_model=SuccessResponse[PromptVersionListResponse],
+    dependencies=[Depends(_default_limiter)],
 )
 async def list_prompt_versions(
     prompt_id: uuid.UUID,
@@ -144,6 +165,7 @@ async def list_prompt_versions(
 @router.get(
     "/versions/{prompt_id}/diff",
     response_model=SuccessResponse[PromptDiffResponse],
+    dependencies=[Depends(_default_limiter)],
 )
 async def diff_prompt_versions(
     prompt_id: uuid.UUID,
