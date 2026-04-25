@@ -89,6 +89,7 @@ def test_auth_login_blocked_at_auth_limit(mock_redis_over_auth_limit: MagicMock)
         client = TestClient(app, raise_server_exceptions=False)
         response = client.post("/api/v1/auth/login")
     assert response.status_code == 429
+    assert response.headers["Retry-After"] == "60"
 
 
 def test_auth_register_blocked_at_auth_limit(mock_redis_over_auth_limit: MagicMock) -> None:
@@ -99,6 +100,7 @@ def test_auth_register_blocked_at_auth_limit(mock_redis_over_auth_limit: MagicMo
         client = TestClient(app, raise_server_exceptions=False)
         response = client.post("/api/v1/auth/register")
     assert response.status_code == 429
+    assert response.headers["Retry-After"] == "60"
 
 
 def test_normal_route_passes_under_global_limit(mock_redis_under_limit: MagicMock) -> None:
@@ -109,3 +111,5 @@ def test_normal_route_passes_under_global_limit(mock_redis_under_limit: MagicMoc
         client = TestClient(app, raise_server_exceptions=False)
         response = client.get("/api/v1/users/me")
     assert response.status_code == 200
+    assert response.headers["X-RateLimit-Limit"] == "100"
+    assert "X-RateLimit-Remaining" in response.headers
