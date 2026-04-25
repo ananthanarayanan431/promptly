@@ -15,6 +15,7 @@ from app.api.v1.exceptions.chat import (
     ChatInsufficientCreditsException,
     InvalidSessionIDException,
     JobNotFoundException,
+    LLMTimeoutException,
     SessionNotFoundException,
     VersionedPromptNotFoundException,
 )
@@ -33,6 +34,7 @@ from app.models.user import User
 from app.repositories.message_repo import MessageRepository
 from app.repositories.prompt_version_repo import PromptVersionRepository
 from app.repositories.session_repo import SessionRepository
+from app.repositories.user_repo import UserRepository
 from app.schemas.chat import (
     ChatJobAcceptedResponse,
     ChatRequest,
@@ -105,7 +107,12 @@ async def create_chat(
     else:
         raw_prompt = request.prompt  # type: ignore[assignment]  # validated: one must exist
 
-    current_user.credits -= 10
+    # Atomic credit deduction: single UPDATE … WHERE credits >= 10 eliminates the
+    # race condition where two concurrent requests both pass the balance check above.
+    user_repo = UserRepository(db)
+    deducted = await user_repo.deduct_credits(current_user.id, 10)
+    if not deducted:
+        raise ChatInsufficientCreditsException()
     await db.flush()
 
     job_id = str(uuid.uuid4())
@@ -196,9 +203,10 @@ async def stream_job_progress(
 
     async def generate() -> AsyncGenerator[str, None]:
         # 120 s ceiling prevents open connections if the worker crashes mid-job
-        deadline = asyncio.get_event_loop().time() + 120
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + 120
         last_idx = 0
-        while asyncio.get_event_loop().time() < deadline:
+        while loop.time() < deadline:
             events = await get_job_progress_from(job_id, last_idx)
             for ev in events:
                 yield f"data: {json.dumps(ev)}\n\n"
@@ -266,19 +274,25 @@ async def suggest_prompt_name(
         max_tokens=15,
         temperature=0,
     )
-    response = await model.ainvoke(
-        [
-            {
-                "role": "system",
-                "content": (
-                    "Generate a 2–4 word ALL-CAPS name that describes the purpose of this prompt "
-                    "(e.g. EMAIL SUBJECT OPTIMIZER, CODE REVIEW HELPER, BLOG INTRO WRITER). "
-                    "Return ONLY the name — no punctuation, no explanation."
-                ),
-            },
-            {"role": "user", "content": request.prompt[:500]},
-        ]
-    )
+    try:
+        response = await asyncio.wait_for(
+            model.ainvoke(
+                [
+                    {
+                        "role": "system",
+                        "content": (
+                            "Generate a 2–4 word ALL-CAPS name that describes the purpose of this"
+                            " prompt (e.g. EMAIL SUBJECT OPTIMIZER, CODE REVIEW HELPER, BLOG INTRO"
+                            " WRITER). Return ONLY the name — no punctuation, no explanation."
+                        ),
+                    },
+                    {"role": "user", "content": request.prompt[:500]},
+                ]
+            ),
+            timeout=10.0,
+        )
+    except TimeoutError as exc:
+        raise LLMTimeoutException() from exc
     name = str(response.content).strip().upper()[:80]
     return SuccessResponse(data=SuggestNameResponse(name=name))
 
@@ -315,19 +329,25 @@ async def save_version_from_response(
         max_tokens=15,
         temperature=0,
     )
-    llm_response = await model.ainvoke(
-        [
-            {
-                "role": "system",
-                "content": (
-                    "Generate a 2–4 word ALL-CAPS name that describes the purpose of this prompt "
-                    "(e.g. EMAIL SUBJECT OPTIMIZER, CODE REVIEW HELPER, BLOG INTRO WRITER). "
-                    "Return ONLY the name — no punctuation, no explanation."
-                ),
-            },
-            {"role": "user", "content": request.original_prompt[:500]},
-        ]
-    )
+    try:
+        llm_response = await asyncio.wait_for(
+            model.ainvoke(
+                [
+                    {
+                        "role": "system",
+                        "content": (
+                            "Generate a 2–4 word ALL-CAPS name that describes the purpose of this"
+                            " prompt (e.g. EMAIL SUBJECT OPTIMIZER, CODE REVIEW HELPER, BLOG INTRO"
+                            " WRITER). Return ONLY the name — no punctuation, no explanation."
+                        ),
+                    },
+                    {"role": "user", "content": request.original_prompt[:500]},
+                ]
+            ),
+            timeout=10.0,
+        )
+    except TimeoutError as exc:
+        raise LLMTimeoutException() from exc
     name = str(llm_response.content).strip().upper()[:80] or "MY PROMPT"
 
     prompt_id = uuid_mod.uuid4()
