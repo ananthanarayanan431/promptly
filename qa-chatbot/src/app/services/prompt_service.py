@@ -15,15 +15,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config.llm import get_llm_settings
 from app.core.exceptions import GuardrailException, LLMException, NotFoundException
 from app.graph.nodes.guardrails import guardrails_node
-from app.graph.prompts import load_prompt
+from app.graph.prompts import prompt_advisory_messages, prompt_health_score_messages
 from app.graph.state import GraphState
 from app.models.favorite_prompt import FavoritePrompt
 from app.repositories.prompt_version_repo import PromptVersionRepository
 
 logger = logging.getLogger(__name__)
-
-_health_score_prompt = load_prompt("prompt_health_score")
-_advisory_prompt = load_prompt("prompt_advisory")
 
 _analyser: ChatOpenAI | None = None
 
@@ -123,15 +120,7 @@ class PromptService:
         await self._run_guardrails(prompt, user_id)
 
         try:
-            response = await _get_analyser().ainvoke(
-                [
-                    {"role": "system", "content": _health_score_prompt},
-                    {
-                        "role": "user",
-                        "content": f"<prompt_to_evaluate>\n{prompt}\n</prompt_to_evaluate>",
-                    },
-                ]
-            )
+            response = await _get_analyser().ainvoke(prompt_health_score_messages(prompt))
         except OpenAIAPIError as exc:
             logger.error(
                 "OpenRouter API error in health_score: status=%s body=%s",
@@ -167,15 +156,7 @@ class PromptService:
         await self._run_guardrails(prompt, user_id)
 
         try:
-            response = await _get_analyser().ainvoke(
-                [
-                    {"role": "system", "content": _advisory_prompt},
-                    {
-                        "role": "user",
-                        "content": f"<prompt_to_evaluate>\n{prompt}\n</prompt_to_evaluate>",
-                    },
-                ]
-            )
+            response = await _get_analyser().ainvoke(prompt_advisory_messages(prompt))
         except OpenAIAPIError as exc:
             logger.error(
                 "OpenRouter API error in advisory: status=%s body=%s",
