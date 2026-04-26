@@ -85,6 +85,36 @@ async def test_rate_limiter_uses_user_id_as_key() -> None:
 
 
 @pytest.mark.asyncio
+async def test_rate_limiter_uses_route_template_when_available() -> None:
+    """Route template (e.g. /api/v1/chat/jobs/{job_id}) should be used as key,
+    not the concrete path, so all requests to the same route share one bucket."""
+    limiter = RateLimiter(requests=10, window_seconds=60)
+    user = _make_user()
+
+    fake_route = MagicMock()
+    fake_route.path = "/api/v1/chat/jobs/{job_id}"
+
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": "/api/v1/chat/jobs/abc-123",
+        "query_string": b"",
+        "headers": [],
+        "route": fake_route,
+    }
+    request = Request(scope)
+
+    mock_redis, mock_pipe = _make_redis_mock([1, True])
+
+    with patch("app.core.rate_limit.get_redis_client", AsyncMock(return_value=mock_redis)):
+        await limiter(request, user)
+
+    key_used = mock_pipe.incr.call_args[0][0]
+    assert "/api/v1/chat/jobs/{job_id}" in key_used
+    assert "abc-123" not in key_used
+
+
+@pytest.mark.asyncio
 async def test_rate_limiter_exactly_at_limit_passes() -> None:
     limiter = RateLimiter(requests=10, window_seconds=60)
     request = _make_request("/api/v1/chat/")

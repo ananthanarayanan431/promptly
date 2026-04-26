@@ -20,7 +20,9 @@ class RateLimiter:
         current_user: Annotated[User, Depends(get_current_user)],
     ) -> None:
         redis = await get_redis_client()
-        key = f"rl:user:{current_user.id}:{request.url.path}"
+        route = request.scope.get("route")
+        route_path = route.path if route is not None else request.url.path
+        key = f"rl:user:{current_user.id}:{route_path}"
         pipe = redis.pipeline()
         pipe.incr(key)
         pipe.expire(key, self.window_seconds, nx=True)
