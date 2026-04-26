@@ -116,3 +116,94 @@ async def test_has_active_name_returns_false_after_revoke(db_session: AsyncSessi
     await db_session.commit()
 
     assert await repo.has_active_name(user.id, "prod") is False
+
+
+@pytest.mark.asyncio
+async def test_list_by_user_filters_active_only(db_session: AsyncSession) -> None:
+    user = await _make_user(db_session)
+    repo = ApiKeyRepository(db_session)
+    key = await repo.create(
+        user_id=user.id, name="k1", key_hash=uuid.uuid4().hex + uuid.uuid4().hex
+    )
+    await repo.create(user_id=user.id, name="k2", key_hash=uuid.uuid4().hex + uuid.uuid4().hex)
+    await repo.revoke(key)
+    await db_session.commit()
+
+    keys = await repo.list_by_user(user.id, status="active")
+    assert len(keys) == 1
+    assert keys[0].name == "k2"
+
+
+@pytest.mark.asyncio
+async def test_list_by_user_filters_revoked_only(db_session: AsyncSession) -> None:
+    user = await _make_user(db_session)
+    repo = ApiKeyRepository(db_session)
+    key = await repo.create(
+        user_id=user.id, name="k1", key_hash=uuid.uuid4().hex + uuid.uuid4().hex
+    )
+    await repo.create(user_id=user.id, name="k2", key_hash=uuid.uuid4().hex + uuid.uuid4().hex)
+    await repo.revoke(key)
+    await db_session.commit()
+
+    keys = await repo.list_by_user(user.id, status="revoked")
+    assert len(keys) == 1
+    assert keys[0].name == "k1"
+
+
+@pytest.mark.asyncio
+async def test_list_by_user_paginates(db_session: AsyncSession) -> None:
+    user = await _make_user(db_session)
+    repo = ApiKeyRepository(db_session)
+    for i in range(5):
+        await repo.create(
+            user_id=user.id, name=f"k{i}", key_hash=uuid.uuid4().hex + uuid.uuid4().hex
+        )
+    await db_session.commit()
+
+    page1 = await repo.list_by_user(user.id, limit=2, offset=0)
+    page2 = await repo.list_by_user(user.id, limit=2, offset=2)
+    assert len(page1) == 2
+    assert len(page2) == 2
+    assert {k.name for k in page1}.isdisjoint({k.name for k in page2})
+
+
+@pytest.mark.asyncio
+async def test_count_by_user_all(db_session: AsyncSession) -> None:
+    user = await _make_user(db_session)
+    repo = ApiKeyRepository(db_session)
+    key = await repo.create(
+        user_id=user.id, name="k1", key_hash=uuid.uuid4().hex + uuid.uuid4().hex
+    )
+    await repo.create(user_id=user.id, name="k2", key_hash=uuid.uuid4().hex + uuid.uuid4().hex)
+    await repo.revoke(key)
+    await db_session.commit()
+
+    assert await repo.count_by_user(user.id, status="all") == 2
+
+
+@pytest.mark.asyncio
+async def test_count_by_user_active(db_session: AsyncSession) -> None:
+    user = await _make_user(db_session)
+    repo = ApiKeyRepository(db_session)
+    key = await repo.create(
+        user_id=user.id, name="k1", key_hash=uuid.uuid4().hex + uuid.uuid4().hex
+    )
+    await repo.create(user_id=user.id, name="k2", key_hash=uuid.uuid4().hex + uuid.uuid4().hex)
+    await repo.revoke(key)
+    await db_session.commit()
+
+    assert await repo.count_by_user(user.id, status="active") == 1
+
+
+@pytest.mark.asyncio
+async def test_count_by_user_revoked(db_session: AsyncSession) -> None:
+    user = await _make_user(db_session)
+    repo = ApiKeyRepository(db_session)
+    key = await repo.create(
+        user_id=user.id, name="k1", key_hash=uuid.uuid4().hex + uuid.uuid4().hex
+    )
+    await repo.create(user_id=user.id, name="k2", key_hash=uuid.uuid4().hex + uuid.uuid4().hex)
+    await repo.revoke(key)
+    await db_session.commit()
+
+    assert await repo.count_by_user(user.id, status="revoked") == 1
