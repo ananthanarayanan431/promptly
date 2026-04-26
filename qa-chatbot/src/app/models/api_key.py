@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base, TimestampMixin, UUIDMixin
@@ -15,6 +15,15 @@ if TYPE_CHECKING:
 
 class ApiKey(Base, UUIDMixin, TimestampMixin):
     __tablename__ = "api_keys"
+    __table_args__ = (
+        Index(
+            "uq_api_keys_user_active_name",
+            "user_id",
+            "name",
+            unique=True,
+            postgresql_where=text("is_active = true"),
+        ),
+    )
 
     user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), index=True

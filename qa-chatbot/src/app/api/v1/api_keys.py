@@ -2,6 +2,7 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.types.response import SuccessResponse
@@ -43,12 +44,16 @@ async def create_api_key(
         raise ApiKeyNameConflictException()
 
     raw_key, key_hash = generate_api_key()
-    key = await repo.create(
-        user_id=current_user.id,
-        name=request.name,
-        key_hash=key_hash,
-    )
-    await db.commit()
+    try:
+        key = await repo.create(
+            user_id=current_user.id,
+            name=request.name,
+            key_hash=key_hash,
+        )
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise ApiKeyNameConflictException() from None
     return SuccessResponse(
         data=ApiKeyCreatedResponse(
             id=key.id,
