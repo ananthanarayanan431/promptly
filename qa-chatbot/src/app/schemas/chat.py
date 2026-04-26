@@ -165,3 +165,7 @@ class JobPollResponse(BaseModel):
     status: str  # queued | started | completed | failed
     result: ChatResponse | None = None  # populated when status == "completed"
     error: str | None = None  # populated when status == "failed"
+
+
+class RenameSessionRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=200)

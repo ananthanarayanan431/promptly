@@ -214,6 +214,7 @@ export default function PromptStorePage() {
   };
 
   return (
+    <div style={{ height: '100%', overflowY: 'auto' }}>
     <div
       style={{
         padding: '28px 40px 120px',
@@ -453,6 +454,7 @@ export default function PromptStorePage() {
           ))}
         </div>
       )}
+    </div>
     </div>
   );
 }

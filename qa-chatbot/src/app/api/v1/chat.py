@@ -46,6 +46,7 @@ from app.schemas.chat import (
     MessageOut,
     RecentSessionsResponse,
     RecentSessionWithPrompt,
+    RenameSessionRequest,
     SaveVersionRequest,
     SaveVersionResponse,
     SessionDetailResponse,
@@ -121,16 +122,18 @@ async def create_chat(
     job_id = str(uuid.uuid4())
     session_id = str(request.session_id) if request.session_id else str(uuid.uuid4())
 
-    # Transactional safety
-    async with db.begin():
-        user_repo = UserRepository(db)
-        deducted = await user_repo.deduct_credits(current_user.id, 10)
-        if not deducted:
-            raise ChatInsufficientCreditsException()
+    user_repo = UserRepository(db)
+    deducted = await user_repo.deduct_credits(current_user.id, 10)
+    if not deducted:
+        raise ChatInsufficientCreditsException()
 
-        # Ensure session exists BEFORE worker
-        session_repo = SessionRepository(db)
-        await session_repo.get_or_create(session_id, current_user.id)
+    # Ensure session exists BEFORE worker
+    session_repo = SessionRepository(db)
+    await session_repo.get_or_create(
+        session_id=session_id,
+        user_id=current_user.id,
+        graph_thread_id=session_id,
+    )
 
     await set_job_status(job_id, "queued")
     await set_job_owner(job_id, str(current_user.id))
@@ -541,3 +544,54 @@ async def get_session(
             created_at=session.created_at,
         )
     )
+
+
+@router.patch(
+    "/sessions/{session_id}",
+    response_model=SuccessResponse[SessionSummary],
+    dependencies=[Depends(_read_limiter)],
+)
+async def rename_session(
+    session_id: str,
+    request: RenameSessionRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> SuccessResponse[SessionSummary]:
+    """Rename a session's title."""
+    try:
+        sid = uuid.UUID(session_id)
+    except ValueError as exc:
+        raise InvalidSessionIDException() from exc
+
+    session_repo = SessionRepository(db)
+    session = await session_repo.get_by_id(sid)
+    if session is None or session.user_id != current_user.id:
+        raise SessionNotFoundException()
+
+    updated = await session_repo.update(session, title=request.title.strip())
+    return SuccessResponse(data=SessionSummary.model_validate(updated))
+
+
+@router.delete(
+    "/sessions/{session_id}",
+    response_model=SuccessResponse[dict],
+    dependencies=[Depends(_read_limiter)],
+)
+async def delete_session(
+    session_id: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> SuccessResponse[dict]:
+    """Delete a session and all its messages."""
+    try:
+        sid = uuid.UUID(session_id)
+    except ValueError as exc:
+        raise InvalidSessionIDException() from exc
+
+    session_repo = SessionRepository(db)
+    session = await session_repo.get_by_id(sid)
+    if session is None or session.user_id != current_user.id:
+        raise SessionNotFoundException()
+
+    await session_repo.delete(session)
+    return SuccessResponse(data={"deleted": session_id})

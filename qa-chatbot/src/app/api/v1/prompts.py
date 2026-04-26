@@ -14,17 +14,17 @@ from app.dependencies import get_current_user, get_db
 from app.models.user import User
 from app.repositories.prompt_version_repo import PromptVersionRepository
 from app.schemas.prompt import (
+    PaginatedPromptFamilyListResponse,
     PromptAdvisoryRequest,
     PromptAdvisoryResponse,
     PromptDiffResponse,
-    PromptFamilyListResponse,
     PromptHealthScoreRequest,
     PromptHealthScoreResponse,
     PromptVersionCreateRequest,
     PromptVersionCreateResponse,
     PromptVersionListResponse,
 )
-from app.service.prompt_service import PromptService, PromptVersioningService
+from app.services.prompt_service import PromptService, PromptVersioningService
 from app.utils.diff import compute_diff
 
 _expensive_limiter = RateLimiter(requests=20, window_seconds=60)
@@ -101,20 +101,24 @@ async def prompt_advisory(
 
 @router.get(
     "/versions",
-    response_model=SuccessResponse[PromptFamilyListResponse],
+    response_model=SuccessResponse[PaginatedPromptFamilyListResponse],
     dependencies=[Depends(_default_limiter)],
 )
 async def list_prompt_families(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
-) -> SuccessResponse[PromptFamilyListResponse]:
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> SuccessResponse[PaginatedPromptFamilyListResponse]:
     """
-    List all prompt families (grouped by prompt_id) belonging to the current user,
-    each with their full version history in ascending order.
+    List prompt families (grouped by prompt_id) for the current user,
+    most-recently updated first, with pagination.
     """
     service = PromptVersioningService(db=db)
-    families = await service.list_families(user_id=str(current_user.id))
-    return SuccessResponse(data=PromptFamilyListResponse(families=families))
+    result = await service.list_families(
+        user_id=str(current_user.id), page=page, page_size=page_size
+    )
+    return SuccessResponse(data=PaginatedPromptFamilyListResponse(**result))
 
 
 @router.post(

@@ -267,6 +267,8 @@ def process_chat_async(
             except Exception:  # noqa: S110
                 pass
             raise self.retry(exc=exc) from exc
+        finally:
+            await dispose_async_engine()
 
     try:
         return asyncio.run(_run())
@@ -316,6 +318,8 @@ def score_prompt_async(
         except Exception as exc:
             log.warning("score_prompt_async failed (will retry): %s", exc)
             raise self.retry(exc=exc) from exc
+        finally:
+            await dispose_async_engine()
 
     try:
         asyncio.run(_run())

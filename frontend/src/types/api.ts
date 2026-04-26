@@ -104,6 +104,14 @@ export interface PromptFamily {
   versions: PromptVersion[];
 }
 
+export interface PaginatedPromptFamilyList {
+  page: number;
+  page_size: number;
+  total: number;
+  total_pages: number;
+  families: PromptFamily[];
+}
+
 export interface CreateVersionResponse {
   prompt_id: string;
   version: PromptVersion;
