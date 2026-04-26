@@ -1,7 +1,7 @@
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import exists, select
 
 from app.models.api_key import ApiKey
 from app.repositories.base import BaseRepository
@@ -33,18 +33,19 @@ class ApiKeyRepository(BaseRepository[ApiKey]):
 
     async def has_active_name(self, user_id: uuid.UUID, name: str) -> bool:
         result = await self.db.execute(
-            select(ApiKey).where(
-                ApiKey.user_id == user_id,
-                ApiKey.name == name,
-                ApiKey.is_active == True,  # noqa: E712
+            select(
+                exists().where(
+                    ApiKey.user_id == user_id,
+                    ApiKey.name == name,
+                    ApiKey.is_active == True,  # noqa: E712
+                )
             )
         )
-        return result.scalar_one_or_none() is not None
+        return bool(result.scalar())
 
     async def revoke(self, key: ApiKey) -> ApiKey:
         key.is_active = False
         key.revoked_at = datetime.now(UTC)
-        self.db.add(key)
         await self.db.flush()
         await self.db.refresh(key)
         return key
