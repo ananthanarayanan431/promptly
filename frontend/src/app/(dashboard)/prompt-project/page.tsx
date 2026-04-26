@@ -1,5 +1,6 @@
 export default function PromptProjectPage() {
   return (
+    <div style={{ height: '100%', overflowY: 'auto' }}>
     <div style={{
       maxWidth: 760,
       margin: '0 auto',
@@ -145,6 +146,7 @@ export default function PromptProjectPage() {
           50% { opacity: 0.4; }
         }
       `}</style>
+    </div>
     </div>
   );
 }

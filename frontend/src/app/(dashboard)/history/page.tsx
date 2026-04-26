@@ -76,6 +76,7 @@ export default function HistoryPage() {
   const isEmpty = !isLoading && total === 0;
 
   return (
+    <div style={{ height: '100%', overflowY: 'auto' }}>
     <div style={{ padding: '28px 40px 120px', maxWidth: 1180, margin: '0 auto',
       fontFamily: 'var(--font-geist, ui-sans-serif)' }}>
 
@@ -146,6 +147,7 @@ export default function HistoryPage() {
           })}
         </div>
       )}
+    </div>
     </div>
   );
 }
