@@ -55,9 +55,21 @@ async def get_current_user(
 
     repo = UserRepository(db)
 
-    # API key path
+    # API key path — check new api_keys table first, fall back to User.api_key_hash
     if token.startswith("qac_"):
         key_hash = hash_api_key(token)
+
+        # New multi-key table
+        from app.repositories.api_key_repo import ApiKeyRepository  # noqa: PLC0415
+
+        api_key_repo = ApiKeyRepository(db)
+        api_key = await api_key_repo.get_active_by_hash(key_hash)
+        if api_key is not None:
+            user = await repo.get_by_id(api_key.user_id)
+            if user and user.is_active:
+                return user
+
+        # Legacy single-key fallback (User.api_key_hash)
         user = await repo.get_by_api_key_hash(key_hash)
         if not user or not user.is_active:
             raise UnauthorizedException(detail="Invalid API key")

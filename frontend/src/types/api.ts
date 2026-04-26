@@ -5,6 +5,21 @@ export interface User {
   created_at: string;
 }
 
+export interface ApiKey {
+  id: string;
+  name: string;
+  is_active: boolean;
+  created_at: string;
+  revoked_at: string | null;
+}
+
+export interface ApiKeyCreated {
+  id: string;
+  name: string;
+  key: string;
+  created_at: string;
+}
+
 export interface AuthResponse {
   access_token: string;
   token_type: string;
