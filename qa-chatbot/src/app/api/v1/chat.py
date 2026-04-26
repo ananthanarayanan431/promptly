@@ -27,6 +27,7 @@ from app.core.cache import (
     set_job_owner,
     set_job_status,
 )
+from app.core.rate_limit import RateLimiter
 from app.dependencies import get_current_user, get_db
 from app.models.message import Message
 from app.models.session import ChatSession
@@ -53,6 +54,10 @@ from app.schemas.chat import (
 )
 from app.workers.tasks import process_chat_async
 
+_chat_limiter = RateLimiter(requests=10, window_seconds=60)
+_llm_limiter = RateLimiter(requests=20, window_seconds=60)
+_read_limiter = RateLimiter(requests=60, window_seconds=60)
+
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 
@@ -60,6 +65,7 @@ router = APIRouter(prefix="/chat", tags=["chat"])
     "/",
     response_model=SuccessResponse[ChatJobAcceptedResponse],
     status_code=202,
+    dependencies=[Depends(_chat_limiter)],
 )
 async def create_chat(
     request: ChatRequest,
@@ -145,6 +151,7 @@ async def create_chat(
 @router.get(
     "/jobs/{job_id}",
     response_model=SuccessResponse[JobPollResponse],
+    dependencies=[Depends(_read_limiter)],
 )
 async def poll_chat_job(
     job_id: str,
@@ -185,6 +192,7 @@ async def poll_chat_job(
 @router.get(
     "/jobs/{job_id}/stream",
     response_class=StreamingResponse,
+    dependencies=[Depends(_read_limiter)],
 )
 async def stream_job_progress(
     job_id: str,
@@ -251,6 +259,7 @@ async def stream_job_progress(
 @router.post(
     "/suggest-name",
     response_model=SuccessResponse[SuggestNameResponse],
+    dependencies=[Depends(_llm_limiter)],
 )
 async def suggest_prompt_name(
     request: SuggestNameRequest,
@@ -300,6 +309,7 @@ async def suggest_prompt_name(
 @router.post(
     "/save-version",
     response_model=SuccessResponse[SaveVersionResponse],
+    dependencies=[Depends(_llm_limiter)],
 )
 async def save_version_from_response(
     request: SaveVersionRequest,
@@ -375,6 +385,7 @@ async def save_version_from_response(
 @router.get(
     "/sessions",
     response_model=SuccessResponse[SessionsGroupedResponse],
+    dependencies=[Depends(_read_limiter)],
 )
 async def list_sessions(
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -422,6 +433,7 @@ async def list_sessions(
 @router.get(
     "/sessions/recent",
     response_model=SuccessResponse[RecentSessionsResponse],
+    dependencies=[Depends(_read_limiter)],
 )
 async def get_recent_sessions(
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -487,6 +499,7 @@ async def get_recent_sessions(
 @router.get(
     "/sessions/{session_id}",
     response_model=SuccessResponse[SessionDetailResponse],
+    dependencies=[Depends(_read_limiter)],
 )
 async def get_session(
     session_id: str,
