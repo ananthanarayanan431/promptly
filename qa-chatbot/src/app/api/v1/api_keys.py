@@ -1,4 +1,3 @@
-import asyncio
 import math
 import uuid
 from typing import Annotated, Literal
@@ -86,15 +85,15 @@ async def list_api_keys(
     current_user: Annotated[User, Depends(get_current_user)],
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
-    status: Literal["active", "revoked", "all"] = "all",
+    status: Annotated[
+        Literal["active", "revoked", "all"], Query(description="Filter by key status")
+    ] = "all",
 ) -> SuccessResponse[PaginatedApiKeyListResponse]:
     """List API keys for the current user with pagination and optional status filter."""
     repo = ApiKeyRepository(db)
     offset = (page - 1) * page_size
-    total, keys = await asyncio.gather(
-        repo.count_by_user(current_user.id, status=status),
-        repo.list_by_user(current_user.id, status=status, limit=page_size, offset=offset),
-    )
+    total = await repo.count_by_user(current_user.id, status=status)
+    keys = await repo.list_by_user(current_user.id, status=status, limit=page_size, offset=offset)
     total_pages = math.ceil(total / page_size) if total else 0
     return SuccessResponse(
         data=PaginatedApiKeyListResponse(
@@ -107,6 +106,9 @@ async def list_api_keys(
     )
 
 
+# -------------------------
+# GET API KEY
+# -------------------------
 @router.get(
     "/{key_id}",
     response_model=SuccessResponse[ApiKeyResponse],
@@ -125,6 +127,9 @@ async def get_api_key(
     return SuccessResponse(data=ApiKeyResponse.model_validate(key))
 
 
+# -------------------------
+# REVOKE API KEY
+# -------------------------
 @router.delete(
     "/{key_id}",
     response_model=SuccessResponse[ApiKeyResponse],
