@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+*.egg-info/
+
+# uv
+.uv/
+
+# Tests & coverage
+tests/
+coverage.xml
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Dev tooling
+.ruff_cache/
+.mypy_cache/
+.pre-commit-config.yaml
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Docker
+docker/
+docker-compose*.yml
+Dockerfile
+
+# Docs & meta
+docs/
+CLAUDE.md
+README.md
+CONTRIBUTING.md
+Makefile
+run.sh
+
+# Git
+.git/
+.gitignore
