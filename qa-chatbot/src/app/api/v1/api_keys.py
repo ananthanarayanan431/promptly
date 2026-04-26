@@ -147,6 +147,6 @@ async def revoke_api_key(
         raise ApiKeyNotFoundException()
     if not key.is_active:
         raise ApiKeyAlreadyRevokedException()
-    key = await repo.revoke(key)
-    await db.commit()
+    async with db.begin():
+        key = await repo.revoke(key)
     return SuccessResponse(data=ApiKeyResponse.model_validate(key))

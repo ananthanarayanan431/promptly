@@ -20,6 +20,14 @@ export interface ApiKeyCreated {
   created_at: string;
 }
 
+export interface PaginatedApiKeyList {
+  page: number;
+  page_size: number;
+  total: number;
+  total_pages: number;
+  keys: ApiKey[];
+}
+
 export interface AuthResponse {
   access_token: string;
   token_type: string;

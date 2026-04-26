@@ -1,9 +1,17 @@
 import { api } from '@/lib/api';
-import type { ApiKey, ApiKeyCreated } from '@/types/api';
+import type { ApiKey, ApiKeyCreated, PaginatedApiKeyList } from '@/types/api';
 
-export async function listApiKeys(): Promise<ApiKey[]> {
-  const res = await api.get<{ data: { keys: ApiKey[] } }>('/api/v1/users/api-keys');
-  return res.data.data.keys;
+export type ApiKeyStatus = 'all' | 'active' | 'revoked';
+
+export async function listApiKeys(
+  page = 1,
+  pageSize = 20,
+  status: ApiKeyStatus = 'all',
+): Promise<PaginatedApiKeyList> {
+  const res = await api.get<{ data: PaginatedApiKeyList }>('/api/v1/users/api-keys', {
+    params: { page, page_size: pageSize, status },
+  });
+  return res.data.data;
 }
 
 export async function createApiKey(name: string): Promise<ApiKeyCreated> {
