@@ -1,7 +1,10 @@
+import asyncio
+import math
 import uuid
-from typing import Annotated
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query
+from fastapi import status as http_status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,8 +22,8 @@ from app.repositories.api_key_repo import ApiKeyRepository
 from app.schemas.api_key import (
     ApiKeyCreatedResponse,
     ApiKeyCreateRequest,
-    ApiKeyListResponse,
     ApiKeyResponse,
+    PaginatedApiKeyListResponse,
 )
 
 router = APIRouter(
@@ -36,7 +39,7 @@ _default_limiter = RateLimiter(requests=60, window_seconds=60)
 @router.post(
     "",
     response_model=SuccessResponse[ApiKeyCreatedResponse],
-    status_code=status.HTTP_201_CREATED,
+    status_code=http_status.HTTP_201_CREATED,
     dependencies=[Depends(_default_limiter)],
 )
 async def create_api_key(
@@ -75,18 +78,32 @@ async def create_api_key(
 # -------------------------
 @router.get(
     "",
-    response_model=SuccessResponse[ApiKeyListResponse],
+    response_model=SuccessResponse[PaginatedApiKeyListResponse],
     dependencies=[Depends(_default_limiter)],
 )
 async def list_api_keys(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
-) -> SuccessResponse[ApiKeyListResponse]:
-    """List all API keys for the current user (active and revoked)."""
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 20,
+    status: Literal["active", "revoked", "all"] = "all",
+) -> SuccessResponse[PaginatedApiKeyListResponse]:
+    """List API keys for the current user with pagination and optional status filter."""
     repo = ApiKeyRepository(db)
-    keys = await repo.list_by_user(current_user.id)
+    offset = (page - 1) * page_size
+    total, keys = await asyncio.gather(
+        repo.count_by_user(current_user.id, status=status),
+        repo.list_by_user(current_user.id, status=status, limit=page_size, offset=offset),
+    )
+    total_pages = math.ceil(total / page_size) if total else 0
     return SuccessResponse(
-        data=ApiKeyListResponse(keys=[ApiKeyResponse.model_validate(k) for k in keys])
+        data=PaginatedApiKeyListResponse(
+            page=page,
+            page_size=page_size,
+            total=total,
+            total_pages=total_pages,
+            keys=[ApiKeyResponse.model_validate(k) for k in keys],
+        )
     )
 
 
