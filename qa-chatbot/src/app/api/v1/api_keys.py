@@ -1,7 +1,7 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,14 +23,20 @@ from app.schemas.api_key import (
     ApiKeyResponse,
 )
 
-router = APIRouter(prefix="/users/api-keys", tags=["api-keys"])
+router = APIRouter(
+    prefix="/users/api-keys",
+    tags=["api-keys"],
+)
 _default_limiter = RateLimiter(requests=60, window_seconds=60)
 
 
+# -------------------------
+# CREATE API KEY
+# -------------------------
 @router.post(
     "",
     response_model=SuccessResponse[ApiKeyCreatedResponse],
-    status_code=201,
+    status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(_default_limiter)],
 )
 async def create_api_key(
@@ -39,20 +45,20 @@ async def create_api_key(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> SuccessResponse[ApiKeyCreatedResponse]:
     """Create a new API key. The raw key is returned once and never stored."""
+
     repo = ApiKeyRepository(db)
     if await repo.has_active_name(current_user.id, request.name):
         raise ApiKeyNameConflictException()
 
     raw_key, key_hash = generate_api_key()
     try:
-        key = await repo.create(
-            user_id=current_user.id,
-            name=request.name,
-            key_hash=key_hash,
-        )
-        await db.commit()
+        async with db.begin():  # transaction safety
+            key = await repo.create(
+                user_id=current_user.id,
+                name=request.name,
+                key_hash=key_hash,
+            )
     except IntegrityError:
-        await db.rollback()
         raise ApiKeyNameConflictException() from None
     return SuccessResponse(
         data=ApiKeyCreatedResponse(
@@ -64,6 +70,9 @@ async def create_api_key(
     )
 
 
+# -------------------------
+# LIST API KEYS (Paginated)
+# -------------------------
 @router.get(
     "",
     response_model=SuccessResponse[ApiKeyListResponse],
