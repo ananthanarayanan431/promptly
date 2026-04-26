@@ -4,6 +4,7 @@ import { useAuthStore } from '@/stores/auth-store';
 import { useQuery } from '@tanstack/react-query';
 import { usePathname } from 'next/navigation';
 import { useEffect } from 'react';
+import Link from 'next/link';
 import { api } from '@/lib/api';
 import type { User } from '@/types/api';
 
@@ -14,6 +15,7 @@ const CRUMBS: Record<string, string[]> = {
   '/history':   ['Workspace', 'History'],
   '/billing':   ['Workspace', 'Billing'],
   '/dashboard': ['Workspace', 'Dashboard'],
+  '/settings':  ['Workspace', 'Settings'],
 };
 
 function getBreadcrumbs(pathname: string): string[] {
@@ -77,14 +79,14 @@ export function Header() {
           </div>
         )}
 
-        <button style={{ height: 28, padding: '0 10px', borderRadius: 6, border: '1px solid #2a2a2e',
-          background: 'transparent', fontSize: 12, color: '#b5b5ba', cursor: 'pointer',
-          display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'inherit' }}>
+        <Link href="/settings" style={{ height: 28, padding: '0 10px', borderRadius: 6,
+          border: '1px solid #2a2a2e', background: 'transparent', fontSize: 12, color: '#b5b5ba',
+          display: 'flex', alignItems: 'center', gap: 6, textDecoration: 'none' }}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
             <circle cx="8" cy="15" r="4"/><path d="M10.8 12.2L21 2M16 7l3 3M14 9l3 3"/>
           </svg>
           API keys
-        </button>
+        </Link>
 
         <button style={{ height: 28, padding: '0 10px', borderRadius: 6, border: '1px solid #2a2a2e',
           background: 'transparent', fontSize: 12, color: '#b5b5ba', cursor: 'pointer',
