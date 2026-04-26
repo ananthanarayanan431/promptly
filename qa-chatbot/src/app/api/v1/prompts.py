@@ -24,7 +24,7 @@ from app.schemas.prompt import (
     PromptVersionCreateResponse,
     PromptVersionListResponse,
 )
-from app.services.prompt_service import PromptService, PromptVersioningService
+from app.service.prompt_service import PromptService, PromptVersioningService
 from app.utils.diff import compute_diff
 
 _expensive_limiter = RateLimiter(requests=20, window_seconds=60)
