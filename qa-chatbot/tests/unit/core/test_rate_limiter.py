@@ -62,6 +62,7 @@ async def test_rate_limiter_raises_429_at_limit() -> None:
             await limiter(request, user)
 
     assert exc_info.value.status_code == 429
+    assert exc_info.value.headers is not None
     assert "Retry-After" in exc_info.value.headers
 
 

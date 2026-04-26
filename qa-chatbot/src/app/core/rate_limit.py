@@ -8,7 +8,7 @@ from app.models.user import User
 
 
 class RateLimiter:
-    """Per-user per-route sliding-window rate limiter used as a FastAPI dependency."""
+    """Per-user per-route fixed-window rate limiter used as a FastAPI dependency."""
 
     def __init__(self, requests: int, window_seconds: int) -> None:
         self.requests = requests

@@ -11,11 +11,11 @@ def _make_app_with_middleware() -> FastAPI:
     app = FastAPI()
     app.add_middleware(RateLimitMiddleware)
 
-    @app.get("/health")
+    @app.get("/api/v1/health")
     async def health() -> dict[str, str]:
         return {"status": "ok"}
 
-    @app.get("/ready")
+    @app.get("/api/v1/ready")
     async def ready() -> dict[str, str]:
         return {"status": "ok"}
 
@@ -67,7 +67,7 @@ def test_health_endpoint_bypasses_rate_limit(mock_redis_over_limit: MagicMock) -
         "app.core.middleware.get_redis_client", AsyncMock(return_value=mock_redis_over_limit)
     ):
         client = TestClient(app, raise_server_exceptions=False)
-        response = client.get("/health")
+        response = client.get("/api/v1/health")
     assert response.status_code == 200
 
 
@@ -77,7 +77,7 @@ def test_ready_endpoint_bypasses_rate_limit(mock_redis_over_limit: MagicMock) ->
         "app.core.middleware.get_redis_client", AsyncMock(return_value=mock_redis_over_limit)
     ):
         client = TestClient(app, raise_server_exceptions=False)
-        response = client.get("/ready")
+        response = client.get("/api/v1/ready")
     assert response.status_code == 200
 
 
