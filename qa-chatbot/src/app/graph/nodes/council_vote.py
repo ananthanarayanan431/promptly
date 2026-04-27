@@ -53,12 +53,25 @@ def _get_council_models() -> list[ChatOpenAI]:
 
 
 def _extract_quality_gaps(state: GraphState) -> list[str]:
-    """Pull consensus quality gaps attached by the critic on the last pass."""
-    proposals = state.get("council_responses", [])
-    for p in reversed(proposals):
+    """Pull consensus quality gaps for the next council pass.
+
+    Checks two sources in priority order:
+    1. critic_responses — gate-triggered weak_dimensions sentinel (_quality_gate: True)
+    2. council_responses — consensus _quality_gaps attached by the critic node
+    """
+    # Gate-triggered feedback takes priority (most recent pass)
+    for cr in reversed(state.get("critic_responses", [])):
+        if cr.get("_quality_gate"):
+            dims = cr.get("weak_dimensions", [])
+            if isinstance(dims, list) and dims:
+                return dims
+
+    # Critic-consensus gaps from the last council pass
+    for p in reversed(state.get("council_responses", [])):
         gaps = p.get("_quality_gaps")
         if isinstance(gaps, list) and gaps:
             return gaps
+
     return []
 
 

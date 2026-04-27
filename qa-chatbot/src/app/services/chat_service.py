@@ -61,6 +61,7 @@ class ChatService:
             session_id=uuid.UUID(session_id),
             role="assistant",
             raw_prompt=raw_prompt,
+            feedback=feedback,
             enhanced_prompt=None,
             response=result["final_response"],
             council_votes=result["council_responses"],

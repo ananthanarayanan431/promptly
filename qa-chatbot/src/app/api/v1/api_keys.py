@@ -54,12 +54,12 @@ async def create_api_key(
 
     raw_key, key_hash = generate_api_key()
     try:
-        async with db.begin():  # transaction safety
-            key = await repo.create(
-                user_id=current_user.id,
-                name=request.name,
-                key_hash=key_hash,
-            )
+        key = await repo.create(
+            user_id=current_user.id,
+            name=request.name,
+            key_hash=key_hash,
+        )
+        await db.flush()
     except IntegrityError:
         raise ApiKeyNameConflictException() from None
     return SuccessResponse(
@@ -147,6 +147,6 @@ async def revoke_api_key(
         raise ApiKeyNotFoundException()
     if not key.is_active:
         raise ApiKeyAlreadyRevokedException()
-    async with db.begin():
-        key = await repo.revoke(key)
+    key = await repo.revoke(key)
+    await db.flush()
     return SuccessResponse(data=ApiKeyResponse.model_validate(key))

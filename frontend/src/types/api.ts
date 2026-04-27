@@ -227,6 +227,7 @@ export interface SessionMessage {
   id: string;
   role: string;
   raw_prompt: string | null;
+  feedback: string | null;
   response: string | null;
   council_votes: CouncilProposal[] | null;
   token_usage: { total_tokens: number } | null;

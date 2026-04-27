@@ -108,9 +108,11 @@ function SessionItem({ session, isActive, isGenerating }: { session: SessionSumm
   return (
     <div style={{ position: 'relative' }}
       onMouseLeave={() => setMenuOpen(false)}>
+      {/* Row: Link and menu button are siblings — no interactive element nested inside <a> */}
       <Link href={`/optimize?session=${session.id}`}
         style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 14px',
-          margin: '0 8px', borderRadius: 6, fontSize: 13, textDecoration: 'none',
+          paddingRight: 38, margin: '0 8px', borderRadius: 6, fontSize: 13,
+          textDecoration: 'none',
           color: isActive ? '#ededed' : '#b5b5ba',
           background: isActive ? '#222226' : 'transparent',
           overflow: 'hidden', whiteSpace: 'nowrap' as const }}>
@@ -128,23 +130,27 @@ function SessionItem({ session, isActive, isGenerating }: { session: SessionSumm
         <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {session.title || 'Untitled'}
         </span>
-
-        {/* Three-dot button */}
-        <button
-          onClick={e => { e.preventDefault(); e.stopPropagation(); setMenuOpen(v => !v); }}
-          style={{
-            flexShrink: 0, width: 20, height: 20, borderRadius: 4, border: 'none',
-            background: 'transparent', cursor: 'pointer', padding: 0,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: '#5a5a60', opacity: menuOpen ? 1 : undefined,
-          }}
-          title="More options"
-        >
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
-            <circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/>
-          </svg>
-        </button>
       </Link>
+
+      {/* Three-dot button — sibling of Link, absolutely positioned over the right edge */}
+      <button
+        onClick={e => { e.stopPropagation(); setMenuOpen(v => !v); }}
+        aria-haspopup="true"
+        aria-expanded={menuOpen}
+        aria-label="More options"
+        style={{
+          position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)',
+          width: 20, height: 20, borderRadius: 4, border: 'none',
+          background: 'transparent', cursor: 'pointer', padding: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: '#5a5a60', opacity: menuOpen ? 1 : undefined,
+          zIndex: 1,
+        }}
+      >
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+          <circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/>
+        </svg>
+      </button>
 
       {/* Dropdown menu */}
       {menuOpen && (
@@ -172,7 +178,12 @@ function SessionItem({ session, isActive, isGenerating }: { session: SessionSumm
             Rename
           </button>
           <button
-            onClick={() => { setMenuOpen(false); deleteMutation.mutate(); }}
+            onClick={() => {
+              setMenuOpen(false);
+              if (window.confirm('Delete this session? This cannot be undone.')) {
+                deleteMutation.mutate();
+              }
+            }}
             style={{
               display: 'flex', alignItems: 'center', gap: 8,
               width: '100%', padding: '8px 12px', border: 'none',

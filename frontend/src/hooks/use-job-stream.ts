@@ -38,7 +38,14 @@ async function pollUntilDone(
         headers: { Authorization: `Bearer ${token}` },
         signal,
       });
-      if (!res.ok) continue;
+      if (!res.ok) {
+        if (res.status === 401 || res.status === 403) {
+          setError(res.status === 401 ? 'Session expired — please refresh the page' : 'Not authorised');
+          setStatus('failed');
+          return;
+        }
+        continue; // transient error — keep polling
+      }
       const json = (await res.json()) as PollResponse;
       const { status, result, error } = json.data;
       if (status === 'completed' && result) {

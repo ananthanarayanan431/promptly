@@ -76,7 +76,7 @@ def _collect_quality_gaps(valid: list[dict[str, Any]]) -> list[str]:
         for gap in cr.get("quality_gaps", []):
             if isinstance(gap, str):
                 gap_counter[gap.strip()] += 1
-    threshold = max(1, len(valid) // 2)
+    threshold = max(1, (len(valid) + 1) // 2)
     return [gap for gap, count in gap_counter.items() if count >= threshold]
 
 

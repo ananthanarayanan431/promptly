@@ -42,6 +42,7 @@ from app.schemas.chat import (
     ChatJobAcceptedResponse,
     ChatRequest,
     ChatResponse,
+    DeleteSessionResponse,
     JobPollResponse,
     MessageOut,
     RecentSessionsResponse,
@@ -138,17 +139,22 @@ async def create_chat(
     await set_job_status(job_id, "queued")
     await set_job_owner(job_id, str(current_user.id))
 
-    process_chat_async.apply_async(
-        kwargs={
-            "job_id": job_id,
-            "user_id": str(current_user.id),
-            "raw_prompt": raw_prompt,
-            "session_id": session_id,
-            "feedback": request.feedback,
-            "prompt_id": resolved_prompt_id,
-            "name": resolved_name,
-        },
-    )
+    try:
+        process_chat_async.apply_async(
+            kwargs={
+                "job_id": job_id,
+                "user_id": str(current_user.id),
+                "raw_prompt": raw_prompt,
+                "session_id": session_id,
+                "feedback": request.feedback,
+                "prompt_id": resolved_prompt_id,
+                "name": resolved_name,
+            },
+        )
+    except Exception as exc:
+        # Enqueue failed — refund the credits so the user is not charged
+        await user_repo.refund_credits(current_user.id, 10)
+        raise LLMTimeoutException() from exc
 
     return SuccessResponse(
         data=ChatJobAcceptedResponse(
@@ -572,14 +578,14 @@ async def rename_session(
 
 @router.delete(
     "/sessions/{session_id}",
-    response_model=SuccessResponse[dict],
+    response_model=SuccessResponse[DeleteSessionResponse],
     dependencies=[Depends(_read_limiter)],
 )
 async def delete_session(
     session_id: str,
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
-) -> SuccessResponse[dict]:
+) -> SuccessResponse[DeleteSessionResponse]:
     """Delete a session and all its messages."""
     try:
         sid = uuid.UUID(session_id)
@@ -592,4 +598,4 @@ async def delete_session(
         raise SessionNotFoundException()
 
     await session_repo.delete(session)
-    return SuccessResponse(data={"deleted": session_id})
+    return SuccessResponse(data=DeleteSessionResponse(deleted=session_id))

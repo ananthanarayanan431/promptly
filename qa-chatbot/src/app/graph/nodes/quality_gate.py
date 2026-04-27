@@ -219,10 +219,15 @@ async def quality_gate_node(state: GraphState) -> dict[str, Any]:
             },
         )
 
+    updated_critic_responses = state.get("critic_responses", [])
+    if decision == "loop":
+        # Append sentinel only on loop so _route_quality_gate correctly exits on pass
+        updated_critic_responses = updated_critic_responses + [
+            {"_quality_gate": True, "weak_dimensions": weak_dimensions}
+        ]
+
     return {
         "iteration_count": iteration + 1,
         "previous_synthesis": synthesis,
-        # Pass quality gaps back into state so council_vote can address them next iteration
-        "critic_responses": state.get("critic_responses", [])
-        + [{"_quality_gate": True, "weak_dimensions": weak_dimensions}],
+        "critic_responses": updated_critic_responses,
     }

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import math
@@ -295,10 +294,8 @@ class PromptVersioningService:
         uid = UUID(user_id)
         offset = (page - 1) * page_size
 
-        total, family_ids = await asyncio.gather(
-            self.repo.count_families(uid),
-            self.repo.get_family_ids_page(uid, limit=page_size, offset=offset),
-        )
+        total = await self.repo.count_families(uid)
+        family_ids = await self.repo.get_family_ids_page(uid, limit=page_size, offset=offset)
 
         families: list[dict[str, Any]] = []
         if family_ids:

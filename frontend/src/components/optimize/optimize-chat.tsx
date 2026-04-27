@@ -181,12 +181,13 @@ export function OptimizeChat() {
   // (the session doesn't exist in the DB yet when the URL is first updated)
   const localSessions = useRef(new Map<string, number>()); // sessionId → created timestamp
 
-  // Reset to empty state when navigating to /optimize with no session (New Chat)
+  // Reset to empty state when navigating to /optimize with no session (New Chat).
+  // Do NOT clear activeJobId here — an in-flight job must be allowed to finish
+  // so its completion/failure handlers can run and clean up correctly.
   useEffect(() => {
     if (urlSession) return;
     setTurns([]);
     setSessionId(null);
-    setActiveJobId(null);
     setSelectedTurnId(null);
     setDesktopPanelDismissed(false);
     setMobilePanelOpen(false);
@@ -213,10 +214,12 @@ export function OptimizeChat() {
 
         const loaded: ChatTurn[] = messages.map((msg) => {
           const hasResult = !!msg.response;
+          const isFeedback = !!msg.feedback;
           return {
             tempId: msg.id,
-            userText: msg.raw_prompt ?? '',
-            isFeedback: false,
+            // For feedback turns show the feedback comment, not the prompt that was re-optimized
+            userText: isFeedback ? msg.feedback! : (msg.raw_prompt ?? ''),
+            isFeedback,
             // If the message has no response and we have a pending job, mark as loading
             status: !hasResult && pendingJobId ? ('loading' as const) : ('completed' as const),
             jobId: !hasResult && pendingJobId ? pendingJobId : undefined,
