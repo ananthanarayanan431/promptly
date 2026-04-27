@@ -75,16 +75,22 @@ export type ProgressStep =
   | 'council'
   | 'critic'
   | 'synthesize'
+  | 'quality_gate'
   | 'completed'
   | 'failed';
 
 export interface JobProgressEvent {
   step: ProgressStep;
-  done?: number;      // council only: which model just finished (1-4)
-  total?: number;     // council only: total council size (always 4)
-  ts?: number;        // unix timestamp from server
-  result?: JobResult; // completed only: full result embedded
-  error?: string;     // failed only
+  done?: number;       // council only: which model just finished (1-4)
+  total?: number;      // council only: total council size (always 4)
+  iteration?: number;  // council/quality_gate: which refinement iteration (0-indexed)
+  // quality_gate fields
+  decision?: 'loop' | 'exit' | 'exit_max' | 'exit_converged';
+  overall?: 'pass' | 'fail';
+  weak_dimensions?: string[];
+  ts?: number;         // unix timestamp from server
+  result?: JobResult;  // completed only: full result embedded
+  error?: string;      // failed only
 }
 
 export interface PromptVersion {

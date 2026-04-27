@@ -11,26 +11,31 @@ class GraphState(TypedDict):
     user_id: str
 
     # Optional user guidance that shapes how the council optimizes the prompt.
-    # When set, it is injected into the council message as a high-priority directive.
     feedback: str | None
 
+    # Version history diff — populated when appending to an existing prompt family.
+    # Passed to the council so it understands the optimization trajectory.
+    version_history_diff: str | None
+
     # Celery job id — set by process_chat_async; None for standalone PromptService calls.
-    # Nodes read this to write progress events to Redis without any out-of-band context.
     job_id: str | None
 
-    # Intent classification result: "optimize" | "create"
+    # Intent classification result: "optimize" | "irrelevant"
     intent: str | None
 
     # Pipeline stages
-    # Round 1 — council_responses: each model's independently optimized version of raw_prompt
-    #   shape: [{model: str, optimized_prompt: str, usage: dict}]
+    # Round 1 — council_responses: [{model, optimized_prompt, usage}]
     council_responses: list[dict[str, Any]]
 
-    # Round 2 — critic_responses: each model's blind peer review of the other 3 proposals
-    #   shape: [{reviewer_model: str, ranking: list[str], critiques: dict, ranking_rationale: str}]
+    # Round 2 — critic_responses: [{reviewer_model, ranking, critiques, ranking_rationale}]
     critic_responses: list[dict[str, Any]]
 
     final_response: str  # synthesized best optimized prompt (chairman output)
+
+    # Refinement loop state
+    iteration_count: int  # current iteration (0-indexed)
+    max_iterations: int  # ceiling — never loop past this
+    previous_synthesis: str | None  # last iteration's final_response, fed back to council/critic
 
     # Metadata
     messages: Annotated[list[Any], add_messages]

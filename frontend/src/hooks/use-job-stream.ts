@@ -8,6 +8,57 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? '';
 
 export type StreamStatus = 'idle' | 'streaming' | 'completed' | 'failed';
 
+type StatusSetter = (s: StreamStatus) => void;
+type ResultSetter = (r: JobResult | null) => void;
+type ErrorSetter = (e: string | null) => void;
+
+interface PollResponse {
+  data: {
+    status: 'queued' | 'started' | 'completed' | 'failed';
+    result?: JobResult;
+    error?: string;
+  };
+}
+
+async function pollUntilDone(
+  jobId: string,
+  token: string,
+  signal: AbortSignal,
+  setResult: ResultSetter,
+  setStatus: StatusSetter,
+  setError: ErrorSetter,
+): Promise<void> {
+  const maxAttempts = 180; // 3 min at 1s intervals
+  for (let i = 0; i < maxAttempts; i++) {
+    if (signal.aborted) return;
+    await new Promise((r) => setTimeout(r, 1000));
+    if (signal.aborted) return;
+    try {
+      const res = await fetch(`${API_URL}/api/v1/chat/jobs/${jobId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        signal,
+      });
+      if (!res.ok) continue;
+      const json = (await res.json()) as PollResponse;
+      const { status, result, error } = json.data;
+      if (status === 'completed' && result) {
+        setResult(result);
+        setStatus('completed');
+        return;
+      }
+      if (status === 'failed') {
+        setError(error ?? 'Optimization failed');
+        setStatus('failed');
+        return;
+      }
+    } catch {
+      if (signal.aborted) return;
+    }
+  }
+  setError('Optimization timed out');
+  setStatus('failed');
+}
+
 export interface UseJobStreamResult {
   progress: JobProgressEvent[];
   status: StreamStatus;
@@ -48,20 +99,19 @@ export function useJobStream(jobId: string | null): UseJobStreamResult {
         });
 
         if (!res.ok || !res.body) {
-          const msg =
-            res.status === 401
-              ? 'Session expired — please refresh the page'
-              : res.status === 404
-                ? 'Job not found — the server may still be starting up'
-                : 'Could not connect to the optimization service';
-          setError(msg);
-          setStatus('failed');
-          return;
+          if (res.status === 401) {
+            setError('Session expired — please refresh the page');
+            setStatus('failed');
+            return;
+          }
+          // For other errors fall through to poll fallback below
+          throw new Error(`HTTP ${res.status}`);
         }
 
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buf = '';
+        let terminal = false;
 
         while (true) {
           const { done, value } = await reader.read();
@@ -78,9 +128,17 @@ export function useJobStream(jobId: string | null): UseJobStreamResult {
               if (ev.step === 'completed') {
                 setResult(ev.result ?? null);
                 setStatus('completed');
+                terminal = true;
               } else if (ev.step === 'failed') {
+                // "Stream timeout" from server means the SSE ceiling was hit but the
+                // job may still be running — check the actual job status before failing.
+                if (ev.error === 'Stream timeout') {
+                  // Fall through to poll fallback
+                  break;
+                }
                 setError(ev.error ?? 'Optimization failed');
                 setStatus('failed');
+                terminal = true;
               } else {
                 setProgress((prev) => [...prev, ev]);
               }
@@ -88,12 +146,17 @@ export function useJobStream(jobId: string | null): UseJobStreamResult {
               // Malformed event — skip silently
             }
           }
+          if (terminal) return;
+        }
+
+        // Stream ended without a terminal event (timeout / disconnect) — poll for result
+        if (!terminal) {
+          await pollUntilDone(jobId, token ?? '', ctrl.signal, setResult, setStatus, setError);
         }
       } catch (e: unknown) {
-        if ((e as Error).name !== 'AbortError') {
-          setError('Stream disconnected');
-          setStatus('failed');
-        }
+        if ((e as Error).name === 'AbortError') return;
+        // Network error — try polling as fallback
+        await pollUntilDone(jobId, token ?? '', ctrl.signal, setResult, setStatus, setError);
       }
     })();
 

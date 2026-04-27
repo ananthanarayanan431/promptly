@@ -235,9 +235,9 @@ async def stream_job_progress(
         raise JobNotFoundException()
 
     async def generate() -> AsyncGenerator[str, None]:
-        # 120 s ceiling prevents open connections if the worker crashes mid-job
+        # 300 s ceiling — enough for 3 quality-gate refinement passes
         loop = asyncio.get_running_loop()
-        deadline = loop.time() + 120
+        deadline = loop.time() + 300
         last_idx = 0
         while loop.time() < deadline:
             events = await get_job_progress_from(job_id, last_idx)
@@ -409,8 +409,8 @@ async def list_sessions(
 ) -> SuccessResponse[SessionsGroupedResponse]:
     """
     Return this user's chat sessions grouped by recency: today / last 7 days /
-    last 30 days / older.  Sessions without a title (never completed a run) are
-    excluded.
+    last 30 days / older.  Sessions without a title are included (they show as
+    "Untitled" in the sidebar while the run is still in progress).
     """
     session_repo = SessionRepository(db)
     sessions = await session_repo.get_by_user_id(current_user.id, limit=100)
@@ -439,8 +439,6 @@ async def list_sessions(
         "older": [],
     }
     for s in sessions:
-        if not s.title:  # skip sessions with no title (no run completed yet)
-            continue
         grouped[_bucket(s)].append(SessionSummary.model_validate(s))
 
     return SuccessResponse(data=SessionsGroupedResponse(**grouped))

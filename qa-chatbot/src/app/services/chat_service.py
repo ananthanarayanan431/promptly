@@ -24,6 +24,8 @@ class ChatService:
         feedback: str | None = None,
         title: str | None = None,
         job_id: str | None = None,
+        version_history_diff: str | None = None,
+        max_iterations: int = 1,
     ) -> dict[str, Any]:
         await self.session_repo.get_or_create(
             session_id=session_id,
@@ -46,6 +48,10 @@ class ChatService:
             "messages": [],
             "token_usage": {},
             "error": None,
+            "version_history_diff": version_history_diff,
+            "iteration_count": 0,
+            "max_iterations": max_iterations,
+            "previous_synthesis": None,
         }
 
         result = await self.graph.ainvoke(initial_state, config=config)
@@ -86,6 +92,10 @@ class ChatService:
             "messages": [],
             "token_usage": {},
             "error": None,
+            "version_history_diff": None,
+            "iteration_count": 0,
+            "max_iterations": 1,
+            "previous_synthesis": None,
         }
         async for event in self.graph.astream_events(initial_state, config=config, version="v2"):
             if event["event"] == "on_chat_model_stream":

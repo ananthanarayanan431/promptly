@@ -4,6 +4,7 @@ import { usePathname, useSearchParams } from 'next/navigation';
 import { Suspense, useState, useRef, useCallback, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/stores/auth-store';
+import { useJobStore } from '@/stores/job-store';
 import { clearToken } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
@@ -31,7 +32,7 @@ function deriveInitials(name: string): string {
   return name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
 }
 
-function SessionItem({ session, isActive }: { session: SessionSummary; isActive: boolean }) {
+function SessionItem({ session, isActive, isGenerating }: { session: SessionSummary; isActive: boolean; isGenerating: boolean }) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -113,8 +114,17 @@ function SessionItem({ session, isActive }: { session: SessionSummary; isActive:
           color: isActive ? '#ededed' : '#b5b5ba',
           background: isActive ? '#222226' : 'transparent',
           overflow: 'hidden', whiteSpace: 'nowrap' as const }}>
-        <span style={{ width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
-          background: isActive ? '#7c5cff' : '#5a5a60' }} />
+        {isGenerating ? (
+          <span style={{
+            width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
+            background: '#7c5cff',
+            boxShadow: '0 0 0 0 rgba(124,92,255,0.5)',
+            animation: 'sidebarPulse 1.4s ease-in-out infinite',
+          }} />
+        ) : (
+          <span style={{ width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
+            background: isActive ? '#7c5cff' : '#5a5a60' }} />
+        )}
         <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {session.title || 'Untitled'}
         </span>
@@ -188,6 +198,7 @@ function SessionHistory() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const currentSessionId = searchParams.get('session');
+  const generatingSessionId = useJobStore((s) => s.generatingSessionId);
   const isNewChat = pathname === '/optimize' && !currentSessionId;
 
   const { data: grouped } = useQuery<SessionsGrouped>({
@@ -219,6 +230,12 @@ function SessionHistory() {
 
   return (
     <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+      <style>{`
+        @keyframes sidebarPulse {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(124,92,255,0.5); }
+          50% { box-shadow: 0 0 0 4px rgba(124,92,255,0); }
+        }
+      `}</style>
       <div style={{ padding: '14px 16px 6px', fontFamily: 'var(--font-geist-mono, monospace)',
         fontSize: 10, color: '#5a5a60', textTransform: 'uppercase', letterSpacing: '0.08em',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -235,7 +252,12 @@ function SessionHistory() {
           </div>
         )}
         {allSessions.map(s => (
-          <SessionItem key={s.id} session={s} isActive={s.id === currentSessionId} />
+          <SessionItem
+            key={s.id}
+            session={s}
+            isActive={s.id === currentSessionId}
+            isGenerating={s.id === generatingSessionId}
+          />
         ))}
       </div>
     </div>
