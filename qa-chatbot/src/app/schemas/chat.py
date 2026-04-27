@@ -71,6 +71,7 @@ class MessageOut(BaseModel):
     id: uuid.UUID
     role: str
     raw_prompt: str | None
+    feedback: str | None = None
     response: str | None
     council_votes: list[Any] | None = None
     token_usage: dict[str, Any] | None = None
@@ -165,3 +166,11 @@ class JobPollResponse(BaseModel):
     status: str  # queued | started | completed | failed
     result: ChatResponse | None = None  # populated when status == "completed"
     error: str | None = None  # populated when status == "failed"
+
+
+class RenameSessionRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+
+
+class DeleteSessionResponse(BaseModel):
+    deleted: str

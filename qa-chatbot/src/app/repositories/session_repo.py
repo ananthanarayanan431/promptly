@@ -49,10 +49,11 @@ class SessionRepository(BaseRepository[ChatSession]):
         Idempotent — safe to call on every request.
         """
         existing = await self.get_by_thread_id(graph_thread_id)
-        if existing:
-            return existing, False
-
         user_uuid = UUID(user_id) if isinstance(user_id, str) else user_id
+        if existing:
+            if existing.user_id == user_uuid:
+                return existing, False
+            # thread_id belongs to a different user — fall through and create a new session
         session = await self.create(
             id=UUID(session_id),
             user_id=user_uuid,

@@ -103,12 +103,42 @@ def process_chat_async(
 
         llm_settings = get_llm_settings()
         api_key = llm_settings.OPENROUTER_API_KEY.get_secret_value()
+        max_iterations = llm_settings.MAX_REFINEMENT_ITERATIONS
 
         try:
             async with AsyncSessionLocal() as db:
                 async with get_checkpointer() as checkpointer:
                     graph = await compile_graph(checkpointer)
                     service = ChatService(db=db, graph=graph)
+
+                    # Build version history diff when appending to an existing family.
+                    # This gives council models trajectory context (what changed, what improved).
+                    version_history_diff: str | None = None
+                    try:
+                        from uuid import UUID as _UUID2
+
+                        version_repo = PromptVersionRepository(db)
+                        versions: list[Any] = []
+                        if prompt_id:
+                            versions = await version_repo.get_all_by_prompt_id(
+                                _UUID2(prompt_id), _UUID2(user_id)
+                            )
+                        elif name:
+                            latest = await version_repo.get_latest_by_name(name, _UUID2(user_id))
+                            if latest is not None:
+                                versions = await version_repo.get_all_by_prompt_id(
+                                    latest.prompt_id, _UUID2(user_id)
+                                )
+                        if len(versions) >= 2:
+                            lines = []
+                            for v in versions:
+                                lines.append(
+                                    f"v{v.version}: {v.content[:300]}"
+                                    + ("..." if len(v.content) > 300 else "")
+                                )
+                            version_history_diff = "\n\n".join(lines)
+                    except Exception:  # noqa: S110
+                        pass  # Non-critical — proceed without history
 
                     # Run the optimization pipeline and the title LLM call concurrently.
                     # Title generation is fire-and-forget — any failure falls back gracefully.
@@ -121,6 +151,8 @@ def process_chat_async(
                         feedback=feedback,
                         title=_fallback_title(raw_prompt),  # initial placeholder
                         job_id=job_id,
+                        version_history_diff=version_history_diff,
+                        max_iterations=max_iterations,
                     )
 
                 # Always commit session + message immediately so they're visible
@@ -267,6 +299,8 @@ def process_chat_async(
             except Exception:  # noqa: S110
                 pass
             raise self.retry(exc=exc) from exc
+        finally:
+            await dispose_async_engine()
 
     try:
         return asyncio.run(_run())
@@ -316,6 +350,8 @@ def score_prompt_async(
         except Exception as exc:
             log.warning("score_prompt_async failed (will retry): %s", exc)
             raise self.retry(exc=exc) from exc
+        finally:
+            await dispose_async_engine()
 
     try:
         asyncio.run(_run())

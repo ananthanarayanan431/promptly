@@ -20,6 +20,14 @@ export interface ApiKeyCreated {
   created_at: string;
 }
 
+export interface PaginatedApiKeyList {
+  page: number;
+  page_size: number;
+  total: number;
+  total_pages: number;
+  keys: ApiKey[];
+}
+
 export interface AuthResponse {
   access_token: string;
   token_type: string;
@@ -67,16 +75,22 @@ export type ProgressStep =
   | 'council'
   | 'critic'
   | 'synthesize'
+  | 'quality_gate'
   | 'completed'
   | 'failed';
 
 export interface JobProgressEvent {
   step: ProgressStep;
-  done?: number;      // council only: which model just finished (1-4)
-  total?: number;     // council only: total council size (always 4)
-  ts?: number;        // unix timestamp from server
-  result?: JobResult; // completed only: full result embedded
-  error?: string;     // failed only
+  done?: number;       // council only: which model just finished (1-4)
+  total?: number;      // council only: total council size (always 4)
+  iteration?: number;  // council/quality_gate: which refinement iteration (0-indexed)
+  // quality_gate fields
+  decision?: 'loop' | 'exit' | 'exit_max' | 'exit_converged';
+  overall?: 'pass' | 'fail';
+  weak_dimensions?: string[];
+  ts?: number;         // unix timestamp from server
+  result?: JobResult;  // completed only: full result embedded
+  error?: string;      // failed only
 }
 
 export interface PromptVersion {
@@ -94,6 +108,14 @@ export interface PromptFamily {
   prompt_id: string;
   name: string;
   versions: PromptVersion[];
+}
+
+export interface PaginatedPromptFamilyList {
+  page: number;
+  page_size: number;
+  total: number;
+  total_pages: number;
+  families: PromptFamily[];
 }
 
 export interface CreateVersionResponse {
@@ -205,6 +227,7 @@ export interface SessionMessage {
   id: string;
   role: string;
   raw_prompt: string | null;
+  feedback: string | null;
   response: string | null;
   council_votes: CouncilProposal[] | null;
   token_usage: { total_tokens: number } | null;

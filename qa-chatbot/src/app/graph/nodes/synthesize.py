@@ -75,8 +75,17 @@ async def synthesize_node(state: GraphState) -> dict[str, Any]:
     Returns:
         {"final_response": <best_optimized_prompt>, "token_usage": {"total_tokens": N}}
     """
+    critic_responses = state.get("critic_responses") or []
     proposals_block = _build_proposals_block(state["council_responses"])
-    critiques_block = _build_critiques_block(state.get("critic_responses") or [])
+    critiques_block = _build_critiques_block(critic_responses)
+
+    # Collect quality gaps from critic consensus (skip quality_gate sentinel entries)
+    quality_gaps: list[str] = []
+    for cr in reversed(critic_responses):
+        gaps = cr.get("quality_gaps")
+        if isinstance(gaps, list) and gaps and not cr.get("_quality_gate"):
+            quality_gaps = gaps
+            break
 
     response = await _get_synthesizer().ainvoke(
         synthesize_messages(
@@ -84,6 +93,8 @@ async def synthesize_node(state: GraphState) -> dict[str, Any]:
             proposals_block=proposals_block,
             critiques_block=critiques_block,
             feedback=state.get("feedback"),
+            previous_synthesis=state.get("previous_synthesis"),
+            quality_gaps=quality_gaps if quality_gaps else None,
         )
     )
 

@@ -4,7 +4,10 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatDistanceToNow } from 'date-fns';
 import { listApiKeys, createApiKey, revokeApiKey } from '@/lib/api-keys';
+import type { ApiKeyStatus } from '@/lib/api-keys';
 import type { ApiKey, ApiKeyCreated } from '@/types/api';
+
+const PAGE_SIZE = 10;
 
 function CopyButton({ value }: { value: string }) {
   const [copied, setCopied] = useState(false);
@@ -200,20 +203,28 @@ function CreateKeyForm({ onCreated }: { onCreated: (key: ApiKeyCreated) => void 
 
 export default function SettingsPage() {
   const [newKey, setNewKey] = useState<ApiKeyCreated | null>(null);
+  const [page, setPage] = useState(1);
+  const [status, setStatus] = useState<ApiKeyStatus>('all');
   const queryClient = useQueryClient();
 
-  const { data: keys = [], isLoading } = useQuery({
-    queryKey: ['api-keys'],
-    queryFn: listApiKeys,
+  const { data, isLoading } = useQuery({
+    queryKey: ['api-keys', page, status],
+    queryFn: () => listApiKeys(page, PAGE_SIZE, status),
   });
+
+  const keys = data?.keys ?? [];
+  const total = data?.total ?? 0;
+  const totalPages = data?.total_pages ?? 0;
 
   const { mutate: revoke } = useMutation({
     mutationFn: revokeApiKey,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['api-keys'] }),
   });
 
-  const activeKeys = keys.filter((k) => k.is_active);
-  const revokedKeys = keys.filter((k) => !k.is_active);
+  const handleStatusChange = (next: ApiKeyStatus) => {
+    setStatus(next);
+    setPage(1);
+  };
 
   return (
     <div style={{ height: '100%', overflowY: 'auto', padding: '28px 40px 80px',
@@ -252,46 +263,78 @@ export default function SettingsPage() {
           <CreateKeyForm onCreated={setNewKey} />
         </div>
 
-        {/* Active keys */}
+        {/* Keys list */}
         <div style={{ background: '#1a1a1a', border: '1px solid #1f1f23', borderRadius: 10, overflow: 'hidden' }}>
+
+          {/* List header: title + total + status filter */}
           <div style={{ padding: '16px 20px', borderBottom: '1px solid #1f1f23',
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ fontSize: 13, fontWeight: 500, color: '#ededed' }}>Active keys</div>
-            <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 11,
-              color: '#5a5a60' }}>{activeKeys.length}</span>
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ fontSize: 13, fontWeight: 500, color: '#ededed' }}>Keys</div>
+              <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 11,
+                color: '#5a5a60' }}>{total}</span>
+            </div>
+            <select
+              value={status}
+              onChange={(e) => handleStatusChange(e.target.value as ApiKeyStatus)}
+              style={{ height: 28, padding: '0 8px', borderRadius: 6, border: '1px solid #2a2a2e',
+                background: '#111115', color: '#8a8a90', fontSize: 12, cursor: 'pointer', outline: 'none' }}>
+              <option value="all">All</option>
+              <option value="active">Active</option>
+              <option value="revoked">Revoked</option>
+            </select>
           </div>
 
+          {/* Rows */}
           {isLoading ? (
             <div style={{ padding: '28px 20px', textAlign: 'center',
               fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 12, color: '#5a5a60' }}>
               Loading…
             </div>
-          ) : activeKeys.length === 0 ? (
+          ) : keys.length === 0 ? (
             <div style={{ padding: '28px 20px', textAlign: 'center',
               fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 12, color: '#5a5a60' }}>
-              No active keys — create one above.
+              {status === 'active' ? 'No active keys — create one above.'
+                : status === 'revoked' ? 'No revoked keys.'
+                : 'No keys yet — create one above.'}
             </div>
           ) : (
-            activeKeys.map((k) => (
+            keys.map((k) => (
               <ApiKeyRow key={k.id} apiKey={k} onRevoke={revoke} />
             ))
           )}
-        </div>
 
-        {/* Revoked keys */}
-        {revokedKeys.length > 0 && (
-          <div style={{ background: '#1a1a1a', border: '1px solid #1f1f23', borderRadius: 10, overflow: 'hidden' }}>
-            <div style={{ padding: '16px 20px', borderBottom: '1px solid #1f1f23',
+          {/* Pagination footer */}
+          {totalPages > 1 && (
+            <div style={{ padding: '12px 20px', borderTop: '1px solid #1f1f23',
               display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ fontSize: 13, fontWeight: 500, color: '#5a5a60' }}>Revoked keys</div>
-              <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 11,
-                color: '#5a5a60' }}>{revokedKeys.length}</span>
+              <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 11, color: '#5a5a60' }}>
+                Page {page} of {totalPages}
+              </span>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button
+                  onClick={() => setPage((p) => p - 1)}
+                  disabled={page === 1}
+                  style={{ height: 28, padding: '0 12px', borderRadius: 6, border: '1px solid #2a2a2e',
+                    background: 'transparent', fontSize: 12,
+                    color: page === 1 ? '#3a3a3e' : '#8a8a90',
+                    cursor: page === 1 ? 'not-allowed' : 'pointer' }}>
+                  Prev
+                </button>
+                <button
+                  onClick={() => setPage((p) => p + 1)}
+                  disabled={page === totalPages}
+                  style={{ height: 28, padding: '0 12px', borderRadius: 6, border: '1px solid #2a2a2e',
+                    background: 'transparent', fontSize: 12,
+                    color: page === totalPages ? '#3a3a3e' : '#8a8a90',
+                    cursor: page === totalPages ? 'not-allowed' : 'pointer' }}>
+                  Next
+                </button>
+              </div>
             </div>
-            {revokedKeys.map((k) => (
-              <ApiKeyRow key={k.id} apiKey={k} onRevoke={revoke} />
-            ))}
-          </div>
-        )}
+          )}
+
+        </div>
 
       </div>
     </div>

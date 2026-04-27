@@ -18,6 +18,7 @@ class Message(Base, UUIDMixin, TimestampMixin):
     session_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("chat_sessions.id"), index=True)
     role: Mapped[str] = mapped_column(String(20))  # user | assistant
     raw_prompt: Mapped[str | None] = mapped_column(Text)  # original user input
+    feedback: Mapped[str | None] = mapped_column(Text, nullable=True)  # user feedback comment
     enhanced_prompt: Mapped[str | None] = mapped_column(Text)
     response: Mapped[str | None] = mapped_column(Text)
     council_votes: Mapped[dict[str, Any] | None] = mapped_column(JSON)

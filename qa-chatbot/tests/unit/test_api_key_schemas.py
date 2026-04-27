@@ -9,6 +9,7 @@ from app.schemas.api_key import (
     ApiKeyCreateRequest,
     ApiKeyListResponse,
     ApiKeyResponse,
+    PaginatedApiKeyListResponse,
 )
 
 
@@ -55,4 +56,31 @@ def test_api_key_response_never_has_key_field() -> None:
 
 def test_api_key_list_response_wraps_list() -> None:
     resp = ApiKeyListResponse(keys=[])
+    assert resp.keys == []
+
+
+def test_paginated_response_computes_fields() -> None:
+    resp = PaginatedApiKeyListResponse(
+        page=1,
+        page_size=20,
+        total=47,
+        total_pages=3,
+        keys=[],
+    )
+    assert resp.page == 1
+    assert resp.page_size == 20
+    assert resp.total == 47
+    assert resp.total_pages == 3
+    assert resp.keys == []
+
+
+def test_paginated_response_empty_when_no_keys() -> None:
+    resp = PaginatedApiKeyListResponse(
+        page=1,
+        page_size=20,
+        total=0,
+        total_pages=0,
+        keys=[],
+    )
+    assert resp.total == 0
     assert resp.keys == []

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import re
 import uuid
 from typing import Any
@@ -18,6 +19,7 @@ from app.graph.nodes.guardrails import guardrails_node
 from app.graph.prompts import prompt_advisory_messages, prompt_health_score_messages
 from app.graph.state import GraphState
 from app.models.favorite_prompt import FavoritePrompt
+from app.models.prompt_version import PromptVersion
 from app.repositories.prompt_version_repo import PromptVersionRepository
 
 logger = logging.getLogger(__name__)
@@ -278,39 +280,59 @@ class PromptVersioningService:
             version_dict["favorite_id"] = str(favs[v.id].id)
         return {"prompt_id": str(prompt_id), "version": version_dict}
 
-    async def list_families(self, user_id: str) -> list[dict[str, Any]]:
+    async def list_families(
+        self,
+        user_id: str,
+        *,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> dict[str, Any]:
         """
-        Return all prompt families (grouped by prompt_id) for a user,
-        each with their full version history in ascending order,
-        sorted by the latest version's created_at descending (most-recently updated first).
+        Return a paginated list of prompt families for a user, most-recently
+        updated first. Each family includes its full version history.
         """
-        all_versions = await self.repo.get_all_by_user_id(UUID(user_id))
+        uid = UUID(user_id)
+        offset = (page - 1) * page_size
 
-        version_ids = [v.id for v in all_versions]
-        favs = await self._favorites_by_version_id(UUID(user_id), version_ids)
+        total = await self.repo.count_families(uid)
+        family_ids = await self.repo.get_family_ids_page(uid, limit=page_size, offset=offset)
 
-        # Group by prompt_id preserving insertion order
-        families: dict[str, dict[str, Any]] = {}
-        for v in all_versions:
-            key = str(v.prompt_id)
-            if key not in families:
-                families[key] = {
-                    "prompt_id": key,
-                    "name": v.name,
-                    "versions": [],
-                }
-            version_dict = self._fmt(v)
-            if v.id in favs:
-                version_dict["is_favorited"] = True
-                version_dict["favorite_id"] = str(favs[v.id].id)
-            families[key]["versions"].append(version_dict)
+        families: list[dict[str, Any]] = []
+        if family_ids:
+            all_versions = await self.db.execute(
+                select(PromptVersion)
+                .where(
+                    PromptVersion.user_id == uid,
+                    PromptVersion.prompt_id.in_(family_ids),
+                )
+                .order_by(PromptVersion.prompt_id, PromptVersion.version.asc())
+            )
+            versions_flat = list(all_versions.scalars().all())
 
-        # Sort by latest version's created_at descending (most-recently updated first)
-        return sorted(
-            families.values(),
-            key=lambda f: f["versions"][-1]["created_at"] if f["versions"] else "",
-            reverse=True,
-        )
+            version_ids = [v.id for v in versions_flat]
+            favs = await self._favorites_by_version_id(uid, version_ids)
+
+            grouped: dict[str, dict[str, Any]] = {}
+            for v in versions_flat:
+                key = str(v.prompt_id)
+                if key not in grouped:
+                    grouped[key] = {"prompt_id": key, "name": v.name, "versions": []}
+                version_dict = self._fmt(v)
+                if v.id in favs:
+                    version_dict["is_favorited"] = True
+                    version_dict["favorite_id"] = str(favs[v.id].id)
+                grouped[key]["versions"].append(version_dict)
+
+            # Restore the SQL-ordered page order (family_ids is already sorted)
+            families = [grouped[str(fid)] for fid in family_ids if str(fid) in grouped]
+
+        return {
+            "page": page,
+            "page_size": page_size,
+            "total": total,
+            "total_pages": math.ceil(total / page_size) if total else 0,
+            "families": families,
+        }
 
     async def list_versions(self, prompt_id: UUID, user_id: str) -> dict[str, Any]:
         """

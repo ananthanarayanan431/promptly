@@ -1,9 +1,10 @@
 'use client';
 
 import { usePathname, useSearchParams } from 'next/navigation';
-import { Suspense } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { Suspense, useState, useRef, useCallback, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/stores/auth-store';
+import { useJobStore } from '@/stores/job-store';
 import { clearToken } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
@@ -31,21 +32,176 @@ function deriveInitials(name: string): string {
   return name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
 }
 
-function SessionItem({ session, isActive }: { session: SessionSummary; isActive: boolean }) {
+function SessionItem({ session, isActive, isGenerating }: { session: SessionSummary; isActive: boolean; isGenerating: boolean }) {
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState(session.title ?? '');
+  const menuRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    function handle(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handle);
+    return () => document.removeEventListener('mousedown', handle);
+  }, [menuOpen]);
+
+  useEffect(() => {
+    if (renaming) inputRef.current?.focus();
+  }, [renaming]);
+
+  const deleteMutation = useMutation({
+    mutationFn: () => api.delete(`/api/v1/chat/sessions/${session.id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sessions'] });
+      if (isActive) router.push('/optimize');
+    },
+  });
+
+  const renameMutation = useMutation({
+    mutationFn: (title: string) =>
+      api.patch(`/api/v1/chat/sessions/${session.id}`, { title }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sessions'] });
+      setRenaming(false);
+    },
+  });
+
+  function commitRename() {
+    const trimmed = renameValue.trim();
+    if (trimmed && trimmed !== session.title) {
+      renameMutation.mutate(trimmed);
+    } else {
+      setRenaming(false);
+    }
+  }
+
+  if (renaming) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 14px',
+        margin: '0 8px' }}>
+        <input
+          ref={inputRef}
+          value={renameValue}
+          onChange={e => setRenameValue(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter') commitRename();
+            if (e.key === 'Escape') setRenaming(false);
+          }}
+          onBlur={commitRename}
+          style={{
+            flex: 1, height: 26, padding: '0 8px', borderRadius: 5,
+            border: '1px solid #7c5cff', background: '#1a1a1e',
+            color: '#ededed', fontSize: 12.5, outline: 'none',
+          }}
+        />
+      </div>
+    );
+  }
+
   return (
-    <Link href={`/optimize?session=${session.id}`}
-      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 14px',
-        margin: '0 8px', borderRadius: 6, fontSize: 13, textDecoration: 'none',
-        color: isActive ? '#ededed' : '#b5b5ba',
-        background: isActive ? '#222226' : 'transparent',
-        borderLeft: '2px solid transparent',
-        overflow: 'hidden', whiteSpace: 'nowrap' as const }}>
-      <span style={{ width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
-        background: isActive ? '#7c5cff' : '#5a5a60' }} />
-      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-        {session.title || 'Untitled'}
-      </span>
-    </Link>
+    <div style={{ position: 'relative' }}
+      onMouseLeave={() => setMenuOpen(false)}>
+      {/* Row: Link and menu button are siblings — no interactive element nested inside <a> */}
+      <Link href={`/optimize?session=${session.id}`}
+        style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 14px',
+          paddingRight: 38, margin: '0 8px', borderRadius: 6, fontSize: 13,
+          textDecoration: 'none',
+          color: isActive ? '#ededed' : '#b5b5ba',
+          background: isActive ? '#222226' : 'transparent',
+          overflow: 'hidden', whiteSpace: 'nowrap' as const }}>
+        {isGenerating ? (
+          <span style={{
+            width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
+            background: '#7c5cff',
+            boxShadow: '0 0 0 0 rgba(124,92,255,0.5)',
+            animation: 'sidebarPulse 1.4s ease-in-out infinite',
+          }} />
+        ) : (
+          <span style={{ width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
+            background: isActive ? '#7c5cff' : '#5a5a60' }} />
+        )}
+        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {session.title || 'Untitled'}
+        </span>
+      </Link>
+
+      {/* Three-dot button — sibling of Link, absolutely positioned over the right edge */}
+      <button
+        onClick={e => { e.stopPropagation(); setMenuOpen(v => !v); }}
+        aria-haspopup="true"
+        aria-expanded={menuOpen}
+        aria-label="More options"
+        style={{
+          position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)',
+          width: 20, height: 20, borderRadius: 4, border: 'none',
+          background: 'transparent', cursor: 'pointer', padding: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: '#5a5a60', opacity: menuOpen ? 1 : undefined,
+          zIndex: 1,
+        }}
+      >
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+          <circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/>
+        </svg>
+      </button>
+
+      {/* Dropdown menu */}
+      {menuOpen && (
+        <div ref={menuRef} style={{
+          position: 'absolute', right: 12, top: '100%', zIndex: 100,
+          background: '#1a1a1e', border: '1px solid #2a2a2e', borderRadius: 8,
+          padding: '4px 0', minWidth: 140,
+          boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+        }}>
+          <button
+            onClick={() => { setMenuOpen(false); setRenaming(true); setRenameValue(session.title ?? ''); }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              width: '100%', padding: '8px 12px', border: 'none',
+              background: 'transparent', color: '#b5b5ba', fontSize: 12.5,
+              cursor: 'pointer', textAlign: 'left',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = '#222226')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
+              <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+            </svg>
+            Rename
+          </button>
+          <button
+            onClick={() => {
+              setMenuOpen(false);
+              if (window.confirm('Delete this session? This cannot be undone.')) {
+                deleteMutation.mutate();
+              }
+            }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              width: '100%', padding: '8px 12px', border: 'none',
+              background: 'transparent', color: '#f43f5e', fontSize: 12.5,
+              cursor: 'pointer', textAlign: 'left',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(244,63,94,0.08)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/>
+              <path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
+            </svg>
+            Delete
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -53,6 +209,7 @@ function SessionHistory() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const currentSessionId = searchParams.get('session');
+  const generatingSessionId = useJobStore((s) => s.generatingSessionId);
   const isNewChat = pathname === '/optimize' && !currentSessionId;
 
   const { data: grouped } = useQuery<SessionsGrouped>({
@@ -84,6 +241,12 @@ function SessionHistory() {
 
   return (
     <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+      <style>{`
+        @keyframes sidebarPulse {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(124,92,255,0.5); }
+          50% { box-shadow: 0 0 0 4px rgba(124,92,255,0); }
+        }
+      `}</style>
       <div style={{ padding: '14px 16px 6px', fontFamily: 'var(--font-geist-mono, monospace)',
         fontSize: 10, color: '#5a5a60', textTransform: 'uppercase', letterSpacing: '0.08em',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -100,17 +263,25 @@ function SessionHistory() {
           </div>
         )}
         {allSessions.map(s => (
-          <SessionItem key={s.id} session={s} isActive={s.id === currentSessionId} />
+          <SessionItem
+            key={s.id}
+            session={s}
+            isActive={s.id === currentSessionId}
+            isGenerating={s.id === generatingSessionId}
+          />
         ))}
       </div>
     </div>
   );
 }
 
-export function Sidebar() {
+export function Sidebar({ width, onWidthChange }: { width: number; onWidthChange: (w: number) => void }) {
   const pathname = usePathname();
   const router = useRouter();
   const { logout, user } = useAuthStore();
+  const dragging = useRef(false);
+  const startX = useRef(0);
+  const startW = useRef(0);
 
   const { data: fetchedUser } = useQuery<User>({
     queryKey: ['user', 'me'],
@@ -131,10 +302,33 @@ export function Sidebar() {
     router.refresh();
   };
 
+  const onDragStart = useCallback((e: React.MouseEvent) => {
+    dragging.current = true;
+    startX.current = e.clientX;
+    startW.current = width;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    function onMove(ev: MouseEvent) {
+      if (!dragging.current) return;
+      const next = Math.min(400, Math.max(180, startW.current + ev.clientX - startX.current));
+      onWidthChange(next);
+    }
+    function onUp() {
+      dragging.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    }
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [width, onWidthChange]);
+
   return (
-    <aside style={{ width: 248, background: '#101014', borderRight: '1px solid #1f1f23',
+    <aside style={{ width, background: '#101014', borderRight: '1px solid #1f1f23',
       display: 'flex', flexDirection: 'column', height: '100vh', flexShrink: 0,
-      fontFamily: 'var(--font-geist, ui-sans-serif)' }}>
+      fontFamily: 'var(--font-geist, ui-sans-serif)', position: 'relative' }}>
 
       {/* Logo */}
       <div style={{ padding: '16px 16px 12px', display: 'flex', alignItems: 'center',
@@ -208,7 +402,6 @@ export function Sidebar() {
       {displayUser && (
         <div style={{ borderTop: '1px solid #1f1f23', padding: 12, flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            {/* Avatar */}
             <div style={{ width: 28, height: 28, borderRadius: '50%',
               background: 'linear-gradient(135deg, #7c5cff, #3a1eff)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -236,6 +429,19 @@ export function Sidebar() {
           </div>
         </div>
       )}
+
+      {/* Drag handle */}
+      <div
+        onMouseDown={onDragStart}
+        style={{
+          position: 'absolute', right: 0, top: 0, bottom: 0, width: 4,
+          cursor: 'col-resize', zIndex: 10,
+          background: 'transparent',
+          transition: 'background 150ms',
+        }}
+        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(124,92,255,0.35)')}
+        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+      />
     </aside>
   );
 }
