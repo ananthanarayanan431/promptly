@@ -92,6 +92,7 @@ def council_optimizer_messages(
     version_history_diff: str | None = None,
     previous_synthesis: str | None = None,
     quality_gaps: list[str] | None = None,
+    category_block: str | None = None,
 ) -> list[dict[str, str]]:
     """
     Build council optimizer messages.
@@ -102,6 +103,8 @@ def council_optimizer_messages(
         council knows what was already achieved and must surpass.
     quality_gaps: dimensions flagged as still weak/missing by the critic in the last pass —
         the council must address these explicitly.
+    category_block: optional category-conditioning text appended to the system prompt —
+        steers which of the 8 dimensions to emphasize for this prompt's domain.
     """
     parts: list[str] = [raw_prompt]
 
@@ -135,7 +138,8 @@ def council_optimizer_messages(
         )
 
     user = "\n\n".join(parts)
+    system = _SYSTEM if not category_block else f"{_SYSTEM}\n\n{category_block}"
     return [
-        {"role": "system", "content": _SYSTEM},
+        {"role": "system", "content": system},
         {"role": "user", "content": user},
     ]

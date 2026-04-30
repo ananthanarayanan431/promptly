@@ -20,7 +20,7 @@ from langchain_openai import ChatOpenAI
 
 from app.config.llm import get_llm_settings
 from app.core.cache import push_job_progress
-from app.graph.prompts import council_optimizer_messages
+from app.graph.prompts import category_guidance_block, council_optimizer_messages
 from app.graph.state import GraphState
 
 logger = logging.getLogger(__name__)
@@ -90,6 +90,13 @@ async def council_vote_node(state: GraphState) -> dict[str, Any]:
     iteration = state.get("iteration_count", 0)
     job_id = state.get("job_id")
 
+    category_block = category_guidance_block(
+        category_slug=state.get("category_slug"),
+        category_name=state.get("category_name"),
+        category_description=state.get("category_description"),
+        is_predefined=state.get("category_is_predefined", False),
+    )
+
     # Quality gaps are only meaningful on refinement passes
     quality_gaps = _extract_quality_gaps(state) if iteration > 0 else []
 
@@ -105,6 +112,7 @@ async def council_vote_node(state: GraphState) -> dict[str, Any]:
             version_history_diff=version_history_diff,
             previous_synthesis=previous_synthesis if iteration > 0 else None,
             quality_gaps=quality_gaps if quality_gaps else None,
+            category_block=category_block,
         )
         response = await model.ainvoke(messages)
         result: dict[str, Any] = {

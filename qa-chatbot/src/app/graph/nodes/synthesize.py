@@ -14,7 +14,7 @@ from langchain_openai import ChatOpenAI
 
 from app.config.llm import get_llm_settings
 from app.core.cache import push_job_progress
-from app.graph.prompts import synthesize_messages
+from app.graph.prompts import category_guidance_block, synthesize_messages
 from app.graph.state import GraphState
 
 _loop_id: int | None = None
@@ -87,6 +87,13 @@ async def synthesize_node(state: GraphState) -> dict[str, Any]:
             quality_gaps = gaps
             break
 
+    category_block = category_guidance_block(
+        category_slug=state.get("category_slug"),
+        category_name=state.get("category_name"),
+        category_description=state.get("category_description"),
+        is_predefined=state.get("category_is_predefined", False),
+    )
+
     response = await _get_synthesizer().ainvoke(
         synthesize_messages(
             raw_prompt=state["raw_prompt"],
@@ -95,6 +102,7 @@ async def synthesize_node(state: GraphState) -> dict[str, Any]:
             feedback=state.get("feedback"),
             previous_synthesis=state.get("previous_synthesis"),
             quality_gaps=quality_gaps if quality_gaps else None,
+            category_block=category_block,
         )
     )
 

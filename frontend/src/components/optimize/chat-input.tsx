@@ -2,9 +2,13 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { api } from '@/lib/api';
+import {
+  CategoryPicker,
+  loadStoredCategorySlug,
+} from './category-picker';
 
 interface ChatInputProps {
-  onSubmit: (text: string, name?: string) => void;
+  onSubmit: (text: string, name?: string, categorySlug?: string) => void;
   isLoading: boolean;
   hasPreviousTurns: boolean;
   defaultValue?: string;
@@ -27,7 +31,13 @@ export function ChatInput({
   const [versioning, setVersioning] = useState(!!defaultName);
   const [nameLoading, setNameLoading] = useState(false);
   const [focused, setFocused] = useState(false);
+  const [categorySlug, setCategorySlug] = useState<string>('general');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Restore last-used category from localStorage on mount
+  useEffect(() => {
+    setCategorySlug(loadStoredCategorySlug());
+  }, []);
 
   useEffect(() => {
     if (defaultValue) setText(defaultValue);
@@ -47,7 +57,11 @@ export function ChatInput({
   const handleSubmit = () => {
     const trimmed = text.trim();
     if (!trimmed || isLoading) return;
-    onSubmit(trimmed, versioning ? (versionName.trim() || undefined) : undefined);
+    onSubmit(
+      trimmed,
+      versioning ? (versionName.trim() || undefined) : undefined,
+      categorySlug || 'general',
+    );
     if (hasPreviousTurns) setText('');
   };
 
@@ -152,6 +166,11 @@ export function ChatInput({
               </svg>
               {versioning ? 'Versioning on' : 'Version'}
             </button>
+
+            <CategoryPicker
+              selectedSlug={categorySlug}
+              onChange={setCategorySlug}
+            />
 
             {onPresetPrompts && (
               <button type="button" onClick={onPresetPrompts}

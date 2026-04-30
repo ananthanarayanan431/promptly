@@ -326,7 +326,7 @@ export interface AdvisoryResponse {
   overall_assessment: string;
 }
 
-// ── Favorites (Prompt Store) ───────────────────────────────────────────────
+// ── Favorites (Prompt Library) ─────────────────────────────────────────────
 
 export type FavoriteCategory = "Work" | "Personal" | "Research" | "Creative" | "Other";
 

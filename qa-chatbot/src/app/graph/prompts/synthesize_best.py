@@ -188,6 +188,7 @@ def synthesize_messages(
     feedback: str | None,
     previous_synthesis: str | None = None,
     quality_gaps: list[str] | None = None,
+    category_block: str | None = None,
 ) -> list[dict[str, str]]:
     user = (
         _USER.replace("{{raw_prompt}}", raw_prompt)
@@ -201,7 +202,8 @@ def synthesize_messages(
         user += _QUALITY_GAPS_BLOCK.replace("{{quality_gaps}}", gaps_text)
     if feedback:
         user += _FEEDBACK_SUFFIX.replace("{{feedback}}", feedback)
+    system = _SYSTEM if not category_block else f"{_SYSTEM}\n\n{category_block}"
     return [
-        {"role": "system", "content": _SYSTEM},
+        {"role": "system", "content": system},
         {"role": "user", "content": user},
     ]

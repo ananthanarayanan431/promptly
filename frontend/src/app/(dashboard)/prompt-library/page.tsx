@@ -41,7 +41,7 @@ function FavoriteCard({ item }: { item: FavoriteResponse }) {
 
   return (
     <Link
-      href={`/prompt-store/${item.id}`}
+      href={`/prompt-library/${item.id}`}
       style={{
         display: 'flex',
         flexDirection: 'column',
@@ -175,7 +175,7 @@ function FavoriteCard({ item }: { item: FavoriteResponse }) {
   );
 }
 
-export default function PromptStorePage() {
+export default function PromptLibraryPage() {
   const [q, setQ] = useState('');
   const [debouncedQ, setDebouncedQ] = useState('');
   const [category, setCategory] = useState<FavoriteCategory | ''>('');
@@ -235,7 +235,7 @@ export default function PromptStorePage() {
             marginBottom: 8,
           }}
         >
-          / prompt-store
+          / prompt-library
         </div>
         <h1
           style={{
@@ -248,7 +248,7 @@ export default function PromptStorePage() {
             color: '#ededed',
           }}
         >
-          Prompt Store
+          Prompt Library
         </h1>
         <p
           style={{

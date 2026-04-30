@@ -342,7 +342,7 @@ export function OptimizeChat() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [turns]);
 
-  const handleSubmit = async (text: string, name?: string) => {
+  const handleSubmit = async (text: string, name?: string, categorySlug?: string) => {
     // Clear sessionStorage prefill on first submit
     sessionStorage.removeItem('prefill_prompt');
     sessionStorage.removeItem('prefill_name');
@@ -378,6 +378,7 @@ export function OptimizeChat() {
         // If versioning is active, append the result to the existing family (v3, v4, …)
         ...(versionPromptId && !name ? { prompt_id: versionPromptId } : {}),
         ...(name && { name }),
+        ...(categorySlug && { category_slug: categorySlug }),
       });
 
       const jobId = res.data.data.job_id;
@@ -441,36 +442,18 @@ export function OptimizeChat() {
           panelVisible && isDesktop ? 'lg:w-1/2 lg:shrink-0' : 'flex-1'
         )}
       >
-        {hasMessages && (
-          <div className="shrink-0 flex justify-between items-center px-4 pt-3 pb-2 border-b border-border/50 bg-background/95 backdrop-blur-sm">
-            <button
+        {hasMessages && canShowPanel && isDesktop && desktopPanelDismissed && (
+          <div className="shrink-0 flex justify-end items-center px-4 pt-3 pb-2 border-b border-border/50 bg-background/95 backdrop-blur-sm">
+            <Button
               type="button"
-              onClick={() => router.push('/optimize')}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px',
-                borderRadius: 7, fontSize: 12, fontWeight: 500, cursor: 'pointer',
-                border: '1px solid rgba(124,92,255,0.4)', background: 'rgba(124,92,255,0.1)',
-                color: '#7c5cff', fontFamily: 'inherit',
-                transition: 'background 150ms, border-color 150ms' }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(124,92,255,0.18)'; e.currentTarget.style.borderColor = 'rgba(124,92,255,0.6)'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(124,92,255,0.1)'; e.currentTarget.style.borderColor = 'rgba(124,92,255,0.4)'; }}
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={() => setDesktopPanelDismissed(false)}
             >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M12 5v14M5 12h14"/>
-              </svg>
-              New Chat
-            </button>
-            {canShowPanel && isDesktop && desktopPanelDismissed && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="gap-2"
-                onClick={() => setDesktopPanelDismissed(false)}
-              >
-                <PanelRight className="h-4 w-4" />
-                View result
-              </Button>
-            )}
+              <PanelRight className="h-4 w-4" />
+              View result
+            </Button>
           </div>
         )}
       <div className="flex-1 overflow-y-auto min-h-0">

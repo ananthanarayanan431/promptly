@@ -39,6 +39,14 @@ class ChatRequest(BaseModel):
             "(e.g. 'keep it under 50 words', 'add a JSON output format')."
         ),
     )
+    category_slug: str | None = Field(
+        default=None,
+        max_length=40,
+        description=(
+            "Slug of the prompt category to apply. The category steers how the council "
+            "weights the optimization dimensions. Defaults to 'general' when omitted."
+        ),
+    )
 
     @model_validator(mode="after")
     def require_prompt_or_prompt_id(self) -> "ChatRequest":

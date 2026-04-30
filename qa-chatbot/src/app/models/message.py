@@ -28,5 +28,6 @@ class Message(Base, UUIDMixin, TimestampMixin):
         ForeignKey("prompt_versions.id", ondelete="SET NULL"), nullable=True, index=True
     )
     prompt_family_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    category_slug: Mapped[str | None] = mapped_column(String(40), nullable=True)
 
     session: Mapped[ChatSession] = relationship(back_populates="messages")

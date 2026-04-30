@@ -13,6 +13,13 @@ class GraphState(TypedDict):
     # Optional user guidance that shapes how the council optimizes the prompt.
     feedback: str | None
 
+    # Category context — drives per-domain dimension emphasis in council + synthesize.
+    # category_slug "general" or None = no addendum (baseline behavior).
+    category_slug: str | None
+    category_name: str | None
+    category_description: str | None
+    category_is_predefined: bool
+
     # Version history diff — populated when appending to an existing prompt family.
     # Passed to the council so it understands the optimization trajectory.
     version_history_diff: str | None

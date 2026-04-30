@@ -27,6 +27,7 @@ def process_chat_async(
     feedback: str | None = None,
     prompt_id: str | None = None,
     name: str | None = None,
+    category_slug: str | None = None,
 ) -> dict[str, Any]:
     """
     Run the full LangGraph council pipeline as a background job.
@@ -97,6 +98,7 @@ def process_chat_async(
         from app.graph.checkpointer import get_checkpointer
         from app.repositories.prompt_version_repo import PromptVersionRepository
         from app.repositories.session_repo import SessionRepository
+        from app.services.category_service import CategoryService
         from app.services.chat_service import ChatService
 
         await set_job_status(job_id, "started")
@@ -110,6 +112,27 @@ def process_chat_async(
                 async with get_checkpointer() as checkpointer:
                     graph = await compile_graph(checkpointer)
                     service = ChatService(db=db, graph=graph)
+
+                    # Resolve category metadata for the council/synthesize prompts.
+                    # If the slug doesn't resolve we silently fall back to "general" behavior
+                    # rather than fail the whole optimization.
+                    cat_name: str | None = None
+                    cat_description: str | None = None
+                    cat_is_predefined: bool = False
+                    if category_slug:
+                        try:
+                            from uuid import UUID as _UUID3
+
+                            cat_service = CategoryService(db)
+                            cat = await cat_service.resolve(
+                                slug=category_slug, user_id=_UUID3(user_id)
+                            )
+                            if cat is not None:
+                                cat_name = cat.name
+                                cat_description = cat.description
+                                cat_is_predefined = cat.is_predefined
+                        except Exception:  # noqa: S110
+                            pass
 
                     # Build version history diff when appending to an existing family.
                     # This gives council models trajectory context (what changed, what improved).
@@ -153,6 +176,10 @@ def process_chat_async(
                         job_id=job_id,
                         version_history_diff=version_history_diff,
                         max_iterations=max_iterations,
+                        category_slug=category_slug,
+                        category_name=cat_name,
+                        category_description=cat_description,
+                        category_is_predefined=cat_is_predefined,
                     )
 
                 # Always commit session + message immediately so they're visible

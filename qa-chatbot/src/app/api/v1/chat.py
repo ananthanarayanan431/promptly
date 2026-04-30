@@ -12,6 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.types.response import SuccessResponse
+from app.api.v1.exceptions.categories import InvalidCategoryException
 from app.api.v1.exceptions.chat import (
     ChatInsufficientCreditsException,
     InvalidSessionIDException,
@@ -56,6 +57,7 @@ from app.schemas.chat import (
     SuggestNameRequest,
     SuggestNameResponse,
 )
+from app.services.category_service import CategoryService
 from app.workers.tasks import process_chat_async
 
 _chat_limiter = RateLimiter(requests=10, window_seconds=60)
@@ -104,6 +106,14 @@ async def create_chat(
     if current_user.credits < 10:
         raise ChatInsufficientCreditsException()
 
+    # Resolve category — defaults to "general" if omitted; 422 if slug unknown.
+    category_service = CategoryService(db)
+    requested_slug = request.category_slug or "general"
+    category = await category_service.resolve(slug=requested_slug, user_id=current_user.id)
+    if category is None:
+        raise InvalidCategoryException(detail=f"Unknown category slug: {requested_slug}")
+    resolved_category_slug = category.slug
+
     # Resolve prompt content and versioning context
     raw_prompt: str
     resolved_prompt_id: str | None = None
@@ -149,6 +159,7 @@ async def create_chat(
                 "feedback": request.feedback,
                 "prompt_id": resolved_prompt_id,
                 "name": resolved_name,
+                "category_slug": resolved_category_slug,
             },
         )
     except Exception as exc:
