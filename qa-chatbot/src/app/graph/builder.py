@@ -16,9 +16,11 @@ from typing import Any
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.graph import END, StateGraph
 
+from app.config.llm import get_llm_settings
 from app.graph.nodes.council_vote import council_vote_node
 from app.graph.nodes.critic import critic_node
 from app.graph.nodes.intent_classifier import intent_classifier_node
+from app.graph.nodes.quality_gate import quality_gate_node
 from app.graph.nodes.synthesize import synthesize_node
 from app.graph.state import GraphState
 
@@ -34,13 +36,34 @@ def _route_intent(state: GraphState) -> str:
     return "proceed"
 
 
+def _route_quality_gate(state: GraphState) -> str:
+    """
+    After quality_gate: loop back to council_vote if the synthesis still has weak
+    dimensions and we haven't hit the iteration ceiling; otherwise exit.
+
+    The gate node already enforces the ceiling and convergence checks internally —
+    it only omits the 'weak_dimensions' payload when it decided to exit.
+    We route on whether quality_gate attached a new quality_gate sentinel entry
+    (loop decision) vs. not (exit decision).
+    """
+    critic_responses = state.get("critic_responses") or []
+    for cr in reversed(critic_responses):
+        if cr.get("_quality_gate"):
+            return "loop"
+    return "exit"
+
+
 async def compile_graph(checkpointer: AsyncPostgresSaver) -> Any:  # noqa: ANN401
     builder = StateGraph(GraphState)
+
+    quality_gate_enabled = get_llm_settings().QUALITY_GATE_ENABLED
 
     builder.add_node("intent_classifier", intent_classifier_node)
     builder.add_node("council_vote", council_vote_node)
     builder.add_node("critic", critic_node)
     builder.add_node("synthesize", synthesize_node)
+    if quality_gate_enabled:
+        builder.add_node("quality_gate", quality_gate_node)
 
     # Entry point
     builder.set_entry_point("intent_classifier")
@@ -55,9 +78,22 @@ async def compile_graph(checkpointer: AsyncPostgresSaver) -> Any:  # noqa: ANN40
         },
     )
 
-    # Round 1 → Round 2 → Round 3 → done
+    # Round 1 → Round 2 → Round 3
     builder.add_edge("council_vote", "critic")
     builder.add_edge("critic", "synthesize")
-    builder.add_edge("synthesize", END)
+
+    if quality_gate_enabled:
+        # Synthesize → quality gate → (loop back to council_vote | exit)
+        builder.add_edge("synthesize", "quality_gate")
+        builder.add_conditional_edges(
+            "quality_gate",
+            _route_quality_gate,
+            {
+                "loop": "council_vote",
+                "exit": END,
+            },
+        )
+    else:
+        builder.add_edge("synthesize", END)
 
     return builder.compile(checkpointer=checkpointer)

@@ -5,12 +5,14 @@ from collections.abc import AsyncGenerator
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import StreamingResponse
+from langchain_openai import ChatOpenAI
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.types.response import SuccessResponse
+from app.api.v1.exceptions.categories import InvalidCategoryException
 from app.api.v1.exceptions.chat import (
     ChatInsufficientCreditsException,
     InvalidSessionIDException,
@@ -19,6 +21,7 @@ from app.api.v1.exceptions.chat import (
     SessionNotFoundException,
     VersionedPromptNotFoundException,
 )
+from app.config.llm import get_llm_settings
 from app.core.cache import (
     get_job_owner,
     get_job_progress_from,
@@ -40,10 +43,12 @@ from app.schemas.chat import (
     ChatJobAcceptedResponse,
     ChatRequest,
     ChatResponse,
+    DeleteSessionResponse,
     JobPollResponse,
     MessageOut,
     RecentSessionsResponse,
     RecentSessionWithPrompt,
+    RenameSessionRequest,
     SaveVersionRequest,
     SaveVersionResponse,
     SessionDetailResponse,
@@ -52,6 +57,7 @@ from app.schemas.chat import (
     SuggestNameRequest,
     SuggestNameResponse,
 )
+from app.services.category_service import CategoryService
 from app.workers.tasks import process_chat_async
 
 _chat_limiter = RateLimiter(requests=10, window_seconds=60)
@@ -61,10 +67,13 @@ _read_limiter = RateLimiter(requests=60, window_seconds=60)
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 
+# -------------------------
+# CREATE CHAT
+# -------------------------
 @router.post(
     "/",
     response_model=SuccessResponse[ChatJobAcceptedResponse],
-    status_code=202,
+    status_code=status.HTTP_202_ACCEPTED,
     dependencies=[Depends(_chat_limiter)],
 )
 async def create_chat(
@@ -97,6 +106,14 @@ async def create_chat(
     if current_user.credits < 10:
         raise ChatInsufficientCreditsException()
 
+    # Resolve category — defaults to "general" if omitted; 422 if slug unknown.
+    category_service = CategoryService(db)
+    requested_slug = request.category_slug or "general"
+    category = await category_service.resolve(slug=requested_slug, user_id=current_user.id)
+    if category is None:
+        raise InvalidCategoryException(detail=f"Unknown category slug: {requested_slug}")
+    resolved_category_slug = category.slug
+
     # Resolve prompt content and versioning context
     raw_prompt: str
     resolved_prompt_id: str | None = None
@@ -113,31 +130,42 @@ async def create_chat(
     else:
         raw_prompt = request.prompt  # type: ignore[assignment]  # validated: one must exist
 
-    # Atomic credit deduction: single UPDATE … WHERE credits >= 10 eliminates the
-    # race condition where two concurrent requests both pass the balance check above.
+    job_id = str(uuid.uuid4())
+    session_id = str(request.session_id) if request.session_id else str(uuid.uuid4())
+
     user_repo = UserRepository(db)
     deducted = await user_repo.deduct_credits(current_user.id, 10)
     if not deducted:
         raise ChatInsufficientCreditsException()
-    await db.flush()
 
-    job_id = str(uuid.uuid4())
-    session_id = str(request.session_id) if request.session_id else str(uuid.uuid4())
+    # Ensure session exists BEFORE worker
+    session_repo = SessionRepository(db)
+    await session_repo.get_or_create(
+        session_id=session_id,
+        user_id=current_user.id,
+        graph_thread_id=session_id,
+    )
 
     await set_job_status(job_id, "queued")
     await set_job_owner(job_id, str(current_user.id))
 
-    process_chat_async.apply_async(
-        kwargs={
-            "job_id": job_id,
-            "user_id": str(current_user.id),
-            "raw_prompt": raw_prompt,
-            "session_id": session_id,
-            "feedback": request.feedback,
-            "prompt_id": resolved_prompt_id,
-            "name": resolved_name,
-        },
-    )
+    try:
+        process_chat_async.apply_async(
+            kwargs={
+                "job_id": job_id,
+                "user_id": str(current_user.id),
+                "raw_prompt": raw_prompt,
+                "session_id": session_id,
+                "feedback": request.feedback,
+                "prompt_id": resolved_prompt_id,
+                "name": resolved_name,
+                "category_slug": resolved_category_slug,
+            },
+        )
+    except Exception as exc:
+        # Enqueue failed — refund the credits so the user is not charged
+        await user_repo.refund_credits(current_user.id, 10)
+        raise LLMTimeoutException() from exc
 
     return SuccessResponse(
         data=ChatJobAcceptedResponse(
@@ -148,6 +176,9 @@ async def create_chat(
     )
 
 
+# -------------------------
+# POLL CHAT JOB
+# -------------------------
 @router.get(
     "/jobs/{job_id}",
     response_model=SuccessResponse[JobPollResponse],
@@ -167,9 +198,20 @@ async def poll_chat_job(
     `prompt_id` and `version` so you can query the full history via
     `GET /prompts/versions/{prompt_id}`.
     """
+
+    # ✅ SECURITY FIX
+    owner = await get_job_owner(job_id)
+    if owner is None or owner != str(current_user.id):
+        raise JobNotFoundException()
+
     status = await get_job_status(job_id)
     if status is None:
         raise JobNotFoundException()
+
+    # Optional: timeout handling (simple version)
+    if status == "queued":
+        # You can store created_at in cache for better logic
+        pass
 
     result: ChatResponse | None = None
     error: str | None = None
@@ -210,9 +252,9 @@ async def stream_job_progress(
         raise JobNotFoundException()
 
     async def generate() -> AsyncGenerator[str, None]:
-        # 120 s ceiling prevents open connections if the worker crashes mid-job
+        # 300 s ceiling — enough for 3 quality-gate refinement passes
         loop = asyncio.get_running_loop()
-        deadline = loop.time() + 120
+        deadline = loop.time() + 300
         last_idx = 0
         while loop.time() < deadline:
             events = await get_job_progress_from(job_id, last_idx)
@@ -269,9 +311,6 @@ async def suggest_prompt_name(
     Generate a short ALL-CAPS version name (2–4 words) for a given prompt text.
     Used by the frontend versioning toggle in the chat input.
     """
-    from langchain_openai import ChatOpenAI
-
-    from app.config.llm import get_llm_settings
 
     llm_settings = get_llm_settings()
     api_key = llm_settings.OPENROUTER_API_KEY.get_secret_value()
@@ -322,12 +361,6 @@ async def save_version_from_response(
     Returns the prompt_id to pass in subsequent chat requests so each new
     optimized result is appended as v3, v4, …
     """
-    import uuid as uuid_mod
-
-    from langchain_openai import ChatOpenAI
-
-    from app.config.llm import get_llm_settings
-    from app.repositories.prompt_version_repo import PromptVersionRepository
 
     llm_settings = get_llm_settings()
     api_key = llm_settings.OPENROUTER_API_KEY.get_secret_value()
@@ -360,7 +393,7 @@ async def save_version_from_response(
         raise LLMTimeoutException() from exc
     name = str(llm_response.content).strip().upper()[:80] or "MY PROMPT"
 
-    prompt_id = uuid_mod.uuid4()
+    prompt_id = uuid.uuid4()
     version_repo = PromptVersionRepository(db)
 
     await version_repo.create_version(
@@ -393,8 +426,8 @@ async def list_sessions(
 ) -> SuccessResponse[SessionsGroupedResponse]:
     """
     Return this user's chat sessions grouped by recency: today / last 7 days /
-    last 30 days / older.  Sessions without a title (never completed a run) are
-    excluded.
+    last 30 days / older.  Sessions without a title are included (they show as
+    "Untitled" in the sidebar while the run is still in progress).
     """
     session_repo = SessionRepository(db)
     sessions = await session_repo.get_by_user_id(current_user.id, limit=100)
@@ -423,8 +456,6 @@ async def list_sessions(
         "older": [],
     }
     for s in sessions:
-        if not s.title:  # skip sessions with no title (no run completed yet)
-            continue
         grouped[_bucket(s)].append(SessionSummary.model_validate(s))
 
     return SuccessResponse(data=SessionsGroupedResponse(**grouped))
@@ -528,3 +559,54 @@ async def get_session(
             created_at=session.created_at,
         )
     )
+
+
+@router.patch(
+    "/sessions/{session_id}",
+    response_model=SuccessResponse[SessionSummary],
+    dependencies=[Depends(_read_limiter)],
+)
+async def rename_session(
+    session_id: str,
+    request: RenameSessionRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> SuccessResponse[SessionSummary]:
+    """Rename a session's title."""
+    try:
+        sid = uuid.UUID(session_id)
+    except ValueError as exc:
+        raise InvalidSessionIDException() from exc
+
+    session_repo = SessionRepository(db)
+    session = await session_repo.get_by_id(sid)
+    if session is None or session.user_id != current_user.id:
+        raise SessionNotFoundException()
+
+    updated = await session_repo.update(session, title=request.title.strip())
+    return SuccessResponse(data=SessionSummary.model_validate(updated))
+
+
+@router.delete(
+    "/sessions/{session_id}",
+    response_model=SuccessResponse[DeleteSessionResponse],
+    dependencies=[Depends(_read_limiter)],
+)
+async def delete_session(
+    session_id: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> SuccessResponse[DeleteSessionResponse]:
+    """Delete a session and all its messages."""
+    try:
+        sid = uuid.UUID(session_id)
+    except ValueError as exc:
+        raise InvalidSessionIDException() from exc
+
+    session_repo = SessionRepository(db)
+    session = await session_repo.get_by_id(sid)
+    if session is None or session.user_id != current_user.id:
+        raise SessionNotFoundException()
+
+    await session_repo.delete(session)
+    return SuccessResponse(data=DeleteSessionResponse(deleted=session_id))

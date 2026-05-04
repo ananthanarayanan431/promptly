@@ -23,6 +23,14 @@ class LLMSettings(BaseSettings):
         "x-ai/grok-4.1-fast",
     ]
 
+    # Maximum refinement loop iterations (council → critic → synthesize → quality_gate).
+    # The loop exits early if quality_gate passes before hitting this ceiling.
+    MAX_REFINEMENT_ITERATIONS: int = 3
+
+    # When False, the quality_gate node is skipped entirely — synthesize goes straight to END.
+    # Saves one LLM call per request at the cost of no post-synthesis quality scoring/looping.
+    QUALITY_GATE_ENABLED: bool = True
+
 
 @lru_cache
 def get_llm_settings() -> LLMSettings:

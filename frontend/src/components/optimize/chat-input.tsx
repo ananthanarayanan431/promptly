@@ -2,13 +2,18 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { api } from '@/lib/api';
+import {
+  CategoryPicker,
+  loadStoredCategorySlug,
+} from './category-picker';
 
 interface ChatInputProps {
-  onSubmit: (text: string, name?: string) => void;
+  onSubmit: (text: string, name?: string, categorySlug?: string) => void;
   isLoading: boolean;
   hasPreviousTurns: boolean;
   defaultValue?: string;
   defaultName?: string;
+  onPresetPrompts?: () => void;
   autoFocus?: boolean;
 }
 
@@ -18,6 +23,7 @@ export function ChatInput({
   hasPreviousTurns,
   defaultValue = '',
   defaultName = '',
+  onPresetPrompts,
   autoFocus = false,
 }: ChatInputProps) {
   const [text, setText] = useState(defaultValue);
@@ -25,7 +31,13 @@ export function ChatInput({
   const [versioning, setVersioning] = useState(!!defaultName);
   const [nameLoading, setNameLoading] = useState(false);
   const [focused, setFocused] = useState(false);
+  const [categorySlug, setCategorySlug] = useState<string>('general');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Restore last-used category from localStorage on mount
+  useEffect(() => {
+    setCategorySlug(loadStoredCategorySlug());
+  }, []);
 
   useEffect(() => {
     if (defaultValue) setText(defaultValue);
@@ -45,7 +57,11 @@ export function ChatInput({
   const handleSubmit = () => {
     const trimmed = text.trim();
     if (!trimmed || isLoading) return;
-    onSubmit(trimmed, versioning ? (versionName.trim() || undefined) : undefined);
+    onSubmit(
+      trimmed,
+      versioning ? (versionName.trim() || undefined) : undefined,
+      categorySlug || 'general',
+    );
     if (hasPreviousTurns) setText('');
   };
 
@@ -135,20 +151,55 @@ export function ChatInput({
         <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0,
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           padding: '0 10px 10px' }}>
-          <button type="button" onClick={toggleVersioning}
-            title={versioning ? 'Stop versioning' : 'Save as version'}
-            style={{ display: 'flex', alignItems: 'center', gap: 5, height: 26, padding: '0 10px',
-              borderRadius: 999, fontSize: 11.5, fontWeight: 500, cursor: 'pointer',
-              border: versioning ? '1px solid rgba(124,92,255,0.3)' : '1px solid transparent',
-              background: versioning ? 'rgba(124,92,255,0.08)' : 'transparent',
-              color: versioning ? '#7c5cff' : '#5a5a60',
-              fontFamily: 'inherit', transition: 'all 120ms' }}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-              <path d="M6 3v12"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/>
-              <path d="M18 9a9 9 0 01-9 9"/>
-            </svg>
-            {versioning ? 'Versioning on' : 'Version'}
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <button type="button" onClick={toggleVersioning}
+              title={versioning ? 'Stop versioning' : 'Save as version'}
+              style={{ display: 'flex', alignItems: 'center', gap: 5, height: 26, padding: '0 10px',
+                borderRadius: 999, fontSize: 11.5, fontWeight: 500, cursor: 'pointer',
+                border: versioning ? '1px solid rgba(124,92,255,0.3)' : '1px solid transparent',
+                background: versioning ? 'rgba(124,92,255,0.08)' : 'transparent',
+                color: versioning ? '#7c5cff' : '#5a5a60',
+                fontFamily: 'inherit', transition: 'all 120ms' }}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M6 3v12"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/>
+                <path d="M18 9a9 9 0 01-9 9"/>
+              </svg>
+              {versioning ? 'Versioning on' : 'Version'}
+            </button>
+
+            <CategoryPicker
+              selectedSlug={categorySlug}
+              onChange={setCategorySlug}
+            />
+
+            {onPresetPrompts && (
+              <button type="button" onClick={onPresetPrompts}
+                style={{ display: 'flex', alignItems: 'center', gap: 5, height: 26, padding: '0 10px',
+                  borderRadius: 999, fontSize: 11.5, fontWeight: 500, cursor: 'pointer',
+                  border: '1px solid rgba(124,92,255,0.35)',
+                  background: 'rgba(124,92,255,0.12)',
+                  color: '#a78bfa',
+                  fontFamily: 'inherit', transition: 'all 120ms' }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.background = 'rgba(124,92,255,0.22)';
+                  e.currentTarget.style.borderColor = 'rgba(124,92,255,0.6)';
+                  e.currentTarget.style.color = '#c4b5fd';
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.background = 'rgba(124,92,255,0.12)';
+                  e.currentTarget.style.borderColor = 'rgba(124,92,255,0.35)';
+                  e.currentTarget.style.color = '#a78bfa';
+                }}>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <rect x="3" y="3" width="7" height="8" rx="1"/>
+                  <rect x="14" y="3" width="7" height="5" rx="1"/>
+                  <rect x="14" y="12" width="7" height="9" rx="1"/>
+                  <rect x="3" y="15" width="7" height="6" rx="1"/>
+                </svg>
+                Preset prompts
+              </button>
+            )}
+          </div>
 
           <button type="button" onClick={handleSubmit} disabled={!canSubmit}
             style={{ width: 32, height: 32, borderRadius: '50%', border: 'none', cursor: canSubmit ? 'pointer' : 'not-allowed',

@@ -1,7 +1,7 @@
 import uuid
 from uuid import UUID
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 
 from app.models.prompt_version import PromptVersion
 from app.repositories.base import BaseRepository
@@ -58,6 +58,37 @@ class PromptVersionRepository(BaseRepository[PromptVersion]):
             .limit(1)
         )
         return result.scalar_one_or_none()
+
+    async def count_families(self, user_id: UUID) -> int:
+        """Return the number of distinct prompt families for a user."""
+        result = await self.db.execute(
+            select(func.count(func.distinct(PromptVersion.prompt_id))).where(
+                PromptVersion.user_id == user_id
+            )
+        )
+        return int(result.scalar_one())
+
+    async def get_family_ids_page(self, user_id: UUID, *, limit: int, offset: int) -> list[UUID]:
+        """
+        Return a page of prompt_ids sorted by each family's latest version
+        created_at descending (most-recently updated families first).
+        """
+        latest_per_family = (
+            select(
+                PromptVersion.prompt_id,
+                func.max(PromptVersion.created_at).label("latest_at"),
+            )
+            .where(PromptVersion.user_id == user_id)
+            .group_by(PromptVersion.prompt_id)
+            .subquery()
+        )
+        result = await self.db.execute(
+            select(latest_per_family.c.prompt_id)
+            .order_by(latest_per_family.c.latest_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        return list(result.scalars().all())
 
     async def get_all_by_user_id(self, user_id: UUID) -> list[PromptVersion]:
         """Return all versions for a user, ordered by prompt_id then version ascending."""

@@ -18,6 +18,7 @@ class Message(Base, UUIDMixin, TimestampMixin):
     session_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("chat_sessions.id"), index=True)
     role: Mapped[str] = mapped_column(String(20))  # user | assistant
     raw_prompt: Mapped[str | None] = mapped_column(Text)  # original user input
+    feedback: Mapped[str | None] = mapped_column(Text, nullable=True)  # user feedback comment
     enhanced_prompt: Mapped[str | None] = mapped_column(Text)
     response: Mapped[str | None] = mapped_column(Text)
     council_votes: Mapped[dict[str, Any] | None] = mapped_column(JSON)
@@ -27,5 +28,6 @@ class Message(Base, UUIDMixin, TimestampMixin):
         ForeignKey("prompt_versions.id", ondelete="SET NULL"), nullable=True, index=True
     )
     prompt_family_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    category_slug: Mapped[str | None] = mapped_column(String(40), nullable=True)
 
     session: Mapped[ChatSession] = relationship(back_populates="messages")

@@ -14,7 +14,15 @@ from app.models.prompt_version import PromptVersion
 from app.models.session import ChatSession
 from app.models.user import User
 from app.repositories.health_score_repo import HealthScoreRepository
-from app.schemas.stats import DailyActivity, DashboardStats, ModelStats, QualityTrendPoint
+from app.repositories.usage_event_repo import UsageEventRepository, month_start_utc
+from app.schemas.stats import (
+    DailyActivity,
+    DashboardStats,
+    ModelStats,
+    QualityTrendPoint,
+    UsageBucket,
+    UsageStats,
+)
 
 router = APIRouter(prefix="/stats", tags=["stats"])
 _default_limiter = RateLimiter(requests=60, window_seconds=60)
@@ -176,7 +184,30 @@ async def get_dashboard_stats(
         raw = max(model_tokens, key=lambda k: model_tokens[k])
         top_model = _MODEL_DISPLAY.get(raw, raw)
 
-    # ── 9. Quality trend — 30-day average health scores ─────────────────────
+    # ── 9. Per-action usage (all-time + current month) ────────────────────────
+    usage_repo = UsageEventRepository(db)
+    all_time_agg = await usage_repo.aggregate_for_user(user_id=user_id)
+    month_agg = await usage_repo.aggregate_for_user(user_id=user_id, since=month_start_utc())
+
+    def _to_bucket(agg: dict[str, dict[str, int]]) -> UsageBucket:
+        opt = agg.get("optimize", {})
+        hs = agg.get("health_score", {})
+        adv = agg.get("advisory", {})
+        return UsageBucket(
+            optimize_calls=opt.get("calls", 0),
+            optimize_credits=opt.get("credits", 0),
+            health_score_calls=hs.get("calls", 0),
+            health_score_credits=hs.get("credits", 0),
+            advisory_calls=adv.get("calls", 0),
+            advisory_credits=adv.get("credits", 0),
+        )
+
+    usage = UsageStats(
+        all_time=_to_bucket(all_time_agg),
+        this_month=_to_bucket(month_agg),
+    )
+
+    # ── 10. Quality trend — 30-day average health scores ────────────────────
     score_repo = HealthScoreRepository(db)
     raw_trend = await score_repo.get_daily_averages(user_id, days=30)
     trend_map: dict[str, float] = {str(d): s for d, s in raw_trend}
@@ -196,6 +227,7 @@ async def get_dashboard_stats(
             versions_saved=versions_saved,
             total_versions=total_versions,
             credits_remaining=current_user.credits,
+            usage=usage,
             streak_days=streak_days,
             last_optimized_at=last_optimized_at,
             top_model=top_model,

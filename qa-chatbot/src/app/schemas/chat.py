@@ -39,6 +39,14 @@ class ChatRequest(BaseModel):
             "(e.g. 'keep it under 50 words', 'add a JSON output format')."
         ),
     )
+    category_slug: str | None = Field(
+        default=None,
+        max_length=40,
+        description=(
+            "Slug of the prompt category to apply. The category steers how the council "
+            "weights the optimization dimensions. Defaults to 'general' when omitted."
+        ),
+    )
 
     @model_validator(mode="after")
     def require_prompt_or_prompt_id(self) -> "ChatRequest":
@@ -71,6 +79,7 @@ class MessageOut(BaseModel):
     id: uuid.UUID
     role: str
     raw_prompt: str | None
+    feedback: str | None = None
     response: str | None
     council_votes: list[Any] | None = None
     token_usage: dict[str, Any] | None = None
@@ -165,3 +174,11 @@ class JobPollResponse(BaseModel):
     status: str  # queued | started | completed | failed
     result: ChatResponse | None = None  # populated when status == "completed"
     error: str | None = None  # populated when status == "failed"
+
+
+class RenameSessionRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+
+
+class DeleteSessionResponse(BaseModel):
+    deleted: str

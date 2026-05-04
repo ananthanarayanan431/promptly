@@ -11,6 +11,7 @@ import { api } from '@/lib/api';
 import { formatApiErrorDetail } from '@/lib/api-errors';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth-store';
+import { useJobStore } from '@/stores/job-store';
 import { ChatMessage } from './chat-message';
 import { ChatInput } from './chat-input';
 import { ResultPanel } from './result-panel';
@@ -133,6 +134,7 @@ export function OptimizeChat() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
+  const setGeneratingSession = useJobStore((s) => s.setGeneratingSession);
   const firstName = user?.email.split('@')[0] ?? 'there';
 
   const urlSession = searchParams.get('session');
@@ -177,14 +179,15 @@ export function OptimizeChat() {
   turnsRef.current = turns;
   // Sessions created in this tab — never fetch these from the API
   // (the session doesn't exist in the DB yet when the URL is first updated)
-  const localSessions = useRef(new Set<string>());
+  const localSessions = useRef(new Map<string, number>()); // sessionId → created timestamp
 
-  // Reset to empty state when navigating to /optimize with no session (New Chat)
+  // Reset to empty state when navigating to /optimize with no session (New Chat).
+  // Do NOT clear activeJobId here — an in-flight job must be allowed to finish
+  // so its completion/failure handlers can run and clean up correctly.
   useEffect(() => {
     if (urlSession) return;
     setTurns([]);
     setSessionId(null);
-    setActiveJobId(null);
     setSelectedTurnId(null);
     setDesktopPanelDismissed(false);
     setMobilePanelOpen(false);
@@ -194,7 +197,10 @@ export function OptimizeChat() {
   // Load session history when URL has ?session= (sidebar navigation only)
   useEffect(() => {
     if (!urlSession) return;
-    if (localSessions.current.has(urlSession)) return; // just created — skip fetch
+    // Only skip fetch if the session was *just* created in this navigation (within last 5s).
+    // If the user navigated away and came back, we must re-fetch to show conversation history.
+    const createdAt = localSessions.current.get(urlSession);
+    if (createdAt && Date.now() - createdAt < 5000) return;
 
     setSessionId(urlSession);
     setTurns([]);
@@ -208,10 +214,12 @@ export function OptimizeChat() {
 
         const loaded: ChatTurn[] = messages.map((msg) => {
           const hasResult = !!msg.response;
+          const isFeedback = !!msg.feedback;
           return {
             tempId: msg.id,
-            userText: msg.raw_prompt ?? '',
-            isFeedback: false,
+            // For feedback turns show the feedback comment, not the prompt that was re-optimized
+            userText: isFeedback ? msg.feedback! : (msg.raw_prompt ?? ''),
+            isFeedback,
             // If the message has no response and we have a pending job, mark as loading
             status: !hasResult && pendingJobId ? ('loading' as const) : ('completed' as const),
             jobId: !hasResult && pendingJobId ? pendingJobId : undefined,
@@ -235,6 +243,7 @@ export function OptimizeChat() {
         const hasPendingTurn = loaded.some((t) => t.status === 'loading');
         if (pendingJobId && hasPendingTurn) {
           setActiveJobId(pendingJobId);
+          setGeneratingSession(urlSession);
         } else if (pendingJobId) {
           // Job completed while away — clean up
           sessionStorage.removeItem(`pending_job_${urlSession}`);
@@ -280,6 +289,7 @@ export function OptimizeChat() {
         setMobilePanelOpen(true);
       }
       setActiveJobId(null);
+      setGeneratingSession(null);
       if (sessionId) sessionStorage.removeItem(`pending_job_${sessionId}`);
       queryClient.invalidateQueries({ queryKey: ['user', 'me'] });
       queryClient.invalidateQueries({ queryKey: ['sessions'] });
@@ -321,6 +331,7 @@ export function OptimizeChat() {
         )
       );
       setActiveJobId(null);
+      setGeneratingSession(null);
       if (sessionId) sessionStorage.removeItem(`pending_job_${sessionId}`);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -331,7 +342,7 @@ export function OptimizeChat() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [turns]);
 
-  const handleSubmit = async (text: string, name?: string) => {
+  const handleSubmit = async (text: string, name?: string, categorySlug?: string) => {
     // Clear sessionStorage prefill on first submit
     sessionStorage.removeItem('prefill_prompt');
     sessionStorage.removeItem('prefill_name');
@@ -342,7 +353,7 @@ export function OptimizeChat() {
 
     if (!sessionId) {
       setSessionId(sid);
-      localSessions.current.add(sid); // mark as locally created — don't re-fetch from API
+      localSessions.current.set(sid, Date.now()); // mark as locally created — skip immediate re-fetch
       router.replace(`/optimize?session=${sid}`, { scroll: false });
     }
 
@@ -367,12 +378,14 @@ export function OptimizeChat() {
         // If versioning is active, append the result to the existing family (v3, v4, …)
         ...(versionPromptId && !name ? { prompt_id: versionPromptId } : {}),
         ...(name && { name }),
+        ...(categorySlug && { category_slug: categorySlug }),
       });
 
       const jobId = res.data.data.job_id;
       sessionStorage.setItem(`pending_job_${sid}`, jobId);
       setTurns((prev) => prev.map((t) => (t.tempId === tempId ? { ...t, jobId } : t)));
       setActiveJobId(jobId);
+      setGeneratingSession(sid);
       // Show session in sidebar immediately (before job completes)
       queryClient.invalidateQueries({ queryKey: ['sessions'] });
     } catch (err: unknown) {
@@ -429,36 +442,18 @@ export function OptimizeChat() {
           panelVisible && isDesktop ? 'lg:w-1/2 lg:shrink-0' : 'flex-1'
         )}
       >
-        {hasMessages && (
-          <div className="shrink-0 flex justify-between items-center px-4 pt-3 pb-2 border-b border-border/50 bg-background/95 backdrop-blur-sm">
-            <button
+        {hasMessages && canShowPanel && isDesktop && desktopPanelDismissed && (
+          <div className="shrink-0 flex justify-end items-center px-4 pt-3 pb-2 border-b border-border/50 bg-background/95 backdrop-blur-sm">
+            <Button
               type="button"
-              onClick={() => router.push('/optimize')}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px',
-                borderRadius: 7, fontSize: 12, fontWeight: 500, cursor: 'pointer',
-                border: '1px solid rgba(124,92,255,0.4)', background: 'rgba(124,92,255,0.1)',
-                color: '#7c5cff', fontFamily: 'inherit',
-                transition: 'background 150ms, border-color 150ms' }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(124,92,255,0.18)'; e.currentTarget.style.borderColor = 'rgba(124,92,255,0.6)'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(124,92,255,0.1)'; e.currentTarget.style.borderColor = 'rgba(124,92,255,0.4)'; }}
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={() => setDesktopPanelDismissed(false)}
             >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M12 5v14M5 12h14"/>
-              </svg>
-              New Chat
-            </button>
-            {canShowPanel && isDesktop && desktopPanelDismissed && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="gap-2"
-                onClick={() => setDesktopPanelDismissed(false)}
-              >
-                <PanelRight className="h-4 w-4" />
-                View result
-              </Button>
-            )}
+              <PanelRight className="h-4 w-4" />
+              View result
+            </Button>
           </div>
         )}
       <div className="flex-1 overflow-y-auto min-h-0">
@@ -491,57 +486,16 @@ export function OptimizeChat() {
               </div>
             </div>
 
-            {/* Chips + input */}
+            {/* Input */}
             <div style={{ width: '100%', maxWidth: 680, margin: '0 auto',
               paddingBottom: 32, paddingLeft: 16, paddingRight: 16 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr',
-                gap: 8, marginBottom: 16 }}>
-                {[
-                  { label: '4 AI models', desc: 'Optimize in parallel' },
-                  { label: 'Peer critique', desc: 'Models review each other' },
-                  { label: 'Best result', desc: 'Synthesized by a chairman' },
-                ].map((item) => (
-                  <div key={item.label} style={{ borderRadius: 8,
-                    border: '1px solid #1f1f23', background: '#1a1a1a',
-                    padding: '10px 12px', textAlign: 'center' }}>
-                    <div style={{ fontSize: 12, fontWeight: 500, color: '#ededed',
-                      marginBottom: 2 }}>{item.label}</div>
-                    <div style={{ fontFamily: 'var(--font-geist-mono, monospace)',
-                      fontSize: 10.5, color: '#5a5a60' }}>{item.desc}</div>
-                  </div>
-                ))}
-              </div>
-
-              {templatesData && (
-                <button type="button" onClick={() => setShowTemplates(true)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 6,
-                    marginBottom: 10, padding: '5px 12px', borderRadius: 6, fontSize: 12,
-                    border: '1px solid #2a2a2e', background: 'transparent',
-                    color: '#8a8a90', cursor: 'pointer', fontFamily: 'inherit',
-                    transition: 'color 120ms, border-color 120ms' }}
-                  onMouseEnter={e => {
-                    e.currentTarget.style.color = '#7c5cff';
-                    e.currentTarget.style.borderColor = 'rgba(124,92,255,0.4)';
-                  }}
-                  onMouseLeave={e => {
-                    e.currentTarget.style.color = '#8a8a90';
-                    e.currentTarget.style.borderColor = '#2a2a2e';
-                  }}>
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
-                    <rect x="3" y="3" width="7" height="8" rx="1"/>
-                    <rect x="14" y="3" width="7" height="5" rx="1"/>
-                    <rect x="14" y="12" width="7" height="9" rx="1"/>
-                    <rect x="3" y="15" width="7" height="6" rx="1"/>
-                  </svg>
-                  Browse templates
-                </button>
-              )}
               <ChatInput
                 onSubmit={handleSubmit}
                 isLoading={isAnyLoading}
                 hasPreviousTurns={false}
                 defaultValue={templateDefault || prefillText}
                 defaultName={prefillName}
+                onPresetPrompts={templatesData ? () => setShowTemplates(true) : undefined}
                 autoFocus
               />
             </div>
