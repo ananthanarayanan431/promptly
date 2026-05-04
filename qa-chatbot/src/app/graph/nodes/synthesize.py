@@ -41,17 +41,18 @@ _LABELS = ["A", "B", "C", "D"]
 
 
 def _build_proposals_block(council_responses: list[dict[str, Any]]) -> str:
+    capped = council_responses[: len(_LABELS)]
     return "\n\n".join(
-        f"[Proposal {_LABELS[i]}]:\n{r['optimized_prompt']}"
-        for i, r in enumerate(council_responses)
+        f"[Proposal {_LABELS[i]}]:\n{r['optimized_prompt']}" for i, r in enumerate(capped)
     )
 
 
 def _build_critiques_block(critic_responses: list[dict[str, Any]]) -> str:
     if not critic_responses:
         return "(No critic reviews available — synthesize from proposals only.)"
+    capped = critic_responses[: len(_LABELS)]
     reviews = []
-    for i, cr in enumerate(critic_responses):
+    for i, cr in enumerate(capped):
         ranking = ", ".join(cr.get("ranking", []))
         critiques = cr.get("critiques", {})
         critique_lines = "\n".join(f"  {label}: {text}" for label, text in critiques.items())
@@ -76,8 +77,11 @@ async def synthesize_node(state: GraphState) -> dict[str, Any]:
         {"final_response": <best_optimized_prompt>, "token_usage": {"total_tokens": N}}
     """
     critic_responses = state.get("critic_responses") or []
+    # Drop sentinel rows (e.g. quality_gate loop markers) and cap at len(_LABELS)
+    # so _build_critiques_block's _LABELS[i] indexing is always in range.
+    real_critics = [c for c in critic_responses if not c.get("_quality_gate")][: len(_LABELS)]
     proposals_block = _build_proposals_block(state["council_responses"])
-    critiques_block = _build_critiques_block(critic_responses)
+    critiques_block = _build_critiques_block(real_critics)
 
     # Collect quality gaps from critic consensus (skip quality_gate sentinel entries)
     quality_gaps: list[str] = []

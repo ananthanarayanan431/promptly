@@ -174,6 +174,20 @@ export interface QualityTrendPoint {
   avg_score: number; // 1–10
 }
 
+export interface UsageBucket {
+  optimize_calls: number;
+  optimize_credits: number;
+  health_score_calls: number;
+  health_score_credits: number;
+  advisory_calls: number;
+  advisory_credits: number;
+}
+
+export interface UsageStats {
+  all_time: UsageBucket;
+  this_month: UsageBucket;
+}
+
 export interface DashboardStats {
   // Core counters
   prompts_optimized: number;
@@ -184,6 +198,8 @@ export interface DashboardStats {
   versions_saved: number;
   total_versions: number;
   credits_remaining: number;
+  // Per-action usage (all-time + current month)
+  usage: UsageStats;
   // Engagement signals
   streak_days: number;
   last_optimized_at: string | null; // ISO datetime

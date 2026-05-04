@@ -53,7 +53,9 @@ class SessionRepository(BaseRepository[ChatSession]):
         if existing:
             if existing.user_id == user_uuid:
                 return existing, False
-            # thread_id belongs to a different user — fall through and create a new session
+            # thread_id belongs to a different user — refuse rather than silently
+            # creating a duplicate that would conflict on the unique graph_thread_id key.
+            raise ValueError(f"graph_thread_id {graph_thread_id} is already owned by another user")
         session = await self.create(
             id=UUID(session_id),
             user_id=user_uuid,

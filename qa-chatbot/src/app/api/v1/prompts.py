@@ -13,6 +13,7 @@ from app.core.rate_limit import RateLimiter
 from app.dependencies import get_current_user, get_db
 from app.models.user import User
 from app.repositories.prompt_version_repo import PromptVersionRepository
+from app.repositories.usage_event_repo import UsageEventRepository
 from app.schemas.prompt import (
     PaginatedPromptFamilyListResponse,
     PromptAdvisoryRequest,
@@ -63,6 +64,11 @@ async def prompt_health_score(
         prompt=request.prompt,
         user_id=str(current_user.id),
     )
+
+    usage_repo = UsageEventRepository(db)
+    await usage_repo.log(user_id=current_user.id, action="health_score", credits_spent=5)
+    await db.commit()
+
     return SuccessResponse(data=PromptHealthScoreResponse(**result))
 
 
@@ -91,6 +97,11 @@ async def prompt_advisory(
         prompt=request.prompt,
         user_id=str(current_user.id),
     )
+
+    usage_repo = UsageEventRepository(db)
+    await usage_repo.log(user_id=current_user.id, action="advisory", credits_spent=5)
+    await db.commit()
+
     return SuccessResponse(data=PromptAdvisoryResponse(**result))
 
 

@@ -165,19 +165,14 @@ export function CategoryPicker({ selectedSlug, onChange }: CategoryPickerProps) 
           </div>
 
           {/* List */}
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <div style={{ display: 'flex', flexDirection: 'column' }} role="listbox">
             {categories.map(cat => {
               const isSelected = cat.slug === selectedSlug;
               return (
                 <div
                   key={cat.slug}
-                  onClick={() => handleSelect(cat.slug)}
                   style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 2,
-                    padding: '8px 14px',
-                    cursor: 'pointer',
+                    position: 'relative',
                     background: isSelected ? 'rgba(124,92,255,0.10)' : 'transparent',
                     borderLeft: isSelected
                       ? '2px solid #7c5cff'
@@ -195,12 +190,31 @@ export function CategoryPicker({ selectedSlug, onChange }: CategoryPickerProps) 
                     }
                   }}
                 >
-                  <div
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={isSelected}
+                    onClick={() => handleSelect(cat.slug)}
+                    onKeyDown={e => {
+                      if (e.key === 'Escape') {
+                        setOpen(false);
+                        setAdding(false);
+                      }
+                    }}
                     style={{
                       display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: 8,
+                      flexDirection: 'column',
+                      alignItems: 'stretch',
+                      textAlign: 'left',
+                      gap: 2,
+                      padding: '8px 14px',
+                      paddingRight: !cat.is_predefined ? 36 : 14,
+                      cursor: 'pointer',
+                      background: 'transparent',
+                      border: 'none',
+                      fontFamily: 'inherit',
+                      color: 'inherit',
+                      width: '100%',
                     }}
                   >
                     <span
@@ -212,49 +226,48 @@ export function CategoryPicker({ selectedSlug, onChange }: CategoryPickerProps) 
                     >
                       {cat.name}
                     </span>
-                    {!cat.is_predefined && (
-                      <button
-                        type="button"
-                        onClick={e => handleDelete(cat, e)}
-                        title="Delete custom category"
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          cursor: 'pointer',
-                          color: '#5a5a60',
-                          padding: 2,
-                          display: 'flex',
-                          alignItems: 'center',
-                        }}
-                        onMouseEnter={e =>
-                          (e.currentTarget.style.color = '#f43f5e')
-                        }
-                        onMouseLeave={e =>
-                          (e.currentTarget.style.color = '#5a5a60')
-                        }
+                    <span
+                      style={{
+                        fontSize: 11,
+                        color: '#7a7a82',
+                        lineHeight: 1.45,
+                      }}
+                    >
+                      {cat.description}
+                    </span>
+                  </button>
+                  {!cat.is_predefined && (
+                    <button
+                      type="button"
+                      onClick={e => handleDelete(cat, e)}
+                      title="Delete custom category"
+                      style={{
+                        position: 'absolute',
+                        top: 8,
+                        right: 10,
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        color: '#5a5a60',
+                        padding: 2,
+                        display: 'flex',
+                        alignItems: 'center',
+                      }}
+                      onMouseEnter={e => (e.currentTarget.style.color = '#f43f5e')}
+                      onMouseLeave={e => (e.currentTarget.style.color = '#5a5a60')}
+                    >
+                      <svg
+                        width="12"
+                        height="12"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
                       >
-                        <svg
-                          width="12"
-                          height="12"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.8"
-                        >
-                          <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" />
-                        </svg>
-                      </button>
-                    )}
-                  </div>
-                  <span
-                    style={{
-                      fontSize: 11,
-                      color: '#7a7a82',
-                      lineHeight: 1.45,
-                    }}
-                  >
-                    {cat.description}
-                  </span>
+                        <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" />
+                      </svg>
+                    </button>
+                  )}
                 </div>
               );
             })}

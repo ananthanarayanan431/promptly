@@ -98,6 +98,7 @@ def process_chat_async(
         from app.graph.checkpointer import get_checkpointer
         from app.repositories.prompt_version_repo import PromptVersionRepository
         from app.repositories.session_repo import SessionRepository
+        from app.repositories.usage_event_repo import UsageEventRepository
         from app.services.category_service import CategoryService
         from app.services.chat_service import ChatService
 
@@ -153,8 +154,15 @@ def process_chat_async(
                                     latest.prompt_id, _UUID2(user_id)
                                 )
                         if len(versions) >= 2:
+                            # Cap at the most recent 5 versions to keep the council prompt
+                            # within reasonable token bounds for long-lived families.
+                            recent = versions[-5:]
                             lines = []
-                            for v in versions:
+                            if len(versions) > len(recent):
+                                lines.append(
+                                    f"(showing last {len(recent)} of " f"{len(versions)} versions)"
+                                )
+                            for v in recent:
                                 lines.append(
                                     f"v{v.version}: {v.content[:300]}"
                                     + ("..." if len(v.content) > 300 else "")
@@ -295,6 +303,12 @@ def process_chat_async(
                 result["prompt_id"] = saved_prompt_id
                 result["version"] = saved_version
                 result["prompt_version_id"] = saved_prompt_version_id
+
+                # Log a usage event for this completed optimization (10 credits).
+                # Same DB session — committed below alongside the version save.
+                usage_repo = UsageEventRepository(db)
+                await usage_repo.log(user_id=UUID(user_id), action="optimize", credits_spent=10)
+                await db.commit()
 
             await set_job_result(job_id, result)
             await set_job_status(job_id, "completed")

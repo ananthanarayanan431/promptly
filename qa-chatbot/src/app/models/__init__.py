@@ -11,6 +11,7 @@ from app.models.prompt_category import PromptCategory
 from app.models.prompt_version import PromptVersion
 from app.models.session import ChatSession
 from app.models.template import Template
+from app.models.usage_event import UsageEvent
 from app.models.user import User
 
 __all__ = [
@@ -23,4 +24,5 @@ __all__ = [
     "HealthScore",
     "FavoritePrompt",
     "PromptCategory",
+    "UsageEvent",
 ]

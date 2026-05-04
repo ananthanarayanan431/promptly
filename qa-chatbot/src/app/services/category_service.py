@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from uuid import UUID
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.prompt_category import PromptCategory
@@ -39,13 +40,18 @@ class CategoryService:
         existing = await self.repo.get_by_slug_for_user(slug=slug, user_id=user_id)
         if existing is not None:
             raise SlugConflictError(slug)
-        cat = await self.repo.create(
-            user_id=user_id,
-            slug=slug,
-            name=name.strip(),
-            description=description.strip(),
-            is_predefined=False,
-        )
+        try:
+            cat = await self.repo.create(
+                user_id=user_id,
+                slug=slug,
+                name=name.strip(),
+                description=description.strip(),
+                is_predefined=False,
+            )
+        except IntegrityError as exc:
+            # Concurrent insert won the race after our pre-check; surface as conflict.
+            await self.db.rollback()
+            raise SlugConflictError(slug) from exc
         return cat
 
     async def delete_custom(self, *, user_id: UUID, slug: str) -> bool:
