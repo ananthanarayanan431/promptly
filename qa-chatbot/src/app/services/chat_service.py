@@ -30,6 +30,7 @@ class ChatService:
         category_name: str | None = None,
         category_description: str | None = None,
         category_is_predefined: bool = False,
+        force_optimize: bool = False,
     ) -> dict[str, Any]:
         await self.session_repo.get_or_create(
             session_id=session_id,
@@ -50,6 +51,10 @@ class ChatService:
             "category_is_predefined": category_is_predefined,
             "job_id": job_id,
             "intent": None,
+            "force_optimize": force_optimize,
+            "already_optimized": False,
+            "gate_dimension_scores": None,
+            "gate_rationale": None,
             "council_responses": [],
             "critic_responses": [],
             "final_response": "",
@@ -64,6 +69,16 @@ class ChatService:
 
         result = await self.graph.ainvoke(initial_state, config=config)
 
+        # Build token_usage dict — piggyback gate fields so they survive session reload
+        # without a schema migration. On reload: read _already_optimized, _gate_* keys back.
+        token_usage: dict[str, Any] = dict(result.get("token_usage") or {})
+        if result.get("already_optimized"):
+            token_usage["_already_optimized"] = True
+            if result.get("gate_dimension_scores"):
+                token_usage["_gate_dimension_scores"] = result["gate_dimension_scores"]
+            if result.get("gate_rationale"):
+                token_usage["_gate_rationale"] = result["gate_rationale"]
+
         # Persist the exchange (response = final optimized prompt)
         await self.msg_repo.create(
             session_id=uuid.UUID(session_id),
@@ -73,7 +88,7 @@ class ChatService:
             enhanced_prompt=None,
             response=result["final_response"],
             council_votes=result["council_responses"],
-            token_usage=result.get("token_usage", {}),
+            token_usage=token_usage,
             category_slug=category_slug,
         )
 
@@ -83,6 +98,9 @@ class ChatService:
             "optimized_prompt": result["final_response"],
             "council_proposals": result["council_responses"],
             "token_usage": result.get("token_usage", {}),
+            "already_optimized": result.get("already_optimized", False),
+            "gate_dimension_scores": result.get("gate_dimension_scores"),
+            "gate_rationale": result.get("gate_rationale"),
         }
 
     async def stream(
@@ -100,6 +118,10 @@ class ChatService:
             "category_is_predefined": False,
             "job_id": None,
             "intent": None,
+            "force_optimize": False,
+            "already_optimized": False,
+            "gate_dimension_scores": None,
+            "gate_rationale": None,
             "council_responses": [],
             "critic_responses": [],
             "final_response": "",

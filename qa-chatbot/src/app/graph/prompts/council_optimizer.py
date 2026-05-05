@@ -81,6 +81,29 @@ Return ONLY the optimized prompt — no preamble, no labels, no explanation.
 The first word of your output must be the first word of the optimized prompt.
 Violation test: if a reader can delete your first or last sentence and lose nothing of substance,
 those sentences must not exist.
+
+STRUCTURE FORMAT — XML TAGS, NEVER MARKDOWN HEADERS
+ABSOLUTE RULE: Never use ## Markdown headers in the optimized prompt. Not ever. No exceptions.
+
+When the optimized prompt has two or more distinct sections (persona, task, context, constraints,
+output format, examples), use XML-style tags to delimit them.
+
+Use tags that describe the section's function, for example:
+  <role>You are a senior Python engineer…</role>
+  <task>Rewrite the function below…</task>
+  <context>The codebase uses Python 3.12 and async SQLAlchemy…</context>
+  <output_format>Return only the rewritten function, no explanation.</output_format>
+  <constraints>Do not change the function signature. Do not add logging.</constraints>
+  <example>Example of desired output: "…"</example>
+
+Rules:
+- Single-sentence prompts with no sections needed → plain prose only, no tags.
+- All other prompts → use XML tags whenever you would otherwise reach for ## headers.
+- Tag names must describe function, not content: <task> not <python_refactor>.
+- Preserve any XML/angle-bracket tags that already exist in the original prompt — never strip them.
+- If the original prompt uses Markdown headers (##), convert each one to an equivalent XML tag.
+- PRE-RETURN SCAN: Before outputting, scan for any "##" in your response. If found, convert to
+  the appropriate XML tag or remove. Output containing "##" will be rejected.
 </output_rules>"""
 
 _USER = "{{raw_prompt}}"

@@ -47,6 +47,13 @@ class ChatRequest(BaseModel):
             "weights the optimization dimensions. Defaults to 'general' when omitted."
         ),
     )
+    force_optimize: bool = Field(
+        default=False,
+        description=(
+            "When True, bypass the performance_gate and run the full council even if the "
+            "prompt might already be production-grade. Costs the full 10 credits."
+        ),
+    )
 
     @model_validator(mode="after")
     def require_prompt_or_prompt_id(self) -> "ChatRequest":
@@ -73,6 +80,10 @@ class ChatResponse(BaseModel):
     prompt_id: str | None = None
     version: int | None = None
     prompt_version_id: str | None = None
+    # Performance gate fields — populated when already_optimized=True
+    already_optimized: bool = False
+    gate_dimension_scores: dict[str, str] | None = None
+    gate_rationale: str | None = None
 
 
 class MessageOut(BaseModel):
@@ -86,8 +97,23 @@ class MessageOut(BaseModel):
     prompt_version_id: uuid.UUID | None = None
     prompt_family_id: uuid.UUID | None = None
     created_at: datetime
+    # Gate fields — unpacked from token_usage at serialisation time (no migration needed)
+    already_optimized: bool = False
+    gate_dimension_scores: dict[str, str] | None = None
+    gate_rationale: str | None = None
 
     model_config = {"from_attributes": True}
+
+    @model_validator(mode="after")
+    def _unpack_gate_fields(self) -> "MessageOut":
+        tu = self.token_usage or {}
+        if tu.get("_already_optimized"):
+            self.already_optimized = True
+            raw_scores = tu.get("_gate_dimension_scores")
+            if isinstance(raw_scores, dict):
+                self.gate_dimension_scores = {str(k): str(v) for k, v in raw_scores.items()}
+            self.gate_rationale = tu.get("_gate_rationale")
+        return self
 
 
 # --- Session history schemas ---

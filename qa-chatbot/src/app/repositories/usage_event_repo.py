@@ -8,16 +8,49 @@ from sqlalchemy import func, select
 from app.models.usage_event import UsageEvent
 from app.repositories.base import BaseRepository
 
+# Known actions — guards against typos/garbage being logged.
+# Credit costs are NOT enforced here: balance checks live at the API boundary.
+_VALID_ACTIONS: frozenset[str] = frozenset({"optimize", "health_score", "advisory"})
+
 
 class UsageEventRepository(BaseRepository[UsageEvent]):
     model = UsageEvent
 
-    async def log(self, *, user_id: UUID, action: str, credits_spent: int) -> UsageEvent:
-        """Append a usage event row. Caller controls the transaction."""
+    async def log(
+        self,
+        *,
+        user_id: UUID,
+        action: str,
+        credits_spent: int,
+        job_id: str | None = None,
+    ) -> UsageEvent | None:
+        """
+        Append a usage event row. Caller controls the transaction.
+
+        When ``job_id`` is supplied, the write is idempotent — if an event already
+        exists for the same ``(action, job_id)`` pair, returns ``None`` instead of
+        inserting a duplicate. This protects against Celery retries double-counting.
+        """
+        if action not in _VALID_ACTIONS:
+            raise ValueError(
+                f"Unknown usage action {action!r}; expected one of {sorted(_VALID_ACTIONS)}"
+            )
+
+        if job_id is not None:
+            existing = await self.db.execute(
+                select(UsageEvent.id).where(
+                    UsageEvent.action == action,
+                    UsageEvent.job_id == job_id,
+                )
+            )
+            if existing.scalar_one_or_none() is not None:
+                return None
+
         return await self.create(
             user_id=user_id,
             action=action,
             credits_spent=credits_spent,
+            job_id=job_id,
         )
 
     async def aggregate_for_user(

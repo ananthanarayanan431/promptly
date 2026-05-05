@@ -28,6 +28,7 @@ def process_chat_async(
     prompt_id: str | None = None,
     name: str | None = None,
     category_slug: str | None = None,
+    force_optimize: bool = False,
 ) -> dict[str, Any]:
     """
     Run the full LangGraph council pipeline as a background job.
@@ -188,7 +189,16 @@ def process_chat_async(
                         category_name=cat_name,
                         category_description=cat_description,
                         category_is_predefined=cat_is_predefined,
+                        force_optimize=force_optimize,
                     )
+
+                # Performance gate short-circuited — refund 5 of the 10 credits.
+                # Net cost = 5 credits (matches health-score price).
+                if result.get("already_optimized"):
+                    from app.repositories.user_repo import UserRepository as _UserRepo
+
+                    _user_repo = _UserRepo(db)
+                    await _user_repo.refund_credits(UUID(user_id), 5)
 
                 # Always commit session + message immediately so they're visible
                 # to the frontend (sidebar history, refresh) before the title
@@ -304,10 +314,17 @@ def process_chat_async(
                 result["version"] = saved_version
                 result["prompt_version_id"] = saved_prompt_version_id
 
-                # Log a usage event for this completed optimization (10 credits).
-                # Same DB session — committed below alongside the version save.
+                # Log a usage event for this completed optimization.
+                # Credits reflect the actual net charge: 5 for gate short-circuit, 10 otherwise.
+                # Keyed to job_id so a Celery retry cannot double-count.
+                credits_charged = 5 if result.get("already_optimized") else 10
                 usage_repo = UsageEventRepository(db)
-                await usage_repo.log(user_id=UUID(user_id), action="optimize", credits_spent=10)
+                await usage_repo.log(
+                    user_id=UUID(user_id),
+                    action="optimize",
+                    credits_spent=credits_charged,
+                    job_id=job_id,
+                )
                 await db.commit()
 
             await set_job_result(job_id, result)

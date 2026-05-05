@@ -54,14 +54,31 @@ def _build_critiques_block(critic_responses: list[dict[str, Any]]) -> str:
     reviews = []
     for i, cr in enumerate(capped):
         ranking = ", ".join(cr.get("ranking", []))
-        critiques = cr.get("critiques", {})
-        critique_lines = "\n".join(f"  {label}: {text}" for label, text in critiques.items())
         rationale = cr.get("ranking_rationale", "")
+        critiques: dict[str, Any] = cr.get("critiques", {})
+
+        proposal_lines = []
+        for label, detail in critiques.items():
+            if not isinstance(detail, dict):
+                proposal_lines.append(f"  {label}: {detail}")
+                continue
+            dims = detail.get("dimension_scores", {})
+            weak_dims = [d for d, s in dims.items() if s in ("weak", "missing")]
+            dim_summary = (
+                f"weak/missing: {', '.join(weak_dims)}" if weak_dims else "all dimensions strong"
+            )
+            primary = detail.get("primary_weakness", "")
+            failure = detail.get("failure_mode", "")
+            proposal_lines.append(
+                f"  {label}: [{dim_summary}]\n"
+                f"    Primary weakness: {primary}\n"
+                f"    Failure mode: {failure}"
+            )
+
         reviews.append(
             f"[Critic {_LABELS[i]}]\n"
             f"Ranking: {ranking}\n"
-            f"Critiques:\n{critique_lines}\n"
-            f"Rationale: {rationale}"
+            f"Rationale: {rationale}\n" + "\n".join(proposal_lines)
         )
     return "\n\n".join(reviews)
 
@@ -83,11 +100,19 @@ async def synthesize_node(state: GraphState) -> dict[str, Any]:
     proposals_block = _build_proposals_block(state["council_responses"])
     critiques_block = _build_critiques_block(real_critics)
 
-    # Collect quality gaps from critic consensus (skip quality_gate sentinel entries)
+    # Collect quality gaps. The quality_gate node attaches refinement gaps under
+    # "weak_dimensions" on a sentinel entry; the critic node attaches them under
+    # "quality_gaps" on regular entries. Prefer whichever is most recent.
     quality_gaps: list[str] = []
     for cr in reversed(critic_responses):
+        if cr.get("_quality_gate"):
+            weak = cr.get("weak_dimensions")
+            if isinstance(weak, list) and weak:
+                quality_gaps = weak
+                break
+            continue
         gaps = cr.get("quality_gaps")
-        if isinstance(gaps, list) and gaps and not cr.get("_quality_gate"):
+        if isinstance(gaps, list) and gaps:
             quality_gaps = gaps
             break
 

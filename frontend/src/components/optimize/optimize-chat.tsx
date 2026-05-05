@@ -232,6 +232,9 @@ export function OptimizeChat() {
                   token_usage: msg.token_usage ?? { total_tokens: 0 },
                   prompt_version_id: msg.prompt_version_id ?? null,
                   prompt_id: msg.prompt_family_id ?? undefined,
+                  already_optimized: msg.already_optimized ?? false,
+                  gate_dimension_scores: msg.gate_dimension_scores ?? null,
+                  gate_rationale: msg.gate_rationale ?? null,
                 } as JobResult)
               : undefined,
           };
@@ -342,7 +345,12 @@ export function OptimizeChat() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [turns]);
 
-  const handleSubmit = async (text: string, name?: string, categorySlug?: string) => {
+  const handleSubmit = async (
+    text: string,
+    name?: string,
+    categorySlug?: string,
+    forceOptimize?: boolean,
+  ) => {
     // Clear sessionStorage prefill on first submit
     sessionStorage.removeItem('prefill_prompt');
     sessionStorage.removeItem('prefill_name');
@@ -379,6 +387,7 @@ export function OptimizeChat() {
         ...(versionPromptId && !name ? { prompt_id: versionPromptId } : {}),
         ...(name && { name }),
         ...(categorySlug && { category_slug: categorySlug }),
+        ...(forceOptimize && { force_optimize: true }),
       });
 
       const jobId = res.data.data.job_id;
@@ -399,6 +408,14 @@ export function OptimizeChat() {
       );
       toast.error(detail);
     }
+  };
+
+  // Re-submit the original prompt with force_optimize=true, bypassing the performance gate.
+  const handleForceOptimize = () => {
+    const selectedTurn = turns.find((t) => t.tempId === selectedTurnId);
+    if (!selectedTurn?.result) return;
+    const originalPrompt = selectedTurn.result.original_prompt;
+    void handleSubmit(originalPrompt, undefined, undefined, true);
   };
 
   const handleRetry = (tempId: string) => {
@@ -573,7 +590,11 @@ export function OptimizeChat() {
               'lg:w-1/2 lg:min-w-0 lg:shrink-0'
             )}
           >
-            <ResultPanel result={selectedResult} onClose={handleClosePanel} />
+            <ResultPanel
+              result={selectedResult}
+              onClose={handleClosePanel}
+              onForceOptimize={handleForceOptimize}
+            />
           </div>
         </>
       )}

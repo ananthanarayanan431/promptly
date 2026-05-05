@@ -1,21 +1,21 @@
-_SYSTEM = """\
+_SYSTEM_TEMPLATE = """\
 You are an adversarial peer reviewer in a prompt optimization council. Your job is not to be
 kind — it is to find every flaw before a flawed prompt ships to production.
 
-You will receive the ORIGINAL prompt, 3 anonymized optimization proposals (A, B, C), and
-optionally: user feedback and a previous synthesis from a prior refinement pass.
-You do NOT know which model wrote which proposal. Evaluate on content quality alone.
+You will receive the ORIGINAL prompt, {{proposal_count}} anonymized optimization proposals \
+({{proposal_labels}}), and optionally: user feedback and a previous synthesis from a prior
+refinement pass. You do NOT know which model wrote which proposal. Evaluate on content quality alone.
 
 <review_mandate>
 Your review has two responsibilities:
 1. Surface the real weaknesses — including in the top-ranked proposal. Every proposal has at
    least one flaw. If you cannot find one, you are not looking hard enough.
-2. Identify what is STILL MISSING across all three proposals — the gaps the synthesizer must
-   fill that no individual proposal got right.
+2. Identify what is STILL MISSING across all {{proposal_count}} proposals — the gaps the
+   synthesizer must fill that no individual proposal got right.
 
-Research finding you must internalize: consensus is not correctness. Three proposals agreeing
-on an approach does not make it right. If all three made the same mistake, your quality_gaps
-list must flag it explicitly. The synthesizer cannot fix what you do not name.
+Research finding you must internalize: consensus is not correctness. All {{proposal_count}}
+proposals agreeing on an approach does not make it right. If all made the same mistake, your
+quality_gaps list must flag it explicitly. The synthesizer cannot fix what you do not name.
 </review_mandate>
 
 <step_1_intent_gate>
@@ -121,9 +121,9 @@ Known failure mode categories (use these as a checklist):
 </step_3_failure_mode>
 
 <step_4_ranking>
-Rank proposals 1st, 2nd, 3rd. Your ranking must be causally explained by your critique.
-The best proposal is the one most likely to produce the ideal output when deployed as-is,
-with no edits, to a production LLM.
+Rank all {{proposal_count}} proposals from best to worst. Your ranking must be causally explained
+by your critique. The best proposal is the one most likely to produce the ideal output when
+deployed as-is, with no edits, to a production LLM.
 
 Tiebreaker: equal strength on all dimensions → prefer the more concise proposal.
 
@@ -132,14 +132,14 @@ covers all dimensions beats a longer one that covers them loosely.
 </step_4_ranking>
 
 <step_5_quality_gaps>
-After ranking, identify what is STILL WEAK OR MISSING across all three proposals.
+After ranking, identify what is STILL WEAK OR MISSING across ALL {{proposal_count}} proposals.
 These are not critiques of any individual proposal — they are directives for the synthesizer.
 
 Rules for quality_gaps:
 - Write each gap as an imperative the synthesizer must execute: not "role persona missing" but
   "Add a specific [domain] expert persona — e.g. 'You are a senior [X] specialising in [Y]'"
-- Only list gaps that NONE of the three proposals addressed adequately.
-- If all three proposals made the same mistake, list it here — consensus does not make it correct.
+- Only list gaps that NONE of the proposals addressed adequately.
+- If all proposals made the same mistake, list it here — consensus does not make it correct.
 - Maximum 5 gaps. If you have more, prioritise by impact on output quality.
 - Minimum 1 gap. Every review surfaces at least one actionable directive.
 </step_5_quality_gaps>
@@ -148,12 +148,12 @@ Rules for quality_gaps:
 Return ONLY a valid JSON object. No preamble, no markdown fences, no trailing text.
 The first character of your output must be "{".
 
-{
-  "ranking": ["Proposal X", "Proposal Y", "Proposal Z"],
-  "critiques": {
-    "Proposal A": {
-      "intent_preserved": true,
-      "feedback_honoured": true,
+{{output_schema_block}}
+</output_schema>"""
+
+
+def _dimension_scores_block() -> str:
+    return """\
       "dimension_scores": {
         "role_persona": "strong | weak | missing",
         "goal_clarity": "strong | weak | missing",
@@ -163,105 +163,99 @@ The first character of your output must be "{".
         "constraints_guardrails": "strong | weak | missing",
         "tone_audience": "strong | weak | missing",
         "conciseness": "strong | weak | missing"
-      },
+      }"""
+
+
+def _build_output_schema(labels: list[str]) -> str:
+    """Build the JSON output schema with one critique entry per label."""
+    ranking_example = ", ".join(f'"Proposal {lbl}"' for lbl in labels)
+    critiques_entries = []
+    for label in labels:
+        entry = f"""\
+    "Proposal {label}": {{
+      "intent_preserved": true,
+      "feedback_honoured": true,
+{_dimension_scores_block()},
       "primary_weakness": "<the single most damaging flaw — quote the exact phrase if applicable, explain the failure mechanism>",
       "failure_mode": "<specific mechanism: what a model following this prompt exactly would do wrong, and why>",
       "secondary_issues": ["<specific issue with quoted phrase or named dimension>", "<issue 2>"]
-    },
-    "Proposal B": {
-      "intent_preserved": true,
-      "feedback_honoured": true,
-      "dimension_scores": {
-        "role_persona": "strong | weak | missing",
-        "goal_clarity": "strong | weak | missing",
-        "context_grounding": "strong | weak | missing",
-        "output_format": "strong | weak | missing",
-        "examples_exemplars": "strong | weak | missing",
-        "constraints_guardrails": "strong | weak | missing",
-        "tone_audience": "strong | weak | missing",
-        "conciseness": "strong | weak | missing"
-      },
-      "primary_weakness": "<the single most damaging flaw>",
-      "failure_mode": "<specific mechanism>",
-      "secondary_issues": ["<issue 1>", "<issue 2>"]
-    },
-    "Proposal C": {
-      "intent_preserved": true,
-      "feedback_honoured": true,
-      "dimension_scores": {
-        "role_persona": "strong | weak | missing",
-        "goal_clarity": "strong | weak | missing",
-        "context_grounding": "strong | weak | missing",
-        "output_format": "strong | weak | missing",
-        "examples_exemplars": "strong | weak | missing",
-        "constraints_guardrails": "strong | weak | missing",
-        "tone_audience": "strong | weak | missing",
-        "conciseness": "strong | weak | missing"
-      },
-      "primary_weakness": "<the single most damaging flaw>",
-      "failure_mode": "<specific mechanism>",
-      "secondary_issues": ["<issue 1>", "<issue 2>"]
-    }
-  },
-  "ranking_rationale": "<2-3 sentences explaining why your top-ranked proposal wins — cite specific dimensional differences, not general impressions>",
-  "quality_gaps": ["<imperative directive for the synthesizer, e.g. 'Add a specific expert persona: ...'> "]
-}
-</output_schema>"""
+    }}"""
+        critiques_entries.append(entry)
 
-_USER = """\
+    critiques_block = ",\n".join(critiques_entries)
+    return f"""\
+{{
+  "ranking": [{ranking_example}],
+  "critiques": {{
+{critiques_block}
+  }},
+  "ranking_rationale": "<2-3 sentences explaining why your top-ranked proposal wins — cite specific dimensional differences, not general impressions>",
+  "quality_gaps": ["<imperative directive for the synthesizer, e.g. 'Add a specific expert persona: ...'>"]
+}}"""
+
+
+_USER_TEMPLATE = """\
 ORIGINAL PROMPT:
 {{raw_prompt}}
 
 {{feedback_block}}{{previous_synthesis_block}}\
 ---
 
-Proposal A:
-{{proposal_a}}
-
+{{proposals_block}}
 ---
 
-Proposal B:
-{{proposal_b}}
-
----
-
-Proposal C:
-{{proposal_c}}
-
----
-
-Review all three proposals against the original prompt, the 8-dimension quality rubric, and any
-context above. Return your critique as a valid JSON object. No output outside the JSON object.\
+Review all {{proposal_count}} proposals against the original prompt, the 8-dimension quality \
+rubric, and any context above. Return your critique as a valid JSON object. \
+No output outside the JSON object.\
 """
 
 
 def critic_messages(
     raw_prompt: str,
-    proposal_a: str,
-    proposal_b: str,
-    proposal_c: str,
+    proposals: list[tuple[str, str]],
     feedback: str | None = None,
     previous_synthesis: str | None = None,
 ) -> list[dict[str, str]]:
+    """
+    Build critic review messages for N proposals.
+
+    proposals: list of (label, text) tuples — e.g. [("A", "..."), ("B", "..."), ("C", "..."), ("D", "...")]
+               Labels are the actual proposal identifiers so the critic's output maps correctly
+               back to the synthesizer's proposal block.
+    """
+    labels = [label for label, _ in proposals]
+    label_str = ", ".join(labels)
+    count = len(labels)
+
+    proposals_block = "\n\n---\n\n".join(f"Proposal {label}:\n{text}" for label, text in proposals)
+
+    schema = _build_output_schema(labels)
+    system = (
+        _SYSTEM_TEMPLATE.replace("{{proposal_count}}", str(count))
+        .replace("{{proposal_labels}}", label_str)
+        .replace("{{output_schema_block}}", schema)
+    )
+
     feedback_block = (
         f"USER FEEDBACK (highest-priority directive — proposals must honour this):\n{feedback}\n\n"
         if feedback
         else ""
     )
     previous_synthesis_block = (
-        f"PREVIOUS SYNTHESIS (already-locked improvements — do not regress these):\n{previous_synthesis}\n\n"
+        f"PREVIOUS SYNTHESIS (already-locked improvements — do not regress these):\n"
+        f"{previous_synthesis}\n\n"
         if previous_synthesis
         else ""
     )
     user = (
-        _USER.replace("{{raw_prompt}}", raw_prompt)
+        _USER_TEMPLATE.replace("{{raw_prompt}}", raw_prompt)
         .replace("{{feedback_block}}", feedback_block)
         .replace("{{previous_synthesis_block}}", previous_synthesis_block)
-        .replace("{{proposal_a}}", proposal_a)
-        .replace("{{proposal_b}}", proposal_b)
-        .replace("{{proposal_c}}", proposal_c)
+        .replace("{{proposals_block}}", proposals_block)
+        .replace("{{proposal_count}}", str(count))
     )
+
     return [
-        {"role": "system", "content": _SYSTEM},
+        {"role": "system", "content": system},
         {"role": "user", "content": user},
     ]

@@ -104,13 +104,19 @@ async def critic_node(state: GraphState) -> dict[str, Any]:
             await push_job_progress(job_id, {"step": "critic", "ts": time.time()})
         return {"critic_responses": []}
 
+    all_labels = ["A", "B", "C", "D"][: len(proposals)]
+
     async def critique(model: ChatOpenAI, reviewer_idx: int) -> dict[str, Any]:
-        others = [p for i, p in enumerate(proposals) if i != reviewer_idx]
+        # Build (label, text) pairs for every proposal EXCEPT the reviewer's own.
+        # Labels stay consistent with the full set so the synthesizer can cross-reference.
+        others = [
+            (all_labels[i], p["optimized_prompt"])
+            for i, p in enumerate(proposals)
+            if i != reviewer_idx
+        ]
         messages = critic_messages(
             raw_prompt=raw_prompt,
-            proposal_a=others[0]["optimized_prompt"],
-            proposal_b=others[1]["optimized_prompt"],
-            proposal_c=others[2]["optimized_prompt"],
+            proposals=others,
             feedback=feedback,
             previous_synthesis=previous_synthesis,
         )

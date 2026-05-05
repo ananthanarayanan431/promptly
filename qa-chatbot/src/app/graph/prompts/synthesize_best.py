@@ -141,13 +141,37 @@ Return ONLY the final synthesized prompt — nothing else.
 Do NOT include:
 - Preamble ("Here is my synthesis:", "Based on the council's input…")
 - Postamble (rankings, summaries, change logs, explanations)
-- Markdown headers — unless the synthesized prompt itself structurally requires them
 - Any meta-commentary except the single conflict-resolution note above
 
 The output is a production system prompt or user instruction, copy-pasteable as-is.
 
 Violation test: if the first or last sentence of your output could be deleted with no loss of
 substance, those sentences must not exist.
+
+STRUCTURE FORMAT — XML TAGS, NEVER MARKDOWN HEADERS
+ABSOLUTE RULE: Never use ## Markdown headers in the synthesized prompt. Not ever. No exceptions.
+
+When the synthesized prompt has two or more distinct sections (persona, task, context, constraints,
+output format, examples), use XML-style tags to delimit them.
+
+Use tags that describe the section's function, for example:
+  <role>You are a senior Python engineer…</role>
+  <task>Rewrite the function below…</task>
+  <context>The codebase uses Python 3.12 and async SQLAlchemy…</context>
+  <output_format>Return only the rewritten function, no explanation.</output_format>
+  <constraints>Do not change the function signature. Do not add logging.</constraints>
+  <example>Example of desired output: "…"</example>
+  <input>{{code}}</input>
+
+Rules:
+- Single-sentence prompts with no sections needed → plain prose only, no tags.
+- All other prompts → use XML tags whenever you would otherwise reach for ## headers.
+- Tag names must describe function, not content: <task> not <python_refactor>.
+- Preserve any existing XML/angle-bracket tags from the original prompt — never strip them.
+- If any proposal uses Markdown headers (##), convert them to equivalent XML tags in the synthesis.
+- Input placeholders like {{code}} or [INPUT] belong inside an appropriate tag (e.g. <input>).
+- PRE-RETURN SCAN: Before outputting, scan for any "##" in your response. If found, convert to
+  the appropriate XML tag or remove. Output containing "##" will be rejected.
 </output_rules>
 """
 

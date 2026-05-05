@@ -61,6 +61,10 @@ export interface JobResult {
   prompt_id?: string;
   version?: number;
   prompt_version_id: string | null;
+  // Performance gate fields — present when the prompt was already production-grade
+  already_optimized?: boolean;
+  gate_dimension_scores?: Record<string, string> | null;
+  gate_rationale?: string | null;
 }
 
 export interface JobStatusResponse {
@@ -72,6 +76,7 @@ export interface JobStatusResponse {
 
 export type ProgressStep =
   | 'intent'
+  | 'performance_gate'
   | 'council'
   | 'critic'
   | 'synthesize'
@@ -249,6 +254,9 @@ export interface SessionMessage {
   token_usage: { total_tokens: number } | null;
   prompt_version_id: string | null;
   prompt_family_id: string | null;
+  already_optimized?: boolean;
+  gate_dimension_scores?: Record<string, string> | null;
+  gate_rationale?: string | null;
   created_at: string;
 }
 

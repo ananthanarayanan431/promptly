@@ -133,7 +133,7 @@ function AssistantResult({ turn, isTurnSelected, onSelectTurn, progress, onRetry
           {/* Header strip */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             padding: '8px 14px', borderBottom: '1px solid #1f1f23',
-            background: 'rgba(124,92,255,0.04)' }}>
+            background: result.already_optimized ? 'rgba(34,197,94,0.04)' : 'rgba(124,92,255,0.04)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#7c5cff" strokeWidth="1.8">
                 <path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9c0-.46-.04-.92-.1-1.36a5.39 5.39 0 00-4.4-4.4A5.21 5.21 0 0012 3z"/>
@@ -142,6 +142,17 @@ function AssistantResult({ turn, isTurnSelected, onSelectTurn, progress, onRetry
                 fontWeight: 600, color: '#7c5cff', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
                 Promptly
               </span>
+              {result.already_optimized && (
+                <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10,
+                  fontWeight: 600, padding: '1px 7px', borderRadius: 999,
+                  background: 'rgba(34,197,94,0.15)', color: '#22c55e',
+                  display: 'flex', alignItems: 'center', gap: 4, border: '1px solid rgba(34,197,94,0.3)' }}>
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M20 6L9 17l-5-5"/>
+                  </svg>
+                  Already optimized
+                </span>
+              )}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               {result.version && (

@@ -30,6 +30,13 @@ class GraphState(TypedDict):
     # Intent classification result: "optimize" | "irrelevant"
     intent: str | None
 
+    # Performance gate — set when the raw prompt is already production-grade.
+    # When already_optimized=True, final_response == raw_prompt and no council ran.
+    force_optimize: bool  # bypass the gate entirely when True
+    already_optimized: bool  # True when gate short-circuits the pipeline
+    gate_dimension_scores: dict[str, str] | None  # 8-dim scoring labels
+    gate_rationale: str | None  # one-sentence explanation from the gate LLM
+
     # Pipeline stages
     # Round 1 — council_responses: [{model, optimized_prompt, usage}]
     council_responses: list[dict[str, Any]]
