@@ -88,9 +88,10 @@ interface ResultPanelProps {
   result: JobResult;
   onClose: () => void;
   onForceOptimize?: () => void;
+  isLoading?: boolean;
 }
 
-export function ResultPanel({ result, onClose, onForceOptimize }: ResultPanelProps) {
+export function ResultPanel({ result, onClose, onForceOptimize, isLoading = false }: ResultPanelProps) {
   const [copied, setCopied] = useState(false);
   const [showOriginal, setShowOriginal] = useState(false);
 
@@ -271,12 +272,15 @@ export function ResultPanel({ result, onClose, onForceOptimize }: ResultPanelPro
           <button
             type="button"
             onClick={onForceOptimize}
-            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors"
+            disabled={isLoading}
+            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             style={{ border: '1px solid rgba(124,92,255,0.4)', background: 'rgba(124,92,255,0.08)',
-              color: '#7c5cff', cursor: 'pointer' }}
+              color: '#7c5cff', cursor: isLoading ? 'not-allowed' : 'pointer' }}
             onMouseEnter={e => {
-              e.currentTarget.style.background = 'rgba(124,92,255,0.15)';
-              e.currentTarget.style.borderColor = 'rgba(124,92,255,0.6)';
+              if (!isLoading) {
+                e.currentTarget.style.background = 'rgba(124,92,255,0.15)';
+                e.currentTarget.style.borderColor = 'rgba(124,92,255,0.6)';
+              }
             }}
             onMouseLeave={e => {
               e.currentTarget.style.background = 'rgba(124,92,255,0.08)';

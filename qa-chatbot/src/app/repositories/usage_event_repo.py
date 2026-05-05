@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 
 from app.models.usage_event import UsageEvent
 from app.repositories.base import BaseRepository
@@ -46,12 +47,16 @@ class UsageEventRepository(BaseRepository[UsageEvent]):
             if existing.scalar_one_or_none() is not None:
                 return None
 
-        return await self.create(
-            user_id=user_id,
-            action=action,
-            credits_spent=credits_spent,
-            job_id=job_id,
-        )
+        try:
+            return await self.create(
+                user_id=user_id,
+                action=action,
+                credits_spent=credits_spent,
+                job_id=job_id,
+            )
+        except IntegrityError:
+            await self.db.rollback()
+            return None
 
     async def aggregate_for_user(
         self, *, user_id: UUID, since: datetime | None = None

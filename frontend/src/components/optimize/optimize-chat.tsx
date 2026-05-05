@@ -412,6 +412,7 @@ export function OptimizeChat() {
 
   // Re-submit the original prompt with force_optimize=true, bypassing the performance gate.
   const handleForceOptimize = () => {
+    if (isAnyLoading || activeJobId !== null) return;
     const selectedTurn = turns.find((t) => t.tempId === selectedTurnId);
     if (!selectedTurn?.result) return;
     const originalPrompt = selectedTurn.result.original_prompt;
@@ -594,6 +595,7 @@ export function OptimizeChat() {
               result={selectedResult}
               onClose={handleClosePanel}
               onForceOptimize={handleForceOptimize}
+              isLoading={isAnyLoading || activeJobId !== null}
             />
           </div>
         </>

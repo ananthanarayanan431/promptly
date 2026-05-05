@@ -60,8 +60,15 @@ def _get_gate_model() -> ChatOpenAI:
     return _gate_model
 
 
+_VALID_LABELS: frozenset[str] = frozenset({"strong", "weak", "missing"})
+
+
 def _scores_satisfy_bar(scores: dict[str, str]) -> bool:
     """Deterministically apply the pass condition to a scores dict."""
+    if set(scores.keys()) != set(_DIMENSIONS):
+        return False
+    if any(not isinstance(v, str) or v not in _VALID_LABELS for v in scores.values()):
+        return False
     if scores.get("goal_clarity") != "strong":
         return False
     missing_count = sum(1 for v in scores.values() if v == "missing")
@@ -94,10 +101,14 @@ async def performance_gate_node(state: GraphState) -> dict[str, Any]:
     try:
         response = await _get_gate_model().ainvoke(performance_gate_messages(raw))
         gate = _parse_response(str(response.content))
-        scores: dict[str, str] = gate.get("scores", {})
-        rationale: str = gate.get("rationale", "")
     except Exception:
         logger.exception("performance_gate LLM call or parse failed — proceeding to council")
+        return {"already_optimized": False}
+
+    scores = gate.get("scores", {})
+    rationale = gate.get("rationale", "")
+    if not isinstance(scores, dict) or not isinstance(rationale, str):
+        logger.warning("performance_gate unexpected types, proceeding to council: %r", gate)
         return {"already_optimized": False}
 
     # Deterministic pass check — overrides any LLM verdict in the "already_optimized" field
