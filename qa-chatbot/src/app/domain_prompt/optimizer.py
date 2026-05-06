@@ -9,10 +9,13 @@ and returns the best-scoring candidate.
 from __future__ import annotations
 
 import json
+import logging
 import random
 import textwrap
 
 from langchain_openai import ChatOpenAI
+
+_log = logging.getLogger(__name__)
 
 _VARIANT_SYSTEM = textwrap.dedent("""
     You are a prompt engineering expert.
@@ -45,8 +48,8 @@ def _split_dataset(
     pairs: list[dict[str, str]], seed: int = 42
 ) -> tuple[list[dict[str, str]], list[dict[str, str]], list[dict[str, str]]]:
     data = list(pairs)
-    random.seed(seed)
-    random.shuffle(data)
+    rng = random.Random(seed)  # noqa: S311
+    rng.shuffle(data)
     n = len(data)
     train_end = int(n * 0.70)
     val_end = int(n * 0.85)
@@ -70,8 +73,8 @@ async def _generate_variants(base_prompt: str, n: int, llm: ChatOpenAI) -> list[
         variants = json.loads(raw)
         if isinstance(variants, list) and all(isinstance(v, str) for v in variants):
             return variants[:n]
-    except Exception:  # noqa: BLE001, S110
-        pass
+    except Exception as _exc:  # noqa: BLE001, S110
+        _log.warning("Variant generation failed: %s", _exc)
     return [base_prompt]
 
 
@@ -96,7 +99,8 @@ async def _score_answer(question: str, gold: str, predicted: str, judge_llm: Cha
         result = json.loads(raw)
         score = float(result.get("score", 0.0))
         return max(0.0, min(1.0, score))
-    except Exception:  # noqa: BLE001
+    except Exception as _exc:  # noqa: BLE001
+        _log.warning("Answer scoring failed: %s", _exc)
         return 0.0
 
 
@@ -123,7 +127,8 @@ async def _evaluate_prompt(
                 ]
             )
             predicted = str(response.content).strip()
-        except Exception:  # noqa: BLE001
+        except Exception as _exc:  # noqa: BLE001
+            _log.warning("Prompt evaluation inference failed: %s", _exc)
             predicted = ""
         score = await _score_answer(question, gold, predicted, judge_llm)
         scores.append(score)
@@ -144,7 +149,8 @@ async def optimize_domain_prompt(
     for line in dataset_jsonl.strip().splitlines():
         try:
             pairs.append(json.loads(line))
-        except Exception:  # noqa: BLE001, S112
+        except Exception as _exc:  # noqa: BLE001, S112
+            _log.warning("JSONL parse failed for line: %s", _exc)
             continue
 
     if not pairs:

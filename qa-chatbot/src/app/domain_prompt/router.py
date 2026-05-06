@@ -92,6 +92,14 @@ async def create_domain(
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise InvalidPDFException()
 
+    # Enforce 25 MB upload limit
+    _max_pdf_bytes = 25 * 1024 * 1024
+    pdf_bytes = await file.read()
+    if len(pdf_bytes) > _max_pdf_bytes:
+        raise InvalidPDFException(detail="PDF file exceeds the 25 MB size limit.")
+    if not pdf_bytes.startswith(b"%PDF"):
+        raise InvalidPDFException(detail="Uploaded file does not appear to be a valid PDF.")
+
     user_repo = UserRepository(db)
     deducted = await user_repo.deduct_credits(current_user.id, 10)
     if not deducted:
@@ -110,7 +118,6 @@ async def create_domain(
     minio_cfg = get_minio_settings()
     bucket = minio_cfg.MINIO_BUCKET_NAME
     pdf_key = object_key(str(current_user.id), str(domain.id), "source.pdf")
-    pdf_bytes = await file.read()
     upload_bytes(bucket, pdf_key, pdf_bytes, content_type="application/pdf")
 
     await domain_repo.save_dataset(

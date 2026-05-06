@@ -106,6 +106,23 @@ def prepare_domain_dataset(
 
             await set_dp_job_status(job_id, "failed")
             await set_dp_job_result(job_id, {"error": str(exc)})
+
+            try:
+                from uuid import UUID as _UUID
+
+                from app.repositories.user_repo import UserRepository as _UserRepo
+
+                async with AsyncSessionLocal() as refund_db:
+                    _repo = _UserRepo(refund_db)
+                    await _repo.refund_credits(_UUID(user_id), 10)
+                    await refund_db.commit()
+            except Exception:  # noqa: BLE001, S110
+                pass  # Non-critical — original exception propagates
+
+            # Don't retry terminal data errors — only transient failures
+            _terminal = (ValueError,)
+            if isinstance(exc, _terminal):
+                raise exc
             raise self.retry(exc=exc) from exc
         finally:
             await dispose_async_engine()
@@ -202,6 +219,23 @@ def run_domain_optimization(
 
             await set_dp_job_status(job_id, "failed")
             await set_dp_job_result(job_id, {"error": str(exc)})
+
+            try:
+                from uuid import UUID as _UUID
+
+                from app.repositories.user_repo import UserRepository as _UserRepo
+
+                async with AsyncSessionLocal() as refund_db:
+                    _repo = _UserRepo(refund_db)
+                    await _repo.refund_credits(_UUID(user_id), 10)
+                    await refund_db.commit()
+            except Exception:  # noqa: BLE001, S110
+                pass  # Non-critical — original exception propagates
+
+            # Don't retry terminal data errors — only transient failures
+            _terminal = (ValueError,)
+            if isinstance(exc, _terminal):
+                raise exc
             raise self.retry(exc=exc) from exc
         finally:
             await dispose_async_engine()

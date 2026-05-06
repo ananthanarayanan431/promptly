@@ -7,10 +7,13 @@ from __future__ import annotations
 
 import io
 import json
+import logging
 import textwrap
 
 from langchain_openai import ChatOpenAI
 from pypdf import PdfReader
+
+_log = logging.getLogger(__name__)
 
 _QA_SYSTEM = textwrap.dedent("""
     You are a dataset generation assistant.
@@ -100,7 +103,8 @@ async def generate_qa_pairs(text: str, api_key: str) -> list[dict[str, str]]:
                                 "answer": str(p["answer"]).strip(),
                             }
                         )
-        except Exception:  # noqa: BLE001, S112
+        except Exception as _exc:  # noqa: BLE001, S112
+            _log.warning("Q&A generation failed for chunk: %s", _exc)
             continue
 
     return all_pairs
