@@ -161,7 +161,7 @@ def process_chat_async(
                             lines = []
                             if len(versions) > len(recent):
                                 lines.append(
-                                    f"(showing last {len(recent)} of " f"{len(versions)} versions)"
+                                    f"(showing last {len(recent)} of {len(versions)} versions)"
                                 )
                             for v in recent:
                                 lines.append(
