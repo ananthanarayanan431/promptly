@@ -56,3 +56,7 @@ class DomainJobPollResponse(BaseModel):
     domain_id: str | None = None
     result: dict[str, Any] | None = None
     error: str | None = None
+
+
+class DeleteDomainResponse(BaseModel):
+    deleted: str
