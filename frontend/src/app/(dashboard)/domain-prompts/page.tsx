@@ -59,7 +59,7 @@ export default function DomainPromptsPage() {
     onError: () => setReoptimizing(false),
   });
 
-  const handleJobStarted = useCallback((jobId: string) => {
+  const handleJobStarted = useCallback((jobId: string, _domainId: string) => {
     setShowNew(false);
     setPollingJobId(jobId);
     void qc.invalidateQueries({ queryKey: ['domain-prompts'] });
