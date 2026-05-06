@@ -1,0 +1,45 @@
+export type DomainPromptStatus =
+  | 'pending'
+  | 'preparing_dataset'
+  | 'optimizing'
+  | 'completed'
+  | 'failed';
+
+export interface DatasetInfo {
+  row_count: number | null;
+  pdf_key: string;
+  dataset_key: string | null;
+}
+
+export interface DomainPrompt {
+  id: string;
+  name: string;
+  description: string | null;
+  base_prompt: string;
+  optimized_prompt: string | null;
+  status: DomainPromptStatus;
+  score_before: number | null;
+  score_after: number | null;
+  credits_charged: number;
+  error_message: string | null;
+  dataset: DatasetInfo | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DomainListResponse {
+  domains: DomainPrompt[];
+}
+
+export interface CreateDomainJobResponse {
+  job_id: string;
+  domain_id: string;
+}
+
+export interface DomainJobPollResponse {
+  job_id: string;
+  status: string;
+  domain_id: string | null;
+  result: Record<string, unknown> | null;
+  error: string | null;
+}
