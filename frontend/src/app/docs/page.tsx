@@ -21,7 +21,7 @@ const SECTIONS = [
   { id: 'health-score',     label: 'Health Score' },
   { id: 'advisory',         label: 'Advisory Review' },
   { id: 'versions',         label: 'Versions' },
-  { id: 'prompt-store',     label: 'Prompt Store' },
+  { id: 'prompt-library',   label: 'Prompt Library' },
   { id: 'history',          label: 'History' },
   { id: 'dashboard',        label: 'Dashboard' },
   { id: 'credits',          label: 'Credits' },
@@ -419,7 +419,7 @@ export default function DocsPage() {
             },
             {
               title: 'Heart the result',
-              body: 'Click the heart icon on any result to add it to your Prompt Store — your personal library of saved prompts, sortable by category and tags.',
+              body: 'Click the heart icon on any result to add it to your Prompt Library — your personal collection of saved prompts, sortable by category and tags.',
             },
           ]} />
 
@@ -584,7 +584,7 @@ export default function DocsPage() {
             { field: 'Version bar',      what: 'A row of small blocks — one per version. The most recent is filled in violet, earlier ones are dimmed.' },
             { field: 'vN label',         what: 'How many versions exist. A family at v4 has been optimized three times after the original was saved.' },
             { field: 'Last updated',     what: 'Relative time since the most recent version was created.' },
-            { field: 'Heart count',      what: 'Number of versions in this family you\'ve saved to Prompt Store.' },
+            { field: 'Heart count',      what: 'Number of versions in this family you\'ve saved to Prompt Library.' },
           ]} />
 
           <H3>Inside a version family</H3>
@@ -594,7 +594,7 @@ export default function DocsPage() {
           <FieldTable rows={[
             { field: 'Read each version',    what: 'Full content of every version, displayed in order from oldest to newest.' },
             { field: 'Diff any two versions', what: 'Select two versions to see a word-level diff — added words in green, removed words in red. Useful for understanding exactly what changed between runs.' },
-            { field: 'Heart a version',      what: 'Save any specific version to Prompt Store with one click.' },
+            { field: 'Heart a version',      what: 'Save any specific version to Prompt Library with one click.' },
           ]} />
 
           <CalloutBox icon="💡" label="Tip" tone="tip">
@@ -606,21 +606,21 @@ export default function DocsPage() {
           <Divider />
 
           {/* ══════════════════════════════════════════════════════════
-              PROMPT STORE
+              PROMPT LIBRARY
           ══════════════════════════════════════════════════════════ */}
-          <SectionAnchor id="prompt-store" />
-          <Eyebrow>Prompt Store</Eyebrow>
-          <H2>Your personal library of saved prompts.</H2>
+          <SectionAnchor id="prompt-library" />
+          <Eyebrow>Prompt Library</Eyebrow>
+          <H2>Your personal collection of saved prompts.</H2>
           <Lead>
-            Prompt Store is where you keep the prompts you want to reuse — hearted
+            Prompt Library is where you keep the prompts you want to reuse — hearted
             from optimize results, organized by category and tags, and sortable
             by how recently or frequently you&apos;ve used them.
           </Lead>
 
-          <H3>How to add prompts to your store</H3>
+          <H3>How to add prompts to your library</H3>
           <P>
             Click the <strong>heart icon</strong> on any optimize result.
-            That specific version is saved to your store with its family name,
+            That specific version is saved to your library with its family name,
             version number, and the timestamp it was liked.
           </P>
           <P>
@@ -688,7 +688,7 @@ export default function DocsPage() {
             Sessions that were not saved to a named prompt family are kept for
             <strong> 7 days</strong> and then deleted. If you want to keep a result
             permanently, save it to a family (give it a name in Optimize) or heart
-            it to Prompt Store before the 7-day window closes.
+            it to Prompt Library before the 7-day window closes.
           </CalloutBox>
 
           <Divider />

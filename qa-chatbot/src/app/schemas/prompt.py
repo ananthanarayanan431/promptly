@@ -79,6 +79,14 @@ class PromptFamilyListResponse(BaseModel):
     families: list[PromptVersionListResponse]
 
 
+class PaginatedPromptFamilyListResponse(BaseModel):
+    page: int
+    page_size: int
+    total: int
+    total_pages: int
+    families: list[PromptVersionListResponse]
+
+
 # --- Advisory ---
 
 

@@ -1,7 +1,9 @@
+import math
 import uuid
-from typing import Annotated
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
+from fastapi import status as http_status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,18 +21,24 @@ from app.repositories.api_key_repo import ApiKeyRepository
 from app.schemas.api_key import (
     ApiKeyCreatedResponse,
     ApiKeyCreateRequest,
-    ApiKeyListResponse,
     ApiKeyResponse,
+    PaginatedApiKeyListResponse,
 )
 
-router = APIRouter(prefix="/users/api-keys", tags=["api-keys"])
+router = APIRouter(
+    prefix="/users/api-keys",
+    tags=["api-keys"],
+)
 _default_limiter = RateLimiter(requests=60, window_seconds=60)
 
 
+# -------------------------
+# CREATE API KEY
+# -------------------------
 @router.post(
     "",
     response_model=SuccessResponse[ApiKeyCreatedResponse],
-    status_code=201,
+    status_code=http_status.HTTP_201_CREATED,
     dependencies=[Depends(_default_limiter)],
 )
 async def create_api_key(
@@ -39,6 +47,7 @@ async def create_api_key(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> SuccessResponse[ApiKeyCreatedResponse]:
     """Create a new API key. The raw key is returned once and never stored."""
+
     repo = ApiKeyRepository(db)
     if await repo.has_active_name(current_user.id, request.name):
         raise ApiKeyNameConflictException()
@@ -50,9 +59,8 @@ async def create_api_key(
             name=request.name,
             key_hash=key_hash,
         )
-        await db.commit()
+        await db.flush()
     except IntegrityError:
-        await db.rollback()
         raise ApiKeyNameConflictException() from None
     return SuccessResponse(
         data=ApiKeyCreatedResponse(
@@ -64,23 +72,43 @@ async def create_api_key(
     )
 
 
+# -------------------------
+# LIST API KEYS (Paginated)
+# -------------------------
 @router.get(
     "",
-    response_model=SuccessResponse[ApiKeyListResponse],
+    response_model=SuccessResponse[PaginatedApiKeyListResponse],
     dependencies=[Depends(_default_limiter)],
 )
 async def list_api_keys(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
-) -> SuccessResponse[ApiKeyListResponse]:
-    """List all API keys for the current user (active and revoked)."""
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 20,
+    status: Annotated[
+        Literal["active", "revoked", "all"], Query(description="Filter by key status")
+    ] = "all",
+) -> SuccessResponse[PaginatedApiKeyListResponse]:
+    """List API keys for the current user with pagination and optional status filter."""
     repo = ApiKeyRepository(db)
-    keys = await repo.list_by_user(current_user.id)
+    offset = (page - 1) * page_size
+    total = await repo.count_by_user(current_user.id, status=status)
+    keys = await repo.list_by_user(current_user.id, status=status, limit=page_size, offset=offset)
+    total_pages = math.ceil(total / page_size) if total else 0
     return SuccessResponse(
-        data=ApiKeyListResponse(keys=[ApiKeyResponse.model_validate(k) for k in keys])
+        data=PaginatedApiKeyListResponse(
+            page=page,
+            page_size=page_size,
+            total=total,
+            total_pages=total_pages,
+            keys=[ApiKeyResponse.model_validate(k) for k in keys],
+        )
     )
 
 
+# -------------------------
+# GET API KEY
+# -------------------------
 @router.get(
     "/{key_id}",
     response_model=SuccessResponse[ApiKeyResponse],
@@ -99,6 +127,9 @@ async def get_api_key(
     return SuccessResponse(data=ApiKeyResponse.model_validate(key))
 
 
+# -------------------------
+# REVOKE API KEY
+# -------------------------
 @router.delete(
     "/{key_id}",
     response_model=SuccessResponse[ApiKeyResponse],
@@ -117,5 +148,5 @@ async def revoke_api_key(
     if not key.is_active:
         raise ApiKeyAlreadyRevokedException()
     key = await repo.revoke(key)
-    await db.commit()
+    await db.flush()
     return SuccessResponse(data=ApiKeyResponse.model_validate(key))

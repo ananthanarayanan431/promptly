@@ -42,9 +42,7 @@ def test_council_optimizer_system_not_empty():
 def test_critic_messages_structure():
     msgs = critic_messages(
         raw_prompt="Summarize this.",
-        proposal_a="Proposal A text",
-        proposal_b="Proposal B text",
-        proposal_c="Proposal C text",
+        proposals=[("A", "Proposal A text"), ("B", "Proposal B text"), ("C", "Proposal C text")],
     )
     assert len(msgs) == 2
     assert msgs[0]["role"] == "system"
@@ -54,9 +52,7 @@ def test_critic_messages_structure():
 def test_critic_messages_proposals_present():
     msgs = critic_messages(
         raw_prompt="Original",
-        proposal_a="AAA",
-        proposal_b="BBB",
-        proposal_c="CCC",
+        proposals=[("A", "AAA"), ("B", "BBB"), ("C", "CCC")],
     )
     user = msgs[1]["content"]
     assert "Original" in user
@@ -66,6 +62,27 @@ def test_critic_messages_proposals_present():
     assert "Proposal A:" in user
     assert "Proposal B:" in user
     assert "Proposal C:" in user
+
+
+def test_critic_messages_four_proposals():
+    """All 4 proposals appear with correct labels when reviewer skips their own."""
+    msgs = critic_messages(
+        raw_prompt="Explain this.",
+        proposals=[("A", "AAA"), ("B", "BBB"), ("C", "CCC"), ("D", "DDD")],
+    )
+    user = msgs[1]["content"]
+    system = msgs[0]["content"]
+    assert "Proposal A:" in user
+    assert "Proposal B:" in user
+    assert "Proposal C:" in user
+    assert "Proposal D:" in user
+    # Schema should contain all 4 labels
+    assert '"Proposal A"' in system
+    assert '"Proposal B"' in system
+    assert '"Proposal C"' in system
+    assert '"Proposal D"' in system
+    # System prompt should reference count = 4
+    assert "4" in system
 
 
 def test_synthesize_messages_no_feedback():

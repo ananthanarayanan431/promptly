@@ -39,3 +39,11 @@ class ApiKeyResponse(BaseModel):
 
 class ApiKeyListResponse(BaseModel):
     keys: list[ApiKeyResponse]
+
+
+class PaginatedApiKeyListResponse(BaseModel):
+    page: int
+    page_size: int
+    total: int
+    total_pages: int
+    keys: list[ApiKeyResponse]

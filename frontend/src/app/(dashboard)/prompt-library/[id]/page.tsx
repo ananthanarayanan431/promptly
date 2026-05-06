@@ -23,7 +23,7 @@ const CATEGORY_OPTIONS: FavoriteCategory[] = [
   'Other',
 ];
 
-export default function PromptStoreDetailPage({
+export default function PromptLibraryDetailPage({
   params,
 }: {
   params: { id: string };
@@ -72,12 +72,12 @@ export default function PromptStoreDetailPage({
   };
 
   const handleUnstar = async () => {
-    if (!window.confirm('Remove this prompt from your store?')) return;
+    if (!window.confirm('Remove this prompt from your library?')) return;
     try {
       await unlikeMutation.mutateAsync(params.id);
-      router.push('/prompt-store');
+      router.push('/prompt-library');
     } catch {
-      toast.error('Failed to remove from store');
+      toast.error('Failed to remove from library');
     }
   };
 
@@ -183,7 +183,7 @@ export default function PromptStoreDetailPage({
       >
         {/* Back button */}
         <Link
-          href="/prompt-store"
+          href="/prompt-library"
           style={{
             display: 'flex',
             alignItems: 'center',

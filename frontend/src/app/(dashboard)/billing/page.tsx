@@ -62,20 +62,34 @@ export default function BillingPage() {
   };
 
   const credits = user?.credits ?? 0;
-  const maxCredits = 1000;
-  const pct = Math.min(100, Math.round((credits / maxCredits) * 100));
   const approxRuns = Math.floor(credits / 10);
   const lowCredits = credits < 20;
 
-  // Derive usage stats from dashboard data
-  const optimizeRuns = stats?.prompts_optimized ?? 0;
-  const totalCalls = stats ? stats.prompts_optimized + stats.total_sessions : 0;
-  const totalCreditsUsed = optimizeRuns * 10; // approximation from known data
+  // Real per-action usage from the API
+  const allTime = stats?.usage.all_time;
+  const thisMonth = stats?.usage.this_month;
 
-  // Normalize bar widths relative to the biggest usage
-  const maxRuns = Math.max(optimizeRuns, 1);
+  const optimizeCalls = allTime?.optimize_calls ?? 0;
+  const optimizeCredits = allTime?.optimize_credits ?? 0;
+  const healthCalls = allTime?.health_score_calls ?? 0;
+  const healthCredits = allTime?.health_score_credits ?? 0;
+  const advisoryCalls = allTime?.advisory_calls ?? 0;
+  const advisoryCredits = allTime?.advisory_credits ?? 0;
+
+  const monthCreditsUsed =
+    (thisMonth?.optimize_credits ?? 0)
+    + (thisMonth?.health_score_credits ?? 0)
+    + (thisMonth?.advisory_credits ?? 0);
+  const monthCalls =
+    (thisMonth?.optimize_calls ?? 0)
+    + (thisMonth?.health_score_calls ?? 0)
+    + (thisMonth?.advisory_calls ?? 0);
+
+  // Bar widths normalize against the busiest action so the chart stays readable.
+  const maxCalls = Math.max(optimizeCalls, healthCalls, advisoryCalls, 1);
 
   return (
+    <div style={{ height: '100%', overflowY: 'auto' }}>
     <div style={{ padding: '28px 40px 120px', maxWidth: 1180, margin: '0 auto',
       fontFamily: 'var(--font-geist, ui-sans-serif)' }}>
 
@@ -152,14 +166,12 @@ export default function BillingPage() {
           <div style={{ fontSize: 12.5, color: '#8a8a90', marginTop: 6 }}>
             credits · ≈ {approxRuns} more optimizations
           </div>
-          <div style={{ height: 4, background: '#2a2a2e', borderRadius: 2, marginTop: 14, overflow: 'hidden' }}>
-            <div style={{ height: '100%', width: `${pct}%`, borderRadius: 2,
-              background: lowCredits ? '#ff6b7a' : '#7c5cff', transition: 'width 300ms' }} />
-          </div>
-          <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5,
-            color: '#5a5a60', marginTop: 6 }}>
-            {credits} / {maxCredits} · {lowCredits ? 'running low' : 'healthy'}
-          </div>
+          {lowCredits && (
+            <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5,
+              color: '#ff6b7a', marginTop: 14 }}>
+              running low — top up to keep optimizing
+            </div>
+          )}
         </div>
 
         {/* This month */}
@@ -170,10 +182,10 @@ export default function BillingPage() {
           </div>
           <div style={{ fontFamily: 'var(--font-instrument-serif, Georgia, serif)', fontSize: 54,
             letterSpacing: '-0.02em', lineHeight: 1, color: '#ededed', marginTop: 8 }}>
-            {totalCreditsUsed.toLocaleString()}
+            {monthCreditsUsed.toLocaleString()}
           </div>
           <div style={{ fontSize: 12.5, color: '#8a8a90', marginTop: 6 }}>
-            credits used · {totalCalls} calls
+            credits used · {monthCalls} {monthCalls === 1 ? 'call' : 'calls'}
           </div>
         </div>
 
@@ -213,46 +225,41 @@ export default function BillingPage() {
             fontSize: 11, color: '#5a5a60' }}>all time</span>
         </div>
 
-        {/* Optimize */}
-        <div style={{ display: 'grid', gridTemplateColumns: '160px 1fr 100px 80px',
+        {USAGE_TYPES.map((u, i) => {
+          const calls = u.key === 'optimize'
+            ? optimizeCalls
+            : u.key === 'health'
+              ? healthCalls
+              : advisoryCalls;
+          const credits = u.key === 'optimize'
+            ? optimizeCredits
+            : u.key === 'health'
+              ? healthCredits
+              : advisoryCredits;
+          const widthPct = Math.min(100, (calls / maxCalls) * 100);
+          const isLast = i === USAGE_TYPES.length - 1;
+          return (
+        <div key={u.key} style={{ display: 'grid', gridTemplateColumns: '160px 1fr 100px 80px',
           gap: 14, alignItems: 'center', padding: '10px 0',
-          borderBottom: '1px solid #1f1f23' }}>
+          borderBottom: isLast ? 'none' : '1px solid #1f1f23' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#7c5cff', flexShrink: 0 }} />
-            <span style={{ fontSize: 13, color: '#ededed' }}>Optimize</span>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: u.color, flexShrink: 0 }} />
+            <span style={{ fontSize: 13, color: '#ededed' }}>{u.label}</span>
             <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 11,
-              color: '#5a5a60' }}>10/call</span>
+              color: '#5a5a60' }}>{u.cost}/call</span>
           </div>
           <div style={{ height: 6, background: '#2a2a2e', borderRadius: 3, overflow: 'hidden' }}>
-            <div style={{ height: '100%', width: `${Math.min(100, (optimizeRuns / Math.max(maxRuns, 1)) * 100)}%`,
-              background: '#7c5cff', borderRadius: 3 }} />
+            <div style={{ height: '100%', width: `${widthPct}%`,
+              background: u.color, borderRadius: 3 }} />
           </div>
           <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 12,
-            color: '#8a8a90', textAlign: 'right' }}>{optimizeRuns} calls</div>
+            color: '#8a8a90', textAlign: 'right' }}>{calls} {calls === 1 ? 'call' : 'calls'}</div>
           <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 12,
-            color: '#ededed', textAlign: 'right' }}>{optimizeRuns * 10}</div>
+            color: '#ededed', textAlign: 'right' }}>{credits}</div>
         </div>
+          );
+        })}
 
-        {/* Health score — we don't have a separate counter, show placeholder */}
-        {USAGE_TYPES.slice(1).map((u, i) => (
-          <div key={u.key} style={{ display: 'grid', gridTemplateColumns: '160px 1fr 100px 80px',
-            gap: 14, alignItems: 'center', padding: '10px 0',
-            borderBottom: i === 0 ? '1px solid #1f1f23' : 'none' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ width: 8, height: 8, borderRadius: '50%', background: u.color, flexShrink: 0 }} />
-              <span style={{ fontSize: 13, color: '#ededed' }}>{u.label}</span>
-              <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 11,
-                color: '#5a5a60' }}>{u.cost}/call</span>
-            </div>
-            <div style={{ height: 6, background: '#2a2a2e', borderRadius: 3, overflow: 'hidden' }}>
-              <div style={{ height: '100%', width: '0%', background: u.color, borderRadius: 3 }} />
-            </div>
-            <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 12,
-              color: '#8a8a90', textAlign: 'right' }}>0 calls</div>
-            <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 12,
-              color: '#ededed', textAlign: 'right' }}>0</div>
-          </div>
-        ))}
       </div>
 
       {/* API keys */}
@@ -312,6 +319,7 @@ export default function BillingPage() {
           Keys inherit your credit balance.
         </div>
       </div>
+    </div>
     </div>
   );
 }
