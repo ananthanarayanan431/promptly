@@ -36,7 +36,10 @@ _QA_SYSTEM = textwrap.dedent("""
 
 
 def extract_text_from_pdf(pdf_bytes: bytes) -> str:
-    reader = PdfReader(io.BytesIO(pdf_bytes))
+    try:
+        reader = PdfReader(io.BytesIO(pdf_bytes))
+    except Exception as exc:
+        raise ValueError("Invalid or unreadable PDF") from exc
     pages = []
     for page in reader.pages:
         text = page.extract_text()
@@ -77,6 +80,8 @@ async def generate_qa_pairs(text: str, api_key: str) -> list[dict[str, str]]:
     chunks = _chunk_text(text, max_chars=2000)
     all_pairs: list[dict[str, str]] = []
 
+    if len(chunks) > 15:
+        _log.warning("PDF produced %d chunks; processing first 15 only", len(chunks))
     for chunk in chunks[:15]:  # cap at 15 chunks to control cost
         try:
             response = await llm.ainvoke(

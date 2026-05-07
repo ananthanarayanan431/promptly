@@ -27,6 +27,7 @@ Constants are tuned for interactive web use (fewer rounds than the full paper):
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import math
@@ -46,55 +47,130 @@ _MUTATION_INTERVAL = 10  # regenerate a new mutation every N rounds
 _UCB_ALPHA = 0.5  # confidence-bound exploration weight (paper §4.1)
 _ELO_K = 32.0  # Elo K-factor
 _MAX_VAL_EXAMPLES = 20  # cap validation set used for final scoring
-_MAX_SCORE_EXAMPLES = 8  # cap per-prompt eval examples during tournament
+_MAX_SCORE_EXAMPLES = 15  # cap per-prompt eval examples during tournament
+
+# Token budgets — variants need room for 5 full rewrites; scoring/judging only needs short JSON
+_VARIANT_MAX_TOKENS = 4096
+_MUTATION_MAX_TOKENS = 2048
+_JUDGE_MAX_TOKENS = 128  # {"winner": "A"} or {"winner": "B"} + reasoning
+_SCORE_MAX_TOKENS = 64  # {"score": 0.87}
 
 # ── LLM system prompts ────────────────────────────────────────────────────────
+
+# Receives: {n}, {domain_summary}, {sample_questions}
 _VARIANT_SYSTEM = textwrap.dedent("""
-    You are a prompt engineering expert.
-    Given a base system prompt for a specific domain, generate {n} improved variants.
-    Each variant should:
-    - Preserve the original intent and domain focus
-    - Be clearer, more specific, and better structured
-    - Include explicit output format instructions if appropriate
-    - Be suitable as a system prompt for an AI assistant
+    You are a world-class prompt engineer. Your job is to take a short, vague base prompt and
+    transform it into {n} richly detailed, high-performance system prompt variants that will
+    dramatically improve an AI assistant's answers on a specific domain.
 
-    Output ONLY a JSON array of strings, each string being one complete variant.
-    No preamble, no explanation, no markdown fences.
+    Domain context (inferred from the knowledge base):
+    {domain_summary}
+
+    Sample questions this assistant must answer well:
+    {sample_questions}
+
+    Each variant MUST:
+    - Be substantially longer and more detailed than the base prompt (aim for 150–400 words)
+    - Embed concrete domain knowledge, terminology, and best practices drawn from the
+      sample questions
+    - Give the model clear behavioural rules it can follow when answering those specific questions
+    - Be a complete, production-ready system prompt that stands alone
+
+    Use a different enhancement strategy per variant — do NOT just rephrase:
+      * Variant 1 — Expert persona + knowledge depth: Assign a highly specific expert identity
+        (e.g. "You are a senior financial advisor with 20 years of experience…"). Add domain
+        knowledge the model should draw on, and specify how to reason through complex questions.
+      * Variant 2 — Structured reasoning protocol: Define an explicit step-by-step process the
+        model must follow for every answer (e.g. clarify → analyse → recommend → caveat).
+        Include decision rules for edge cases specific to the domain.
+      * Variant 3 — Output format + evidence standards: Specify exactly how answers should be
+        structured (sections, bullet points, tables where useful). Require the model to cite
+        reasoning, quantify where possible, and flag uncertainty explicitly.
+      * Variant 4 — Safety + scope boundaries: Define what the assistant will and won't do,
+        common misconceptions to correct, when to recommend professional consultation, and how
+        to handle questions outside its competence — grounded in the domain context.
+      * Variant 5 — Comprehensive enhancement: Combine the best elements of the above — strong
+        persona, domain-specific knowledge rules, structured output, and safety guardrails —
+        into a single highly polished prompt.
+
+    Output ONLY a valid JSON array of exactly {n} strings.
+    No markdown fences, no preamble, no explanation — just the raw JSON array.
 """).strip()
 
+# Receives: {tip}, {domain_summary}
 _MUTATION_SYSTEM = textwrap.dedent("""
-    You are a prompt engineering expert.
-    Given a high-performing system prompt, produce one improved mutation.
-    The mutation should:
-    - Keep the core intent and domain focus intact
-    - Vary the structure, framing, or specificity in a meaningful way
-    - Not be identical to the original
+    You are a world-class prompt engineer. You are given the current best-performing system
+    prompt for an AI assistant operating in a specific domain. Your task is to produce ONE
+    meaningfully improved mutation that makes the assistant smarter and more useful.
 
-    Output ONLY the mutated prompt text. No preamble, no explanation.
+    Domain context: {domain_summary}
+
+    Improvement strategy to apply: {tip}
+
+    Rules:
+    - The mutation must be LONGER and MORE DETAILED than the original — add depth, not remove it
+    - Inject domain-specific knowledge, terminology, and reasoning guidelines the original lacks
+    - The result must still serve the same core purpose but perform better on domain questions
+    - Do not summarise or compress the original — expand and enhance it
+    - The result must be a complete, production-ready system prompt
+
+    Output ONLY the mutated prompt text. No preamble, no explanation, no quotes.
 """).strip()
+
+_MUTATION_TIPS = [
+    (
+        "Add a detailed step-by-step reasoning protocol the model must follow before answering: "
+        "e.g. (1) identify what is being asked, (2) recall relevant domain principles, "
+        "(3) apply them to the specific case, (4) state the answer with supporting reasoning, "
+        "(5) add any important caveats or limitations."
+    ),
+    (
+        "Deepen the expert persona: give the assistant a highly specific professional identity "
+        "with years of experience, named areas of expertise drawn from the domain context, "
+        "and explicit guidance on how that expertise shapes the answers it gives."
+    ),
+    (
+        "Add a comprehensive output format specification: define when to use bullet points, "
+        "numbered steps, tables, or prose; require quantification where possible; "
+        "specify answer length norms; and mandate explicit uncertainty flags when confidence is low."  # noqa: E501
+    ),
+    (
+        "Add domain-specific safety and scope rules: define the exact boundaries of what the "
+        "assistant will and won't answer, common misconceptions it must proactively correct, "
+        "and clear triggers for recommending professional consultation."
+    ),
+    (
+        "Inject domain knowledge directly into the prompt: add 3–5 key principles, frameworks, "
+        "or rules-of-thumb from the domain that the model should always apply when reasoning, "
+        "so it behaves like a knowledgeable practitioner rather than a generic assistant."
+    ),
+]
 
 _DUEL_SYSTEM = textwrap.dedent("""
     You are an impartial evaluation judge.
-    You will be shown a question, its gold-standard answer, and two responses
-    generated by different system prompts (Prompt A and Prompt B).
+    Two AI assistants used different system prompts to answer the same question.
+    Your job: decide which response better answers the question given the gold-standard answer.
 
-    Choose which response better answers the question relative to the gold answer.
+    Criteria (in order of importance):
+    1. Accuracy — does the response align with the gold answer?
+    2. Completeness — does it cover the key points?
+    3. Clarity — is it well-structured and easy to understand?
 
-    Output ONLY a JSON object: {"winner": "A"} or {"winner": "B"}
-    No explanation. No other keys.
+    Output ONLY valid JSON: {"winner": "A"} or {"winner": "B"}
+    No explanation. No other keys. No markdown.
 """).strip()
 
 _SCORE_SYSTEM = textwrap.dedent("""
     You are an evaluation judge.
-    Given a question, a gold answer, and a model's answer, rate how well
-    the model's answer matches the gold answer on a scale from 0.0 to 1.0.
+    Rate how well a model's answer matches the gold-standard answer.
 
+    Scale:
     0.0 = completely wrong or irrelevant
-    0.5 = partially correct
-    1.0 = fully correct and equivalent to gold answer
+    0.5 = partially correct — captures some key points but misses others
+    1.0 = fully correct and equivalent to the gold answer
 
-    Output ONLY a JSON object: {"score": <float>}
-    No explanation.
+    Output ONLY valid JSON: {"score": <float between 0.0 and 1.0>}
+    No explanation. No other keys. No markdown.
 """).strip()
 
 
@@ -143,33 +219,71 @@ def _strip_fences(text: str) -> str:
     return text.strip()
 
 
-async def _generate_variants(base_prompt: str, n: int, llm: ChatOpenAI) -> list[str]:
+def _build_domain_summary(pairs: list[dict[str, str]], max_samples: int = 5) -> tuple[str, str]:
+    """Return (domain_summary_sentence, sample_questions_block) from dataset pairs."""
+    sample = pairs[:max_samples]
+    questions_block = "\n".join(f"- {p['question']}" for p in sample)
+    # Single-sentence domain hint derived from the first few questions
+    topics = ", ".join(" ".join(p["question"].split()[:6]) for p in sample[:3])
+    domain_summary = f"This domain covers topics such as: {topics}."
+    return domain_summary, questions_block
+
+
+async def _generate_variants(
+    base_prompt: str,
+    n: int,
+    llm: ChatOpenAI,
+    domain_summary: str,
+    sample_questions: str,
+) -> list[str]:
+    system = _VARIANT_SYSTEM.format(
+        n=n,
+        domain_summary=domain_summary,
+        sample_questions=sample_questions,
+    )
     try:
-        response = await llm.ainvoke(
+        # Use a separate client with a higher token budget for variant generation
+        gen_llm = llm.model_copy(update={"max_tokens": _VARIANT_MAX_TOKENS})
+        response = await gen_llm.ainvoke(
             [
-                {"role": "system", "content": _VARIANT_SYSTEM.format(n=n)},
-                {"role": "user", "content": f"Base prompt:\n\n{base_prompt}"},
+                {"role": "system", "content": system},
+                {"role": "user", "content": f"Base prompt to improve:\n\n{base_prompt}"},
             ]
         )
         raw = _strip_fences(str(response.content).strip())
+        # Tolerate truncated JSON by finding the last complete string entry
         variants: Any = json.loads(raw)
-        if isinstance(variants, list) and all(isinstance(v, str) for v in variants):
-            return [v for v in variants[:n] if v.strip()]
+        if isinstance(variants, list):
+            result = [v for v in variants[:n] if isinstance(v, str) and v.strip()]
+            if result:
+                _log.info("Generated %d variants", len(result))
+                return result
     except Exception as exc:  # noqa: BLE001
-        _log.warning("Variant generation failed: %s", exc)
+        _log.warning("Variant generation failed (%s), retrying with smaller n=3", exc)
+        # Retry with fewer variants to reduce token pressure
+        if n > 3:
+            return await _generate_variants(base_prompt, 3, llm, domain_summary, sample_questions)
+    _log.error("Variant generation failed entirely — falling back to base prompt only")
     return [base_prompt]
 
 
-async def _mutate_prompt(prompt: str, llm: ChatOpenAI) -> str:
+async def _mutate_prompt(
+    prompt: str,
+    llm: ChatOpenAI,
+    domain_summary: str,
+    tip: str,
+) -> str:
+    system = _MUTATION_SYSTEM.format(domain_summary=domain_summary, tip=tip)
     try:
-        response = await llm.ainvoke(
+        mut_llm = llm.model_copy(update={"max_tokens": _MUTATION_MAX_TOKENS})
+        response = await mut_llm.ainvoke(
             [
-                {"role": "system", "content": _MUTATION_SYSTEM},
-                {"role": "user", "content": f"Prompt to mutate:\n\n{prompt}"},
+                {"role": "system", "content": system},
+                {"role": "user", "content": f"Current best prompt:\n\n{prompt}"},
             ]
         )
         mutated = str(response.content).strip()
-        if mutated:
+        if mutated and mutated != prompt:
             return mutated
     except Exception as exc:  # noqa: BLE001
         _log.warning("Mutation failed: %s", exc)
@@ -197,14 +311,24 @@ async def _duel(
     gold: str,
     llm: ChatOpenAI,
     judge_llm: ChatOpenAI,
+    rng: random.Random,
 ) -> int:
-    """Return 0 if A wins, 1 if B wins."""
-    ans_a, ans_b = (
-        await _get_answer(prompt_a, question, llm),
-        await _get_answer(prompt_b, question, llm),
+    """Return 0 if A wins, 1 if B wins.
+
+    Randomises presentation order (A/B vs B/A) on each call to eliminate
+    position bias — the true winner is always mapped back to the original index.
+    """
+    # Randomise which prompt is shown as "A" to counteract position bias
+    flip = rng.random() < 0.5
+    first_prompt, second_prompt = (prompt_b, prompt_a) if flip else (prompt_a, prompt_b)
+
+    ans_first, ans_second = await asyncio.gather(
+        _get_answer(first_prompt, question, llm),
+        _get_answer(second_prompt, question, llm),
     )
     try:
-        response = await judge_llm.ainvoke(
+        j_llm = judge_llm.model_copy(update={"max_tokens": _JUDGE_MAX_TOKENS})
+        response = await j_llm.ainvoke(
             [
                 {"role": "system", "content": _DUEL_SYSTEM},
                 {
@@ -212,19 +336,56 @@ async def _duel(
                     "content": (
                         f"Question: {question}\n"
                         f"Gold answer: {gold}\n\n"
-                        f"Response A:\n{ans_a}\n\n"
-                        f"Response B:\n{ans_b}"
+                        f"Response A:\n{ans_first}\n\n"
+                        f"Response B:\n{ans_second}"
                     ),
                 },
             ]
         )
         raw = _strip_fences(str(response.content).strip())
         result: Any = json.loads(raw)
-        winner = str(result.get("winner", "A")).upper()
-        return 0 if winner == "A" else 1
+        winner_label = str(result.get("winner", "")).upper().strip()
+        if winner_label not in ("A", "B"):
+            raise ValueError(f"Unexpected winner label: {winner_label!r}")
+        # Map back: if we flipped, "A" in judge output = prompt_b = index 1
+        winner_is_first = winner_label == "A"
+        first_is_b = flip
+        if winner_is_first:
+            return 1 if first_is_b else 0
+        return 0 if first_is_b else 1
     except Exception as exc:  # noqa: BLE001
-        _log.warning("Duel judge failed: %s", exc)
-        return 0
+        _log.warning("Duel judge failed: %s — random tiebreak", exc)
+        return rng.randint(0, 1)  # random tiebreak, not always A
+
+
+async def _score_one(
+    prompt: str,
+    question: str,
+    gold: str,
+    llm: ChatOpenAI,
+    judge_llm: ChatOpenAI,
+) -> float:
+    predicted = await _get_answer(prompt, question, llm)
+    try:
+        sc_llm = judge_llm.model_copy(update={"max_tokens": _SCORE_MAX_TOKENS})
+        response = await sc_llm.ainvoke(
+            [
+                {"role": "system", "content": _SCORE_SYSTEM},
+                {
+                    "role": "user",
+                    "content": (
+                        f"Question: {question}\nGold answer: {gold}\nModel answer: {predicted}"
+                    ),
+                },
+            ]
+        )
+        raw = _strip_fences(str(response.content).strip())
+        obj: Any = json.loads(raw)
+        s = float(obj.get("score", 0.0))
+        return max(0.0, min(1.0, s))
+    except Exception as exc:  # noqa: BLE001
+        _log.warning("Score judge failed: %s", exc)
+        return 0.0
 
 
 async def _score_prompt(
@@ -235,31 +396,10 @@ async def _score_prompt(
 ) -> float:
     if not examples:
         return 0.0
-    scores: list[float] = []
-    for ex in examples[:_MAX_SCORE_EXAMPLES]:
-        question = ex["question"]
-        gold = ex["answer"]
-        predicted = await _get_answer(prompt, question, llm)
-        try:
-            response = await judge_llm.ainvoke(
-                [
-                    {"role": "system", "content": _SCORE_SYSTEM},
-                    {
-                        "role": "user",
-                        "content": (
-                            f"Question: {question}\nGold answer: {gold}\n"
-                            f"Model answer: {predicted}"
-                        ),
-                    },
-                ]
-            )
-            raw = _strip_fences(str(response.content).strip())
-            obj: Any = json.loads(raw)
-            s = float(obj.get("score", 0.0))
-            scores.append(max(0.0, min(1.0, s)))
-        except Exception as exc:  # noqa: BLE001
-            _log.warning("Score judge failed: %s", exc)
-            scores.append(0.0)
+    batch = examples[:_MAX_SCORE_EXAMPLES]
+    scores = await asyncio.gather(
+        *[_score_one(prompt, ex["question"], ex["answer"], llm, judge_llm) for ex in batch]
+    )
     return sum(scores) / len(scores) if scores else 0.0
 
 
@@ -392,11 +532,8 @@ def _select_duel_pair(wm: _WinMatrix, rng: random.Random) -> tuple[int, int]:
             if i == j:
                 continue
             alpha = wm.W[i][j] + 1.0
-            beta = wm.W[j][i] + 1.0
-            # Sample from Beta(alpha, beta) via Gamma ratio
-            g_a = -(math.log(rng.random() + 1e-15) ** (1.0 / alpha)) if alpha > 0 else 1e-6
-            g_b = -(math.log(rng.random() + 1e-15) ** (1.0 / beta)) if beta > 0 else 1e-6
-            theta = g_a / (g_a + g_b + 1e-15)
+            beta_val = wm.W[j][i] + 1.0
+            theta = rng.betavariate(alpha, beta_val)
             if theta > best_theta:
                 best_theta = theta
                 best_i, best_j = i, j
@@ -436,7 +573,7 @@ async def optimize_domain_prompt(
     if not pairs:
         return {"optimized_prompt": base_prompt, "score_before": 0.0, "score_after": 0.0}
 
-    # 70/15/15 split — consistent seed so reruns are reproducible
+    # 85/15 split — consistent seed so reruns are reproducible
     rng = random.Random(42)  # noqa: S311
     shuffled = list(pairs)
     rng.shuffle(shuffled)
@@ -449,22 +586,27 @@ async def optimize_domain_prompt(
         duel_pool = shuffled  # tiny dataset fallback
 
     # ── LLM clients ───────────────────────────────────────────────────────────
-    # Claude Haiku: fast + cheap for variant generation and answering
+    # Claude Haiku: fast + cheap for answering during duels
+    # max_tokens=512 is fine here — answers to individual questions are short
     fast_llm = ChatOpenAI(
-        model="anthropic/claude-haiku-4-5",
+        model="anthropic/claude-3.5-haiku",
         openai_api_base="https://openrouter.ai/api/v1",
         openai_api_key=api_key,
         temperature=0.7,
         max_tokens=512,
     )
-    # GPT-4o: stronger cross-model judge — different architecture avoids self-preference bias
+    # GPT-4o: cross-model judge — different architecture avoids self-preference bias
+    # Variant generation and mutations use fast_llm with _VARIANT_MAX_TOKENS override
     judge_llm = ChatOpenAI(
         model="openai/gpt-4o",
         openai_api_base="https://openrouter.ai/api/v1",
         openai_api_key=api_key,
         temperature=0.0,
-        max_tokens=64,
+        max_tokens=_JUDGE_MAX_TOKENS,
     )
+
+    # ── Build domain context for variant/mutation prompts ─────────────────────
+    domain_summary, sample_questions = _build_domain_summary(duel_pool)
 
     # ── Baseline score ────────────────────────────────────────────────────────
     score_before = await _score_prompt(
@@ -472,15 +614,29 @@ async def optimize_domain_prompt(
     )
 
     # ── Generate initial candidates ───────────────────────────────────────────
-    variant_texts = await _generate_variants(base_prompt, num_candidates, fast_llm)
+    variant_texts = await _generate_variants(
+        base_prompt, num_candidates, fast_llm, domain_summary, sample_questions
+    )
+    # Always include the original baseline so it competes in the tournament
     if base_prompt not in variant_texts:
-        variant_texts.insert(0, base_prompt)  # always duel against baseline
-    variant_texts = variant_texts[:num_candidates]
+        variant_texts.insert(0, base_prompt)
+    # Deduplicate while preserving order
+    seen: set[str] = set()
+    unique_variants: list[str] = []
+    for v in variant_texts:
+        if v not in seen:
+            seen.add(v)
+            unique_variants.append(v)
+    variant_texts = unique_variants[:num_candidates]
 
     candidates = [_Candidate(text=t) for t in variant_texts]
     wm = _WinMatrix(size=len(candidates))
 
     if len(candidates) < 2:
+        _log.error(
+            "Only 1 candidate after variant generation — returning base prompt unchanged. "
+            "Check that the variant LLM call is succeeding."
+        )
         score_after = await _score_prompt(
             base_prompt, val_split[:_MAX_VAL_EXAMPLES], fast_llm, judge_llm
         )
@@ -490,7 +646,10 @@ async def optimize_domain_prompt(
             "score_after": round(score_after, 4),
         }
 
+    _log.info("Starting PDO tournament with %d candidates", len(candidates))
+
     # ── PDO tournament (Double Thompson Sampling) ─────────────────────────────
+    mutation_tip_idx = 0
     for round_idx in range(_TOURNAMENT_ROUNDS):
         i, j = _select_duel_pair(wm, rng)
         ex = rng.choice(duel_pool)
@@ -498,7 +657,7 @@ async def optimize_domain_prompt(
 
         # _duel returns 0 (i wins) or 1 (j wins)
         duel_result = await _duel(
-            candidates[i].text, candidates[j].text, question, gold, fast_llm, judge_llm
+            candidates[i].text, candidates[j].text, question, gold, fast_llm, judge_llm, rng
         )
         winner_idx, loser_idx = (i, j) if duel_result == 0 else (j, i)
         wm.record_win(winner_idx, loser_idx)
@@ -507,7 +666,11 @@ async def optimize_domain_prompt(
         # Top-performer guided mutation every M rounds
         if (round_idx + 1) % _MUTATION_INTERVAL == 0:
             best_now = _fuse_rankings(wm, candidates, rng)
-            mutated_text = await _mutate_prompt(candidates[best_now].text, fast_llm)
+            tip = _MUTATION_TIPS[mutation_tip_idx % len(_MUTATION_TIPS)]
+            mutation_tip_idx += 1
+            mutated_text = await _mutate_prompt(
+                candidates[best_now].text, fast_llm, domain_summary, tip
+            )
             if mutated_text not in {c.text for c in candidates}:
                 candidates.append(_Candidate(text=mutated_text, elo=candidates[best_now].elo))
                 wm.add_candidate()

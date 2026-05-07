@@ -26,8 +26,8 @@ class MinioSettings(BaseSettings):
         extra="ignore",
     )
     MINIO_ENDPOINT_URL: str = "http://localhost:9000"
-    MINIO_ACCESS_KEY: str = "minioadmin"
-    MINIO_SECRET_KEY: SecretStr = SecretStr("minioadmin123")
+    MINIO_ACCESS_KEY: str
+    MINIO_SECRET_KEY: SecretStr
     MINIO_BUCKET_NAME: str = "promptly"
 
 

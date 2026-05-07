@@ -50,16 +50,34 @@ class DomainListResponse(BaseModel):
 
 class CreateDomainJobResponse(BaseModel):
     job_id: str
-    domain_id: str
+    domain_id: uuid.UUID
 
 
 class DomainJobPollResponse(BaseModel):
     job_id: str
     status: str
-    domain_id: str | None = None
+    domain_id: uuid.UUID | None = None
     result: dict[str, Any] | None = None
     error: str | None = None
 
 
 class DeleteDomainResponse(BaseModel):
-    deleted: str
+    domain_id: uuid.UUID
+
+
+class QAPair(BaseModel):
+    question: str = Field(min_length=1)
+    answer: str = Field(min_length=1)
+
+
+class DatasetRowsResponse(BaseModel):
+    rows: list[QAPair]
+    row_count: int
+
+
+class UpdateDatasetRequest(BaseModel):
+    rows: list[QAPair] = Field(min_length=1)
+
+
+class AugmentDatasetRequest(BaseModel):
+    count: int = Field(default=10, ge=1, le=50)

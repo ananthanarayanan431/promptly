@@ -1,4 +1,4 @@
-.PHONY: help install dev worker infra migrate migration rollback dbshell \
+.PHONY: help install dev worker infra pull migrate migration rollback dbshell \
         lint format typecheck check test test-unit test-api \
         build prod down logs clean
 
@@ -8,7 +8,8 @@ help:
 	@echo ""
 	@echo "  Dev"
 	@echo "    make install          Install all dependencies"
-	@echo "    make infra            Start Postgres + Redis"
+	@echo "    make pull             Pull all required Docker images"
+	@echo "    make infra            Start Postgres + Redis + MinIO"
 	@echo "    make dev              Start API with hot-reload"
 	@echo "    make worker           Start Celery worker"
 	@echo ""
@@ -41,8 +42,14 @@ help:
 install:
 	uv sync --all-extras
 
+pull:
+	docker pull pgvector/pgvector:pg16
+	docker pull redis:7-alpine
+	docker pull minio/minio:latest
+	docker pull nginx:alpine
+
 infra:
-	docker compose up postgres redis -d
+	docker compose up postgres redis minio -d
 
 dev:
 	uv run uvicorn app.main:app --reload --reload-dir src --port 8000 --log-level debug

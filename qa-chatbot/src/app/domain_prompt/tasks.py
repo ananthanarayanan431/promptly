@@ -3,21 +3,27 @@ Two-stage Celery pipeline for domain prompt optimization.
 
 Stage 1 — prepare_domain_dataset:
   PDF bytes → text extraction → LLM Q&A generation → JSONL stored in MinIO
-  On success: dispatches run_domain_optimization automatically.
+  On success: marks domain completed (dataset ready); user optimizes on demand.
 
 Stage 2 — run_domain_optimization:
   Loads JSONL from MinIO → scores prompt variants → saves winning prompt to DB.
 
-Both tasks follow the same Redis job lifecycle as process_chat_async:
+Stage 3 — augment_domain_dataset (optional):
+  Loads existing JSONL → generates N additional Q&A pairs → appends and saves.
+
+All tasks follow the same Redis job lifecycle as process_chat_async:
   queued → started → completed | failed
 """
 
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any
 
 from app.workers.celery_app import celery_app
+
+_log = logging.getLogger(__name__)
 
 
 @celery_app.task(bind=True, max_retries=2, default_retry_delay=10)  # type: ignore[untyped-decorator]
@@ -55,6 +61,7 @@ def prepare_domain_dataset(
         api_key = llm_cfg.OPENROUTER_API_KEY.get_secret_value()
         bucket = minio_cfg.MINIO_BUCKET_NAME
 
+        is_terminal = False
         try:
             async with AsyncSessionLocal() as db:
                 repo = DomainPromptRepository(db)
@@ -86,13 +93,16 @@ def prepare_domain_dataset(
                         dataset_key=dataset_key,
                         row_count=len(pairs),
                     )
+                if domain_with_ds is not None:
+                    await repo.set_status(domain_with_ds, DomainPromptStatus.completed)
                 await db.commit()
 
-            run_domain_optimization.apply_async(
-                kwargs={"job_id": job_id, "domain_id": domain_id, "user_id": user_id}
-            )
+            await set_dp_job_status(job_id, "completed")
+            await set_dp_job_result(job_id, {"domain_id": domain_id, "row_count": len(pairs)})
 
         except Exception as exc:
+            is_terminal = isinstance(exc, ValueError)
+
             async with AsyncSessionLocal() as db:
                 repo = DomainPromptRepository(db)
                 domain = await repo.get_by_id(UUID(domain_id))
@@ -105,32 +115,31 @@ def prepare_domain_dataset(
                     await db.commit()
 
             await set_dp_job_status(job_id, "failed")
-            await set_dp_job_result(job_id, {"error": str(exc)})
+            await set_dp_job_result(job_id, {"error": "Internal server error"})
 
-            try:
-                from uuid import UUID as _UUID
+            if is_terminal:
+                # Refund only on terminal failure — transient failures may succeed on retry
+                try:
+                    from uuid import UUID as _UUID
 
-                from app.repositories.user_repo import UserRepository as _UserRepo
+                    from app.repositories.user_repo import UserRepository as _UserRepo
 
-                async with AsyncSessionLocal() as refund_db:
-                    _repo = _UserRepo(refund_db)
-                    await _repo.refund_credits(_UUID(user_id), 10)
-                    await refund_db.commit()
-            except Exception:  # noqa: BLE001, S110
-                pass  # Non-critical — original exception propagates
+                    async with AsyncSessionLocal() as refund_db:
+                        _repo = _UserRepo(refund_db)
+                        await _repo.refund_credits(_UUID(user_id), 10)
+                        await refund_db.commit()
+                except Exception:  # noqa: BLE001
+                    _log.exception(
+                        "Failed to refund credits for user %s after terminal failure", user_id
+                    )
 
-            # Don't retry terminal data errors — only transient failures
-            _terminal = (ValueError,)
-            if isinstance(exc, _terminal):
                 raise exc
+
             raise self.retry(exc=exc) from exc
         finally:
             await dispose_async_engine()
 
-    try:
-        asyncio.run(_run())
-    except Exception as exc:
-        raise exc  # noqa: TRY201
+    asyncio.run(_run())
 
 
 @celery_app.task(bind=True, max_retries=2, default_retry_delay=10)  # type: ignore[untyped-decorator]
@@ -164,6 +173,7 @@ def run_domain_optimization(
         api_key = llm_cfg.OPENROUTER_API_KEY.get_secret_value()
         bucket = minio_cfg.MINIO_BUCKET_NAME
 
+        is_terminal = False
         try:
             # MinIO work outside the DB session to avoid greenlet conflict
             dataset_key = object_key(user_id, domain_id, "dataset.jsonl")
@@ -204,6 +214,8 @@ def run_domain_optimization(
             )
 
         except Exception as exc:
+            is_terminal = isinstance(exc, ValueError)
+
             async with AsyncSessionLocal() as db:
                 repo = DomainPromptRepository(db)
                 domain = await repo.get_by_id(UUID(domain_id))
@@ -216,29 +228,119 @@ def run_domain_optimization(
                     await db.commit()
 
             await set_dp_job_status(job_id, "failed")
-            await set_dp_job_result(job_id, {"error": str(exc)})
+            await set_dp_job_result(job_id, {"error": "Internal server error"})
 
+            if is_terminal:
+                # Refund only on terminal failure — transient failures may succeed on retry
+                try:
+                    from uuid import UUID as _UUID
+
+                    from app.repositories.user_repo import UserRepository as _UserRepo
+
+                    async with AsyncSessionLocal() as refund_db:
+                        _repo = _UserRepo(refund_db)
+                        await _repo.refund_credits(_UUID(user_id), 10)
+                        await refund_db.commit()
+                except Exception:  # noqa: BLE001
+                    _log.exception(
+                        "Failed to refund credits for user %s after terminal failure", user_id
+                    )
+
+                raise exc
+
+            raise self.retry(exc=exc) from exc
+        finally:
+            await dispose_async_engine()
+
+    asyncio.run(_run())
+
+
+@celery_app.task(bind=True, max_retries=2, default_retry_delay=10)  # type: ignore[untyped-decorator]
+def augment_domain_dataset(
+    self: Any,
+    *,
+    job_id: str,
+    domain_id: str,
+    user_id: str,
+    count: int = 10,
+) -> None:
+    async def _run() -> None:
+        import json
+        from uuid import UUID
+
+        from app.config.env import get_minio_settings
+        from app.config.llm import get_llm_settings
+        from app.db.redis import reset_connection_pool
+        from app.db.session import AsyncSessionLocal, dispose_async_engine
+        from app.domain_prompt.cache import set_dp_job_result, set_dp_job_status
+        from app.domain_prompt.dataset_builder import generate_qa_pairs, pairs_to_jsonl
+        from app.domain_prompt.repository import DomainPromptRepository
+        from app.domain_prompt.storage import download_text, object_key, upload_text
+
+        reset_connection_pool()
+        await dispose_async_engine()
+        await set_dp_job_status(job_id, "started")
+
+        minio_cfg = get_minio_settings()
+        llm_cfg = get_llm_settings()
+        api_key = llm_cfg.OPENROUTER_API_KEY.get_secret_value()
+        bucket = minio_cfg.MINIO_BUCKET_NAME
+
+        try:
+            dataset_key_val = object_key(user_id, domain_id, "dataset.jsonl")
             try:
-                from uuid import UUID as _UUID
+                existing_jsonl = download_text(bucket, dataset_key_val)
+            except Exception:  # noqa: BLE001
+                existing_jsonl = ""
 
-                from app.repositories.user_repo import UserRepository as _UserRepo
+            existing_pairs: list[dict[str, str]] = []
+            for line in existing_jsonl.strip().splitlines():
+                try:
+                    obj = json.loads(line)
+                    if isinstance(obj, dict) and "question" in obj and "answer" in obj:
+                        existing_pairs.append(obj)
+                except Exception:  # noqa: BLE001, S112
+                    continue
 
-                async with AsyncSessionLocal() as refund_db:
-                    _repo = _UserRepo(refund_db)
-                    await _repo.refund_credits(_UUID(user_id), 10)
-                    await refund_db.commit()
-            except Exception:  # noqa: BLE001, S110
-                pass  # Non-critical — original exception propagates
+            # Use existing Q&A as context to generate topically consistent new pairs
+            context_text = "\n".join(
+                f"Q: {p['question']}\nA: {p['answer']}" for p in existing_pairs[:20]
+            )
+            new_pairs = await generate_qa_pairs(
+                context_text or "Generate general domain Q&A.", api_key
+            )
 
-            # Don't retry terminal data errors — only transient failures
-            _terminal = (ValueError,)
-            if isinstance(exc, _terminal):
+            existing_qs = {p["question"].strip().lower() for p in existing_pairs}
+            added = [p for p in new_pairs if p["question"].strip().lower() not in existing_qs]
+            added = added[:count]
+
+            merged = existing_pairs + added
+            upload_text(bucket, dataset_key_val, pairs_to_jsonl(merged))
+
+            async with AsyncSessionLocal() as db:
+                repo = DomainPromptRepository(db)
+                domain = await repo.get_by_id(UUID(domain_id))
+                if domain is not None and domain.dataset is not None:
+                    await repo.update_dataset(
+                        domain.dataset,
+                        dataset_key=dataset_key_val,
+                        row_count=len(merged),
+                    )
+                await db.commit()
+
+            await set_dp_job_status(job_id, "completed")
+            await set_dp_job_result(
+                job_id,
+                {"domain_id": domain_id, "added": len(added), "total": len(merged)},
+            )
+
+        except Exception as exc:
+            await set_dp_job_status(job_id, "failed")
+            await set_dp_job_result(job_id, {"error": "Internal server error"})
+            if isinstance(exc, ValueError):
                 raise exc
             raise self.retry(exc=exc) from exc
         finally:
             await dispose_async_engine()
 
-    try:
-        asyncio.run(_run())
-    except Exception as exc:
-        raise exc  # noqa: TRY201
+    asyncio.run(_run())

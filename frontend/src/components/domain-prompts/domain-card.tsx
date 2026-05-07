@@ -42,7 +42,10 @@ export function DomainCard({
 
   return (
     <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } }}
       style={{
         background: '#141418',
         border: '1px solid #222226',
@@ -109,7 +112,7 @@ export function DomainCard({
             fontSize: 11, color: '#5a5a60',
             fontFamily: 'var(--font-geist-mono, monospace)',
           }}>
-            {domain.dataset.row_count} Q&amp;A pairs
+            {domain.dataset.row_count} data sources
           </span>
         )}
         {domain.optimized_prompt && (

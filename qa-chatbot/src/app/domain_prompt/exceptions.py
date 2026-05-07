@@ -36,3 +36,11 @@ class DomainAlreadyRunningException(HTTPException):
             status_code=status.HTTP_409_CONFLICT,
             detail="This domain already has an optimization in progress.",
         )
+
+
+class DomainNotReadyException(HTTPException):
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Domain dataset is not ready yet. Wait for the preparation job to complete.",
+        )

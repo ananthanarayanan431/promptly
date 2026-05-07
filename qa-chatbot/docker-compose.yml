@@ -9,6 +9,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      minio:
+        condition: service_healthy
     restart: unless-stopped
     volumes:
       - ./src:/app/src  # hot-reload in dev
@@ -47,8 +49,12 @@ services:
     command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=4
     env_file: .env
     depends_on:
-      - redis
-      - postgres
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
     restart: unless-stopped
 
   minio:

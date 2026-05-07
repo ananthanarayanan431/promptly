@@ -22,20 +22,25 @@ from app.domain_prompt.exceptions import (
     DomainInsufficientCreditsException,
     DomainJobNotFoundException,
     DomainNotFoundException,
+    DomainNotReadyException,
     InvalidPDFException,
 )
 from app.domain_prompt.models import DomainPrompt, DomainPromptStatus
 from app.domain_prompt.repository import DomainPromptRepository
 from app.domain_prompt.schemas import (
+    AugmentDatasetRequest,
     CreateDomainJobResponse,
+    DatasetRowsResponse,
     DeleteDomainResponse,
     DomainJobPollResponse,
     DomainListResponse,
     DomainPromptResponse,
     OptimizeDomainRequest,
+    QAPair,
+    UpdateDatasetRequest,
 )
 from app.domain_prompt.storage import object_key, upload_bytes
-from app.domain_prompt.tasks import prepare_domain_dataset
+from app.domain_prompt.tasks import augment_domain_dataset, prepare_domain_dataset
 from app.models.user import User
 from app.repositories.user_repo import UserRepository
 
@@ -114,10 +119,14 @@ async def create_domain(
         credits_charged=10,
     )
 
+    import anyio
+
     minio_cfg = get_minio_settings()
     bucket = minio_cfg.MINIO_BUCKET_NAME
     pdf_key = object_key(str(current_user.id), str(domain.id), "source.pdf")
-    upload_bytes(bucket, pdf_key, pdf_bytes, content_type="application/pdf")
+    await anyio.to_thread.run_sync(
+        lambda: upload_bytes(bucket, pdf_key, pdf_bytes, content_type="application/pdf")
+    )
 
     await domain_repo.save_dataset(
         domain_id=domain.id,
@@ -139,7 +148,7 @@ async def create_domain(
         }
     )
 
-    return SuccessResponse(data=CreateDomainJobResponse(job_id=job_id, domain_id=str(domain.id)))
+    return SuccessResponse(data=CreateDomainJobResponse(job_id=job_id, domain_id=domain.id))
 
 
 @router.get(
@@ -200,6 +209,121 @@ async def get_domain(
     return SuccessResponse(data=_to_response(domain))
 
 
+@router.get(
+    "/{domain_id}/dataset",
+    response_model=SuccessResponse[DatasetRowsResponse],
+    dependencies=[Depends(_read_limiter)],
+)
+async def get_dataset_rows(
+    domain_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> SuccessResponse[DatasetRowsResponse]:
+    """Return the Q&A rows stored for this domain's dataset."""
+    import json
+
+    repo = DomainPromptRepository(db)
+    domain = await repo.get_by_id_and_user(domain_id, current_user.id)
+    if domain is None:
+        raise DomainNotFoundException()
+    if domain.dataset is None or domain.dataset.dataset_key is None:
+        return SuccessResponse(data=DatasetRowsResponse(rows=[], row_count=0))
+
+    minio_cfg = get_minio_settings()
+    from app.domain_prompt.storage import download_text
+
+    try:
+        raw = download_text(minio_cfg.MINIO_BUCKET_NAME, domain.dataset.dataset_key)
+    except Exception:  # noqa: BLE001
+        return SuccessResponse(data=DatasetRowsResponse(rows=[], row_count=0))
+
+    rows: list[QAPair] = []
+    for line in raw.strip().splitlines():
+        try:
+            obj = json.loads(line)
+            if isinstance(obj, dict) and "question" in obj and "answer" in obj:
+                rows.append(QAPair(question=str(obj["question"]), answer=str(obj["answer"])))
+        except Exception:  # noqa: BLE001, S112
+            continue
+
+    return SuccessResponse(data=DatasetRowsResponse(rows=rows, row_count=len(rows)))
+
+
+@router.put(
+    "/{domain_id}/dataset",
+    response_model=SuccessResponse[DatasetRowsResponse],
+    dependencies=[Depends(_write_limiter)],
+)
+async def update_dataset_rows(
+    domain_id: uuid.UUID,
+    body: UpdateDatasetRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> SuccessResponse[DatasetRowsResponse]:
+    """Replace the dataset with the supplied rows."""
+    import json
+
+    repo = DomainPromptRepository(db)
+    domain = await repo.get_by_id_and_user(domain_id, current_user.id)
+    if domain is None:
+        raise DomainNotFoundException()
+    if domain.dataset is None:
+        raise DomainNotFoundException()
+
+    minio_cfg = get_minio_settings()
+    from app.domain_prompt.storage import object_key as _okey
+    from app.domain_prompt.storage import upload_text
+
+    jsonl = "\n".join(
+        json.dumps({"question": r.question, "answer": r.answer}, ensure_ascii=False)
+        for r in body.rows
+    )
+    dataset_key = domain.dataset.dataset_key or _okey(
+        str(current_user.id), str(domain_id), "dataset.jsonl"
+    )
+    upload_text(minio_cfg.MINIO_BUCKET_NAME, dataset_key, jsonl)
+    await repo.update_dataset(domain.dataset, dataset_key=dataset_key, row_count=len(body.rows))
+    await db.commit()
+
+    return SuccessResponse(data=DatasetRowsResponse(rows=list(body.rows), row_count=len(body.rows)))
+
+
+@router.post(
+    "/{domain_id}/dataset/augment",
+    response_model=SuccessResponse[CreateDomainJobResponse],
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(_write_limiter)],
+)
+async def augment_dataset(
+    domain_id: uuid.UUID,
+    body: AugmentDatasetRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> SuccessResponse[CreateDomainJobResponse]:
+    """Generate and append N additional Q&A rows using LLM. Cost: free."""
+    repo = DomainPromptRepository(db)
+    domain = await repo.get_by_id_and_user(domain_id, current_user.id)
+    if domain is None:
+        raise DomainNotFoundException()
+    if domain.dataset is None or domain.dataset.dataset_key is None:
+        raise DomainNotFoundException()
+
+    job_id = str(uuid.uuid4())
+    await set_dp_job_status(job_id, "queued")
+    await set_dp_job_owner(job_id, str(current_user.id))
+
+    augment_domain_dataset.apply_async(
+        kwargs={
+            "job_id": job_id,
+            "domain_id": str(domain_id),
+            "user_id": str(current_user.id),
+            "count": body.count,
+        }
+    )
+
+    return SuccessResponse(data=CreateDomainJobResponse(job_id=job_id, domain_id=domain_id))
+
+
 @router.post(
     "/{domain_id}/optimize",
     response_model=SuccessResponse[CreateDomainJobResponse],
@@ -228,7 +352,7 @@ async def reoptimize_domain(
         raise DomainAlreadyRunningException()
 
     if domain.dataset is None or domain.dataset.dataset_key is None:
-        raise DomainNotFoundException()
+        raise DomainNotReadyException()
 
     if current_user.credits < 10:
         raise DomainInsufficientCreditsException()
@@ -256,7 +380,7 @@ async def reoptimize_domain(
         }
     )
 
-    return SuccessResponse(data=CreateDomainJobResponse(job_id=job_id, domain_id=str(domain_id)))
+    return SuccessResponse(data=CreateDomainJobResponse(job_id=job_id, domain_id=domain_id))
 
 
 @router.delete(
@@ -270,10 +394,21 @@ async def delete_domain(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> SuccessResponse[DeleteDomainResponse]:
     """Delete a domain and its associated dataset records."""
+    import anyio
+
+    from app.domain_prompt.storage import delete_objects_with_prefix
+
     repo = DomainPromptRepository(db)
     domain = await repo.get_by_id_and_user(domain_id, current_user.id)
     if domain is None:
         raise DomainNotFoundException()
     await repo.delete(domain)
     await db.commit()
-    return SuccessResponse(data=DeleteDomainResponse(deleted=str(domain_id)))
+
+    minio_cfg = get_minio_settings()
+    prefix = f"users/{current_user.id}/domains/{domain_id}/"
+    await anyio.to_thread.run_sync(
+        lambda: delete_objects_with_prefix(minio_cfg.MINIO_BUCKET_NAME, prefix)
+    )
+
+    return SuccessResponse(data=DeleteDomainResponse(domain_id=domain_id))

@@ -21,6 +21,7 @@ export function NewDomainModal({ onClose, onJobStarted }: Props) {
     e.preventDefault();
     if (!file) { setError('Please upload a PDF file.'); return; }
     if (!name.trim()) { setError('Domain name is required.'); return; }
+    if (file.size > 100 * 1024 * 1024) { setError('PDF must be 100 MB or smaller.'); return; }
 
     setError(null);
     setSubmitting(true);
@@ -34,7 +35,6 @@ export function NewDomainModal({ onClose, onJobStarted }: Props) {
       const res = await api.post<{ data: CreateDomainJobResponse }>(
         '/api/v1/domain-prompts/',
         form,
-        { headers: { 'Content-Type': 'multipart/form-data' } },
       );
       onJobStarted(res.data.data.job_id, res.data.data.domain_id);
     } catch (err: unknown) {
@@ -108,7 +108,10 @@ export function NewDomainModal({ onClose, onJobStarted }: Props) {
           <div>
             <label style={labelStyle}>Source PDF *</label>
             <div
+              role="button"
+              tabIndex={0}
               onClick={() => fileRef.current?.click()}
+              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileRef.current?.click(); } }}
               style={{
                 border: '1.5px dashed #2a2a2e', borderRadius: 8, padding: '20px 16px',
                 textAlign: 'center', cursor: 'pointer', color: '#5a5a60', fontSize: 13,

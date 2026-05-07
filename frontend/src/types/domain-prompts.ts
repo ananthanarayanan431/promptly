@@ -43,3 +43,13 @@ export interface DomainJobPollResponse {
   result: Record<string, unknown> | null;
   error: string | null;
 }
+
+export interface QAPair {
+  question: string;
+  answer: string;
+}
+
+export interface DatasetRowsResponse {
+  rows: QAPair[];
+  row_count: number;
+}

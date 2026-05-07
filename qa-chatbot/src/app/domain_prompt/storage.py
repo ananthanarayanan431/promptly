@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+from functools import lru_cache
 from typing import Any
 
 import boto3
@@ -9,6 +10,7 @@ from botocore.exceptions import ClientError
 from app.config.env import get_minio_settings
 
 
+@lru_cache(maxsize=1)
 def _client() -> Any:  # noqa: ANN401
     s = get_minio_settings()
     return boto3.client(
@@ -24,8 +26,12 @@ def ensure_bucket(bucket: str) -> None:
     client = _client()
     try:
         client.head_bucket(Bucket=bucket)
-    except ClientError:
-        client.create_bucket(Bucket=bucket)
+    except ClientError as exc:
+        code = exc.response["Error"]["Code"]
+        if code in ("404", "NoSuchBucket"):
+            client.create_bucket(Bucket=bucket)
+        else:
+            raise
 
 
 def upload_bytes(
@@ -48,6 +54,22 @@ def upload_text(bucket: str, key: str, text: str, content_type: str = "text/plai
 
 def download_text(bucket: str, key: str) -> str:
     return download_bytes(bucket, key).decode("utf-8")
+
+
+def delete_objects_with_prefix(bucket: str, prefix: str) -> None:
+    """Delete all objects under the given prefix. Silently skips if none exist."""
+    client = _client()
+    try:
+        paginator = client.get_paginator("list_objects_v2")
+        keys = [
+            {"Key": obj["Key"]}
+            for page in paginator.paginate(Bucket=bucket, Prefix=prefix)
+            for obj in page.get("Contents", [])
+        ]
+        if keys:
+            client.delete_objects(Bucket=bucket, Delete={"Objects": keys})
+    except ClientError:
+        pass  # bucket may not exist yet; nothing to delete
 
 
 def object_key(user_id: str, domain_id: str, filename: str) -> str:
