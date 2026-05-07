@@ -15,7 +15,7 @@ export interface DomainPrompt {
   id: string;
   name: string;
   description: string | null;
-  base_prompt: string;
+  last_prompt: string | null;
   optimized_prompt: string | null;
   status: DomainPromptStatus;
   score_before: number | null;

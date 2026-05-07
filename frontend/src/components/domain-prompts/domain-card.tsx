@@ -112,7 +112,9 @@ export function DomainCard({
             {domain.dataset.row_count} Q&amp;A pairs
           </span>
         )}
-        <ScoreBadge before={domain.score_before} after={domain.score_after} />
+        {domain.optimized_prompt && (
+          <ScoreBadge before={domain.score_before} after={domain.score_after} />
+        )}
       </div>
 
       <style>{`

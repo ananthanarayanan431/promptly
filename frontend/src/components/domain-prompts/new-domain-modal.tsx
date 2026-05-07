@@ -12,7 +12,6 @@ interface Props {
 export function NewDomainModal({ onClose, onJobStarted }: Props) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [basePrompt, setBasePrompt] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -22,7 +21,6 @@ export function NewDomainModal({ onClose, onJobStarted }: Props) {
     e.preventDefault();
     if (!file) { setError('Please upload a PDF file.'); return; }
     if (!name.trim()) { setError('Domain name is required.'); return; }
-    if (!basePrompt.trim()) { setError('Base prompt is required.'); return; }
 
     setError(null);
     setSubmitting(true);
@@ -30,7 +28,6 @@ export function NewDomainModal({ onClose, onJobStarted }: Props) {
     try {
       const form = new FormData();
       form.append('name', name.trim());
-      form.append('base_prompt', basePrompt.trim());
       form.append('file', file);
       if (description.trim()) form.append('description', description.trim());
 
@@ -105,17 +102,6 @@ export function NewDomainModal({ onClose, onJobStarted }: Props) {
               style={inputStyle} value={description}
               onChange={e => setDescription(e.target.value)}
               placeholder="Brief description of this domain"
-            />
-          </div>
-
-          <div>
-            <label style={labelStyle}>Base System Prompt *</label>
-            <textarea
-              style={{ ...inputStyle, minHeight: 100, resize: 'vertical', lineHeight: 1.5 }}
-              value={basePrompt}
-              onChange={e => setBasePrompt(e.target.value)}
-              placeholder="You are a nutrition expert. Given a question about nutrients, provide accurate and detailed information..."
-              required
             />
           </div>
 

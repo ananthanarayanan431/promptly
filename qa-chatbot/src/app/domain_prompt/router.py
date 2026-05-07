@@ -32,6 +32,7 @@ from app.domain_prompt.schemas import (
     DomainJobPollResponse,
     DomainListResponse,
     DomainPromptResponse,
+    OptimizeDomainRequest,
 )
 from app.domain_prompt.storage import object_key, upload_bytes
 from app.domain_prompt.tasks import prepare_domain_dataset
@@ -73,15 +74,14 @@ async def create_domain(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
     name: Annotated[str, Form(min_length=1, max_length=120)],
-    base_prompt: Annotated[str, Form(min_length=10, max_length=10000)],
     file: Annotated[UploadFile, File()],
     description: Annotated[str | None, Form(max_length=500)] = None,
 ) -> SuccessResponse[CreateDomainJobResponse]:
     """
-    Create a new domain prompt by uploading a PDF source file.
+    Create a domain knowledge base by uploading a PDF.
 
-    The PDF is stored in MinIO, a Q&A dataset is generated from it,
-    and the prompt optimization pipeline is queued as a background job.
+    The PDF is stored in MinIO and a Q&A dataset is generated from it.
+    No prompt is needed here — submit prompts via POST /{domain_id}/optimize.
 
     Cost: 10 credits, deducted immediately.
     Returns HTTP 202 with a job_id to poll for progress.
@@ -92,11 +92,11 @@ async def create_domain(
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise InvalidPDFException()
 
-    # Enforce 25 MB upload limit
-    _max_pdf_bytes = 25 * 1024 * 1024
+    # Enforce 100 MB upload limit
+    _max_pdf_bytes = 100 * 1024 * 1024
     pdf_bytes = await file.read()
     if len(pdf_bytes) > _max_pdf_bytes:
-        raise InvalidPDFException(detail="PDF file exceeds the 25 MB size limit.")
+        raise InvalidPDFException(detail="PDF file exceeds the 100 MB size limit.")
     if not pdf_bytes.startswith(b"%PDF"):
         raise InvalidPDFException(detail="Uploaded file does not appear to be a valid PDF.")
 
@@ -110,7 +110,6 @@ async def create_domain(
         user_id=current_user.id,
         name=name.strip(),
         description=description.strip() if description else None,
-        base_prompt=base_prompt.strip(),
         status=DomainPromptStatus.pending,
         credits_charged=10,
     )
@@ -209,10 +208,17 @@ async def get_domain(
 )
 async def reoptimize_domain(
     domain_id: uuid.UUID,
+    body: OptimizeDomainRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> SuccessResponse[CreateDomainJobResponse]:
-    """Re-run optimization on an existing domain (dataset already prepared). Cost: 10 credits."""
+    """
+    Optimize a prompt against this domain's knowledge base. Cost: 10 credits.
+
+    The domain's Q&A dataset (built from its PDF) is used to score and improve
+    the supplied prompt. You can call this endpoint repeatedly with different
+    prompts — the domain dataset is reused each time.
+    """
     repo = DomainPromptRepository(db)
     domain = await repo.get_by_id_and_user(domain_id, current_user.id)
     if domain is None:
@@ -232,7 +238,7 @@ async def reoptimize_domain(
     if not deducted:
         raise DomainInsufficientCreditsException()
 
-    await repo.set_status(domain, DomainPromptStatus.pending)
+    await repo.set_status(domain, DomainPromptStatus.optimizing, last_prompt=body.prompt.strip())
     await db.commit()
 
     job_id = str(uuid.uuid4())
@@ -246,6 +252,7 @@ async def reoptimize_domain(
             "job_id": job_id,
             "domain_id": str(domain_id),
             "user_id": str(current_user.id),
+            "prompt_to_optimize": body.prompt.strip(),
         }
     )
 

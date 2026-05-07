@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import selectinload
 
 from app.domain_prompt.models import DomainDataset, DomainPrompt, DomainPromptStatus
@@ -12,6 +12,14 @@ from app.repositories.base import BaseRepository
 
 class DomainPromptRepository(BaseRepository[DomainPrompt]):
     model = DomainPrompt
+
+    async def get_by_id(self, id: uuid.UUID) -> DomainPrompt | None:
+        result = await self.db.execute(
+            select(DomainPrompt)
+            .where(DomainPrompt.id == id)
+            .options(selectinload(DomainPrompt.dataset))
+        )
+        return result.scalar_one_or_none()
 
     async def get_by_user(self, user_id: uuid.UUID) -> list[DomainPrompt]:
         result = await self.db.execute(
@@ -37,8 +45,11 @@ class DomainPromptRepository(BaseRepository[DomainPrompt]):
         domain: DomainPrompt,
         status: DomainPromptStatus,
         **extra: Any,
-    ) -> DomainPrompt:
-        return await self.update(domain, status=status, **extra)
+    ) -> None:
+        values: dict[str, Any] = {"status": status, **extra}
+        await self.db.execute(
+            update(DomainPrompt).where(DomainPrompt.id == domain.id).values(**values)
+        )
 
     async def save_dataset(
         self,
@@ -59,13 +70,9 @@ class DomainPromptRepository(BaseRepository[DomainPrompt]):
         )
         self.db.add(ds)
         await self.db.flush()
-        await self.db.refresh(ds)
         return ds
 
-    async def update_dataset(self, dataset: DomainDataset, **kwargs: Any) -> DomainDataset:
-        for k, v in kwargs.items():
-            setattr(dataset, k, v)
-        self.db.add(dataset)
-        await self.db.flush()
-        await self.db.refresh(dataset)
-        return dataset
+    async def update_dataset(self, dataset: DomainDataset, **kwargs: Any) -> None:
+        await self.db.execute(
+            update(DomainDataset).where(DomainDataset.id == dataset.id).values(**kwargs)
+        )

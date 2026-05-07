@@ -61,23 +61,24 @@ def prepare_domain_dataset(
                 domain = await repo.get_by_id(UUID(domain_id))
                 if domain is None:
                     raise ValueError(f"Domain {domain_id} not found")
-
                 await repo.set_status(domain, DomainPromptStatus.preparing_dataset)
                 await db.commit()
 
-                pdf_key = object_key(user_id, domain_id, "source.pdf")
-                pdf_bytes = download_bytes(bucket, pdf_key)
+            # MinIO + LLM work outside the DB session to avoid greenlet conflict
+            pdf_key = object_key(user_id, domain_id, "source.pdf")
+            pdf_bytes = download_bytes(bucket, pdf_key)
+            text = extract_text_from_pdf(pdf_bytes)
+            pairs = await generate_qa_pairs(text, api_key)
 
-                text = extract_text_from_pdf(pdf_bytes)
-                pairs = await generate_qa_pairs(text, api_key)
+            if not pairs:
+                raise ValueError("No Q&A pairs could be extracted from the PDF")
 
-                if not pairs:
-                    raise ValueError("No Q&A pairs could be extracted from the PDF")
+            jsonl = pairs_to_jsonl(pairs)
+            dataset_key = object_key(user_id, domain_id, "dataset.jsonl")
+            upload_text(bucket, dataset_key, jsonl)
 
-                jsonl = pairs_to_jsonl(pairs)
-                dataset_key = object_key(user_id, domain_id, "dataset.jsonl")
-                upload_text(bucket, dataset_key, jsonl)
-
+            async with AsyncSessionLocal() as db:
+                repo = DomainPromptRepository(db)
                 domain_with_ds = await repo.get_by_id(UUID(domain_id))
                 if domain_with_ds is not None and domain_with_ds.dataset is not None:
                     await repo.update_dataset(
@@ -85,7 +86,6 @@ def prepare_domain_dataset(
                         dataset_key=dataset_key,
                         row_count=len(pairs),
                     )
-
                 await db.commit()
 
             run_domain_optimization.apply_async(
@@ -140,6 +140,7 @@ def run_domain_optimization(
     job_id: str,
     domain_id: str,
     user_id: str,
+    prompt_to_optimize: str,
 ) -> None:
     async def _run() -> None:
         import json
@@ -164,27 +165,24 @@ def run_domain_optimization(
         bucket = minio_cfg.MINIO_BUCKET_NAME
 
         try:
+            # MinIO work outside the DB session to avoid greenlet conflict
+            dataset_key = object_key(user_id, domain_id, "dataset.jsonl")
+            dataset_jsonl = download_text(bucket, dataset_key)
+
+            result = await optimize_domain_prompt(
+                base_prompt=prompt_to_optimize,
+                dataset_jsonl=dataset_jsonl,
+                api_key=api_key,
+            )
+
+            result_key = object_key(user_id, domain_id, "result.json")
+            upload_text(bucket, result_key, json.dumps(result, indent=2))
+
             async with AsyncSessionLocal() as db:
                 repo = DomainPromptRepository(db)
                 domain = await repo.get_by_id(UUID(domain_id))
                 if domain is None:
                     raise ValueError(f"Domain {domain_id} not found")
-
-                await repo.set_status(domain, DomainPromptStatus.optimizing)
-                await db.commit()
-
-                dataset_key = object_key(user_id, domain_id, "dataset.jsonl")
-                dataset_jsonl = download_text(bucket, dataset_key)
-
-                result = await optimize_domain_prompt(
-                    base_prompt=domain.base_prompt,
-                    dataset_jsonl=dataset_jsonl,
-                    api_key=api_key,
-                )
-
-                result_key = object_key(user_id, domain_id, "result.json")
-                upload_text(bucket, result_key, json.dumps(result, indent=2))
-
                 await repo.set_status(
                     domain,
                     DomainPromptStatus.completed,

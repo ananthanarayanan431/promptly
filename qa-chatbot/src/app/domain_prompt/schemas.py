@@ -12,7 +12,10 @@ from app.domain_prompt.models import DomainPromptStatus
 class CreateDomainRequest(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     description: str | None = Field(default=None, max_length=500)
-    base_prompt: str = Field(min_length=10, max_length=10000)
+
+
+class OptimizeDomainRequest(BaseModel):
+    prompt: str = Field(min_length=10, max_length=10000)
 
 
 class DatasetInfo(BaseModel):
@@ -27,7 +30,7 @@ class DomainPromptResponse(BaseModel):
     id: uuid.UUID
     name: str
     description: str | None
-    base_prompt: str
+    last_prompt: str | None
     optimized_prompt: str | None
     status: DomainPromptStatus
     score_before: float | None

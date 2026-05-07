@@ -6,12 +6,13 @@ import type { DomainPrompt } from '@/types/domain-prompts';
 interface Props {
   domain: DomainPrompt;
   onClose: () => void;
-  onReoptimize: () => void;
+  onReoptimize: (prompt: string) => void;
   reoptimizing: boolean;
 }
 
 export function DomainDetail({ domain, onClose, onReoptimize, reoptimizing }: Props) {
   const [copied, setCopied] = useState(false);
+  const [promptInput, setPromptInput] = useState(domain.last_prompt ?? '');
 
   function copyPrompt() {
     if (!domain.optimized_prompt) return;
@@ -62,7 +63,7 @@ export function DomainDetail({ domain, onClose, onReoptimize, reoptimizing }: Pr
           }}>×</button>
         </div>
 
-        {domain.status === 'completed' && (
+        {domain.status === 'completed' && domain.optimized_prompt && (
           <div style={{
             display: 'flex', gap: 16, marginBottom: 20,
             padding: '12px 16px', background: '#141418', borderRadius: 8,
@@ -130,9 +131,9 @@ export function DomainDetail({ domain, onClose, onReoptimize, reoptimizing }: Pr
           </div>
         )}
 
-        {domain.optimized_prompt && (
+        {domain.optimized_prompt && domain.last_prompt && (
           <>
-            <PromptSection label="Original Prompt" content={domain.base_prompt} />
+            <PromptSection label="Input Prompt" content={domain.last_prompt} />
             <div style={{ margin: '12px 0', textAlign: 'center' }}>
               <span style={{ fontSize: 12, color: '#5a5a60' }}>↓ optimized</span>
             </div>
@@ -151,7 +152,32 @@ export function DomainDetail({ domain, onClose, onReoptimize, reoptimizing }: Pr
           </div>
         )}
 
-        <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+        {/* Prompt input — shown when dataset is ready */}
+        {domain.dataset?.dataset_key && !isRunning && (
+          <div style={{ marginTop: 20 }}>
+            <label style={{
+              display: 'block', fontSize: 11, color: '#5a5a60', marginBottom: 6,
+              fontFamily: 'var(--font-geist-mono, monospace)', textTransform: 'uppercase',
+              letterSpacing: '0.06em',
+            }}>
+              Prompt to Optimize
+            </label>
+            <textarea
+              value={promptInput}
+              onChange={e => setPromptInput(e.target.value)}
+              placeholder="Paste the system prompt you want to optimize against this domain's knowledge base…"
+              style={{
+                width: '100%', minHeight: 110, padding: '10px 12px', borderRadius: 8,
+                border: '1px solid #2a2a2e', background: '#141418',
+                color: '#d4d4d8', fontSize: 12.5, lineHeight: 1.6,
+                resize: 'vertical', outline: 'none', boxSizing: 'border-box',
+                fontFamily: 'var(--font-geist-mono, monospace)',
+              }}
+            />
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
           {domain.optimized_prompt && (
             <button onClick={copyPrompt} style={{
               flex: 1, padding: '10px 0', borderRadius: 8,
@@ -162,24 +188,26 @@ export function DomainDetail({ domain, onClose, onReoptimize, reoptimizing }: Pr
               {copied ? '✓ Copied!' : 'Copy Optimized Prompt'}
             </button>
           )}
-          <button
-            onClick={onReoptimize}
-            disabled={reoptimizing || isRunning}
-            style={{
-              flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-              gap: 6, padding: '10px 0', borderRadius: 8, border: 'none',
-              background: reoptimizing || isRunning ? '#2a2a2e' : '#7c5cff',
-              color: reoptimizing || isRunning ? '#5a5a60' : '#fff',
-              fontWeight: 600, fontSize: 13,
-              cursor: reoptimizing || isRunning ? 'not-allowed' : 'pointer',
-            }}
-          >
-            <span style={{
-              fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 3,
-              background: 'rgba(255,255,255,0.2)', color: '#fff',
-            }}>PREMIUM</span>
-            {reoptimizing ? 'Re-optimizing…' : 'Re-optimize (10 cr)'}
-          </button>
+          {domain.dataset?.dataset_key && (
+            <button
+              onClick={() => { if (promptInput.trim().length >= 10) onReoptimize(promptInput.trim()); }}
+              disabled={reoptimizing || isRunning || promptInput.trim().length < 10}
+              style={{
+                flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                gap: 6, padding: '10px 0', borderRadius: 8, border: 'none',
+                background: reoptimizing || isRunning || promptInput.trim().length < 10 ? '#2a2a2e' : '#7c5cff',
+                color: reoptimizing || isRunning || promptInput.trim().length < 10 ? '#5a5a60' : '#fff',
+                fontWeight: 600, fontSize: 13,
+                cursor: reoptimizing || isRunning || promptInput.trim().length < 10 ? 'not-allowed' : 'pointer',
+              }}
+            >
+              <span style={{
+                fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 3,
+                background: 'rgba(255,255,255,0.2)', color: '#fff',
+              }}>PREMIUM</span>
+              {reoptimizing ? 'Optimizing…' : 'Optimize (10 cr)'}
+            </button>
+          )}
         </div>
       </div>
     </div>

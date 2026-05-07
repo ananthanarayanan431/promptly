@@ -25,7 +25,8 @@ class DomainPrompt(Base, UUIDMixin, TimestampMixin):
     )
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    base_prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    base_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
     optimized_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[DomainPromptStatus] = mapped_column(
         Enum(DomainPromptStatus, name="domain_prompt_status"),
@@ -38,7 +39,7 @@ class DomainPrompt(Base, UUIDMixin, TimestampMixin):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     dataset: Mapped[DomainDataset | None] = relationship(
-        back_populates="domain", cascade="all, delete-orphan", uselist=False
+        back_populates="domain", cascade="all, delete-orphan", uselist=False, lazy="raise"
     )
 
 
@@ -56,4 +57,4 @@ class DomainDataset(Base, UUIDMixin, TimestampMixin):
     dataset_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
     row_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
-    domain: Mapped[DomainPrompt] = relationship(back_populates="dataset")
+    domain: Mapped[DomainPrompt] = relationship(back_populates="dataset", lazy="raise")

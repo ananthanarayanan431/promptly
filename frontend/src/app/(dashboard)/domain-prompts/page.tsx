@@ -44,9 +44,10 @@ export default function DomainPromptsPage() {
   }, [pollingJobId, qc]);
 
   const reoptimizeMutation = useMutation({
-    mutationFn: async (domainId: string) => {
+    mutationFn: async ({ domainId, prompt }: { domainId: string; prompt: string }) => {
       const res = await api.post<{ data: { job_id: string } }>(
-        `/api/v1/domain-prompts/${domainId}/optimize`
+        `/api/v1/domain-prompts/${domainId}/optimize`,
+        { prompt },
       );
       return res.data.data.job_id;
     },
@@ -65,10 +66,10 @@ export default function DomainPromptsPage() {
     void qc.invalidateQueries({ queryKey: ['domain-prompts'] });
   }, [qc]);
 
-  const handleReoptimize = useCallback(() => {
+  const handleReoptimize = useCallback((prompt: string) => {
     if (!selected) return;
     setReoptimizing(true);
-    reoptimizeMutation.mutate(selected.id);
+    reoptimizeMutation.mutate({ domainId: selected.id, prompt });
   }, [selected, reoptimizeMutation]);
 
   const latestSelected = selected
@@ -92,7 +93,7 @@ export default function DomainPromptsPage() {
             }}>PREMIUM</span>
           </div>
           <p style={{ margin: 0, fontSize: 13, color: '#8a8a90' }}>
-            Upload a PDF to generate a domain-specific dataset and optimize a system prompt for your use case.
+            Upload a PDF to create a domain knowledge base, then optimize any prompt against it repeatedly.
           </p>
         </div>
         <button

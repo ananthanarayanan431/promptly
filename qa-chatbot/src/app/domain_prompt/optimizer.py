@@ -385,7 +385,7 @@ def _select_duel_pair(wm: _WinMatrix, rng: random.Random) -> tuple[int, int]:
     """
     n = wm.size
     best_theta = -1.0
-    best_i, best_j = 0, 1
+    best_i, best_j = 0, min(1, n - 1)
 
     for i in range(n):
         for j in range(n):
@@ -449,15 +449,17 @@ async def optimize_domain_prompt(
         duel_pool = shuffled  # tiny dataset fallback
 
     # ── LLM clients ───────────────────────────────────────────────────────────
+    # Claude Haiku: fast + cheap for variant generation and answering
     fast_llm = ChatOpenAI(
-        model="openai/gpt-4o-mini",
+        model="anthropic/claude-haiku-4-5",
         openai_api_base="https://openrouter.ai/api/v1",
         openai_api_key=api_key,
         temperature=0.7,
         max_tokens=512,
     )
+    # GPT-4o: stronger cross-model judge — different architecture avoids self-preference bias
     judge_llm = ChatOpenAI(
-        model="openai/gpt-4o-mini",
+        model="openai/gpt-4o",
         openai_api_base="https://openrouter.ai/api/v1",
         openai_api_key=api_key,
         temperature=0.0,
@@ -477,6 +479,16 @@ async def optimize_domain_prompt(
 
     candidates = [_Candidate(text=t) for t in variant_texts]
     wm = _WinMatrix(size=len(candidates))
+
+    if len(candidates) < 2:
+        score_after = await _score_prompt(
+            base_prompt, val_split[:_MAX_VAL_EXAMPLES], fast_llm, judge_llm
+        )
+        return {
+            "optimized_prompt": base_prompt,
+            "score_before": round(score_before, 4),
+            "score_after": round(score_after, 4),
+        }
 
     # ── PDO tournament (Double Thompson Sampling) ─────────────────────────────
     for round_idx in range(_TOURNAMENT_ROUNDS):
