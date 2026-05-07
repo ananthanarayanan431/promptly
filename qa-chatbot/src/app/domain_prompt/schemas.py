@@ -35,6 +35,8 @@ class DomainPromptResponse(BaseModel):
     status: DomainPromptStatus
     score_before: float | None
     score_after: float | None
+    win_rate: float | None
+    candidates_tried: int | None
     credits_charged: int
     error_message: str | None
     dataset: DatasetInfo | None

@@ -18,13 +18,13 @@ const STATUS_COLORS: Record<DomainPromptStatus, string> = {
   failed: '#f43f5e',
 };
 
-function ScoreBadge({ before, after }: { before: number | null; after: number | null }) {
-  if (before === null || after === null) return null;
-  const pct = Math.round((after - before) * 100);
-  const color = pct >= 0 ? '#22c55e' : '#f43f5e';
+function WinRateBadge({ winRate }: { winRate: number | null }) {
+  if (winRate === null) return null;
+  const pct = Math.round(winRate * 100);
+  const color = pct >= 60 ? '#22c55e' : '#f59e0b';
   return (
     <span style={{ fontSize: 11, color, fontFamily: 'var(--font-geist-mono, monospace)' }}>
-      {pct >= 0 ? '+' : ''}{pct}% score
+      {pct}% win rate
     </span>
   );
 }
@@ -116,7 +116,7 @@ export function DomainCard({
           </span>
         )}
         {domain.optimized_prompt && (
-          <ScoreBadge before={domain.score_before} after={domain.score_after} />
+          <WinRateBadge winRate={domain.win_rate} />
         )}
       </div>
 

@@ -20,6 +20,8 @@ export interface DomainPrompt {
   status: DomainPromptStatus;
   score_before: number | null;
   score_after: number | null;
+  win_rate: number | null;
+  candidates_tried: number | null;
   credits_charged: number;
   error_message: string | null;
   dataset: DatasetInfo | null;

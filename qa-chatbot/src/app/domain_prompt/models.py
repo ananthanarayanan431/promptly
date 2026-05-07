@@ -35,6 +35,8 @@ class DomainPrompt(Base, UUIDMixin, TimestampMixin):
     )
     score_before: Mapped[float | None] = mapped_column(Float, nullable=True)
     score_after: Mapped[float | None] = mapped_column(Float, nullable=True)
+    win_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
+    candidates_tried: Mapped[int | None] = mapped_column(Integer, nullable=True)
     credits_charged: Mapped[int] = mapped_column(Integer, default=10, nullable=False)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 

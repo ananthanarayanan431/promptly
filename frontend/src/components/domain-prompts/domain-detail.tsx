@@ -250,9 +250,6 @@ function OptimizeTab({ domain, isRunning, reoptimizing, onReoptimize }: {
     return () => clearInterval(iv);
   }, [busy]);
 
-  const scoreImprovement =
-    domain.score_before !== null && domain.score_after !== null
-      ? Math.round((domain.score_after - domain.score_before) * 100) : null;
 
   function copyResult() {
     if (!domain.optimized_prompt) return;
@@ -392,25 +389,41 @@ function OptimizeTab({ domain, isRunning, reoptimizing, onReoptimize }: {
         {/* Result */}
         {hasResult && !busy && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-            {/* Score bar */}
+            {/* Stats bar */}
             <div style={{
               display: 'flex', gap: 0, marginBottom: 20,
               background: '#141418', border: '1px solid #1f1f23',
               borderRadius: 10, overflow: 'hidden',
             }}>
-              <ScoreCell label="Before" value={domain.score_before !== null ? `${Math.round(domain.score_before * 100)}%` : '—'} color="#6a6a72" />
-              <div style={{ width: 1, background: '#1f1f23' }} />
-              <ScoreCell label="After" value={domain.score_after !== null ? `${Math.round(domain.score_after * 100)}%` : '—'} color="#22c55e" />
+              <ScoreCell
+                label="Tournament win rate"
+                value={domain.win_rate !== null ? `${Math.round(domain.win_rate * 100)}%` : '—'}
+                color={domain.win_rate !== null && domain.win_rate >= 0.6 ? '#22c55e' : '#f59e0b'}
+                tooltip="How often the winning prompt beat rivals in head-to-head trials"
+              />
               <div style={{ width: 1, background: '#1f1f23' }} />
               <ScoreCell
-                label="Improvement"
-                value={scoreImprovement !== null ? `${scoreImprovement >= 0 ? '+' : ''}${scoreImprovement}%` : '—'}
-                color={scoreImprovement !== null ? (scoreImprovement >= 0 ? '#22c55e' : '#f43f5e') : '#6a6a72'}
+                label="Prompts tested"
+                value={domain.candidates_tried !== null ? String(domain.candidates_tried) : '—'}
+                color="#7c5cff"
+                tooltip="Total prompt variants generated and evaluated during optimisation"
+              />
+              <div style={{ width: 1, background: '#1f1f23' }} />
+              <ScoreCell
+                label="Head-to-head trials"
+                value="40"
+                color="#a78bfa"
+                tooltip="Number of pairwise duels run using Double Thompson Sampling"
               />
               {domain.dataset?.row_count != null && (
                 <>
                   <div style={{ width: 1, background: '#1f1f23' }} />
-                  <ScoreCell label="Data sources" value={String(domain.dataset.row_count)} color="#7c5cff" />
+                  <ScoreCell
+                    label="Knowledge sources"
+                    value={String(domain.dataset.row_count)}
+                    color="#38bdf8"
+                    tooltip="Q&A pairs from your PDF used to judge prompt quality"
+                  />
                 </>
               )}
             </div>
@@ -506,9 +519,14 @@ function OptimizeTab({ domain, isRunning, reoptimizing, onReoptimize }: {
   );
 }
 
-function ScoreCell({ label, value, color }: { label: string; value: string; color: string }) {
+function ScoreCell({ label, value, color, tooltip }: {
+  label: string; value: string; color: string; tooltip?: string;
+}) {
   return (
-    <div style={{ flex: 1, padding: '10px 14px', textAlign: 'center' }}>
+    <div
+      title={tooltip}
+      style={{ flex: 1, padding: '10px 14px', textAlign: 'center', cursor: tooltip ? 'help' : undefined }}
+    >
       <div style={{
         fontSize: 18, fontWeight: 700, color,
         fontFamily: 'var(--font-geist-mono, monospace)', lineHeight: 1,

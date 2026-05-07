@@ -685,10 +685,18 @@ async def optimize_domain_prompt(
         best_prompt, val_split[:_MAX_VAL_EXAMPLES], fast_llm, judge_llm
     )
 
+    # ── Tournament stats for UI display ──────────────────────────────────────
+    winner_wins = int(sum(wm.W[winner_idx][j] for j in range(wm.size) if j != winner_idx))
+    winner_total = int(sum(wm.N[winner_idx][j] for j in range(wm.size) if j != winner_idx))
+    win_rate = round(winner_wins / winner_total, 4) if winner_total > 0 else 0.0
+    candidates_tried = len(candidates)
+    rounds_run = _TOURNAMENT_ROUNDS
+
     _log.info(
-        "PDO complete: %d candidates, %d rounds, score %.3f → %.3f",
-        len(candidates),
-        _TOURNAMENT_ROUNDS,
+        "PDO complete: %d candidates, %d rounds, win_rate=%.2f, score %.3f → %.3f",
+        candidates_tried,
+        rounds_run,
+        win_rate,
         score_before,
         score_after,
     )
@@ -697,4 +705,8 @@ async def optimize_domain_prompt(
         "optimized_prompt": best_prompt,
         "score_before": round(score_before, 4),
         "score_after": round(score_after, 4),
+        "win_rate": win_rate,
+        "candidates_tried": candidates_tried,
+        "rounds_run": rounds_run,
+        "dataset_size": len(pairs),
     }

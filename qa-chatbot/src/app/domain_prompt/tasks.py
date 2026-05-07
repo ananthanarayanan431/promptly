@@ -199,6 +199,8 @@ def run_domain_optimization(
                     optimized_prompt=str(result["optimized_prompt"]),
                     score_before=float(result["score_before"]),  # type: ignore[arg-type]
                     score_after=float(result["score_after"]),  # type: ignore[arg-type]
+                    win_rate=float(result["win_rate"]),  # type: ignore[arg-type]
+                    candidates_tried=int(str(result["candidates_tried"])),
                 )
                 await db.commit()
 
@@ -210,6 +212,8 @@ def run_domain_optimization(
                     "optimized_prompt": str(result["optimized_prompt"]),
                     "score_before": float(result["score_before"]),  # type: ignore[arg-type]
                     "score_after": float(result["score_after"]),  # type: ignore[arg-type]
+                    "win_rate": float(result["win_rate"]),  # type: ignore[arg-type]
+                    "candidates_tried": int(str(result["candidates_tried"])),
                 },
             )
 
