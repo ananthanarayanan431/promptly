@@ -95,3 +95,24 @@ class TournamentStateResponse(BaseModel):
     duel_i: int
     duel_j: int
     question: str
+
+
+class OptimizationRunResponse(BaseModel):
+    id: uuid.UUID
+    domain_id: uuid.UUID
+    domain_name: str
+    prompt_input: str
+    optimized_prompt: str
+    score_before: float | None
+    score_after: float | None
+    win_rate: float | None
+    candidates_tried: int | None
+    rounds_run: int | None
+    dataset_size: int | None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class RunListResponse(BaseModel):
+    runs: list[OptimizationRunResponse]
