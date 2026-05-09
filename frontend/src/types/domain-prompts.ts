@@ -67,3 +67,22 @@ export interface TournamentState {
   duel_j: number;
   question: string;
 }
+
+export interface OptimizationRun {
+  id: string;
+  domain_id: string;
+  domain_name: string;
+  prompt_input: string;
+  optimized_prompt: string;
+  score_before: number | null;
+  score_after: number | null;
+  win_rate: number | null;
+  candidates_tried: number | null;
+  rounds_run: number | null;
+  dataset_size: number | null;
+  created_at: string;
+}
+
+export interface RunListResponse {
+  runs: OptimizationRun[];
+}
