@@ -206,14 +206,25 @@ def run_domain_optimization(
                 domain = await repo.get_by_id(UUID(domain_id))
                 if domain is None:
                     raise ValueError(f"Domain {domain_id} not found")
-                await repo.set_status(
-                    domain,
-                    DomainPromptStatus.completed,
+                await repo.set_status(domain, DomainPromptStatus.completed)
+
+                from app.domain_prompt.repository import DomainOptimizationRunRepository
+
+                run_repo = DomainOptimizationRunRepository(db)
+                dataset_size: int | None = None
+                if domain.dataset is not None:
+                    dataset_size = domain.dataset.row_count
+                await run_repo.create_run(
+                    domain_id=domain.id,
+                    domain_name=domain.name,
+                    prompt_input=prompt_to_optimize,
                     optimized_prompt=str(result["optimized_prompt"]),
                     score_before=float(result["score_before"]),  # type: ignore[arg-type]
                     score_after=float(result["score_after"]),  # type: ignore[arg-type]
                     win_rate=float(result["win_rate"]),  # type: ignore[arg-type]
                     candidates_tried=int(str(result["candidates_tried"])),
+                    rounds_run=int(str(result.get("rounds_run", 40))),
+                    dataset_size=dataset_size,
                 )
                 await db.commit()
 
