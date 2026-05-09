@@ -6,6 +6,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { listApiKeys, createApiKey, revokeApiKey } from '@/lib/api-keys';
 import type { ApiKeyStatus } from '@/lib/api-keys';
 import type { ApiKey, ApiKeyCreated } from '@/types/api';
+import { PageHeader } from '@/components/layout/page-header';
 
 const PAGE_SIZE = 10;
 
@@ -17,20 +18,18 @@ function CopyButton({ value }: { value: string }) {
     setTimeout(() => setCopied(false), 2000);
   };
   return (
-    <button onClick={handleCopy}
-      style={{ height: 28, padding: '0 10px', borderRadius: 6, border: '1px solid #2a2a2e',
-        background: 'transparent', fontSize: 12, color: copied ? '#4ade80' : '#8a8a90',
-        cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+    <button onClick={handleCopy} className="ply-btn"
+      style={{ color: copied ? 'var(--success)' : undefined }}>
       {copied ? (
         <>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
             <polyline points="20 6 9 17 4 12"/>
           </svg>
           Copied
         </>
       ) : (
         <>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
             <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
           </svg>
           Copy
@@ -42,29 +41,28 @@ function CopyButton({ value }: { value: string }) {
 
 function NewKeyBanner({ created, onDismiss }: { created: ApiKeyCreated; onDismiss: () => void }) {
   return (
-    <div style={{ background: 'rgba(74,222,128,0.06)', border: '1px solid rgba(74,222,128,0.25)',
-      borderRadius: 10, padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <div className="ply-card" style={{ padding: '16px 18px', borderColor: 'var(--success)',
+      background: 'var(--success-soft)', display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="2">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--success)" strokeWidth="2">
             <polyline points="20 6 9 17 4 12"/>
           </svg>
-          <span style={{ fontSize: 13, fontWeight: 500, color: '#4ade80' }}>
+          <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--success)' }}>
             Key created — copy it now, it won&apos;t be shown again
           </span>
         </div>
-        <button onClick={onDismiss}
-          style={{ background: 'transparent', border: 'none', cursor: 'pointer',
-            color: '#5a5a60', padding: 2 }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <button onClick={onDismiss} style={{ background: 'transparent', border: 'none', cursor: 'pointer',
+          color: 'var(--text-subtle)', padding: 2 }}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M18 6L6 18M6 6l12 12"/>
           </svg>
         </button>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <code style={{ flex: 1, fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 12.5,
-          background: '#111115', border: '1px solid #2a2a2e', borderRadius: 6, padding: '8px 12px',
-          color: '#ededed', overflowX: 'auto', whiteSpace: 'nowrap' }}>
+        <code style={{ flex: 1, fontFamily: 'var(--mono)', fontSize: 12.5,
+          background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 6,
+          padding: '8px 12px', color: 'var(--text)', overflowX: 'auto', whiteSpace: 'nowrap' }}>
           {created.key}
         </code>
         <CopyButton value={created.key} />
@@ -77,19 +75,17 @@ function ApiKeyRow({ apiKey, onRevoke }: { apiKey: ApiKey; onRevoke: (id: string
   const [confirming, setConfirming] = useState(false);
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 20px',
-      borderBottom: '1px solid #1f1f23' }}>
-      {/* Status dot */}
+    <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 18px',
+      borderBottom: '1px solid var(--border)' }}>
       <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
-        background: apiKey.is_active ? '#4ade80' : '#5a5a60' }} />
+        background: apiKey.is_active ? 'var(--success)' : 'var(--text-subtle)' }} />
 
-      {/* Name + meta */}
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13.5, fontWeight: 500, color: apiKey.is_active ? '#ededed' : '#5a5a60',
-          marginBottom: 3 }}>
+        <div style={{ fontSize: 13.5, fontWeight: 500, color: apiKey.is_active ? 'var(--text)' : 'var(--text-subtle)',
+          marginBottom: 2 }}>
           {apiKey.name}
         </div>
-        <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 11, color: '#5a5a60' }}>
+        <div style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--text-subtle)' }}>
           {apiKey.is_active
             ? `Created ${formatDistanceToNow(new Date(apiKey.created_at), { addSuffix: true })}`
             : `Revoked ${apiKey.revoked_at
@@ -98,39 +94,24 @@ function ApiKeyRow({ apiKey, onRevoke }: { apiKey: ApiKey; onRevoke: (id: string
         </div>
       </div>
 
-      {/* Status badge */}
-      <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5,
-        padding: '3px 8px', borderRadius: 4,
-        background: apiKey.is_active ? 'rgba(74,222,128,0.1)' : 'rgba(90,90,96,0.15)',
-        color: apiKey.is_active ? '#4ade80' : '#5a5a60',
-        border: `1px solid ${apiKey.is_active ? 'rgba(74,222,128,0.2)' : '#2a2a2e'}` }}>
+      <span className="ply-pill" style={{
+        color: apiKey.is_active ? 'var(--success)' : 'var(--text-subtle)',
+      }}>
         {apiKey.is_active ? 'active' : 'revoked'}
       </span>
 
-      {/* Revoke */}
       {apiKey.is_active && (
         confirming ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontSize: 12, color: '#8a8a90' }}>Revoke?</span>
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Revoke?</span>
             <button onClick={() => { onRevoke(apiKey.id); setConfirming(false); }}
-              style={{ height: 26, padding: '0 10px', borderRadius: 5,
-                background: 'rgba(255,107,122,0.12)', border: '1px solid rgba(255,107,122,0.3)',
-                color: '#ff6b7a', fontSize: 12, cursor: 'pointer' }}>
+              className="ply-btn" style={{ color: 'var(--danger)', borderColor: 'var(--danger)' }}>
               Yes
             </button>
-            <button onClick={() => setConfirming(false)}
-              style={{ height: 26, padding: '0 10px', borderRadius: 5,
-                background: 'transparent', border: '1px solid #2a2a2e',
-                color: '#8a8a90', fontSize: 12, cursor: 'pointer' }}>
-              Cancel
-            </button>
+            <button onClick={() => setConfirming(false)} className="ply-btn">Cancel</button>
           </div>
         ) : (
-          <button onClick={() => setConfirming(true)}
-            style={{ height: 28, padding: '0 12px', borderRadius: 6, border: '1px solid #2a2a2e',
-              background: 'transparent', fontSize: 12, color: '#8a8a90', cursor: 'pointer' }}>
-            Revoke
-          </button>
+          <button onClick={() => setConfirming(true)} className="ply-btn">Revoke</button>
         )
       )}
     </div>
@@ -170,8 +151,7 @@ function CreateKeyForm({ onCreated }: { onCreated: (key: ApiKeyCreated) => void 
   };
 
   return (
-    <form onSubmit={handleSubmit}
-      style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+    <form onSubmit={handleSubmit} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
       <div style={{ flex: 1 }}>
         <input
           value={name}
@@ -179,22 +159,18 @@ function CreateKeyForm({ onCreated }: { onCreated: (key: ApiKeyCreated) => void 
           placeholder='e.g. "production" or "ci-pipeline"'
           disabled={isPending}
           style={{ width: '100%', height: 36, padding: '0 12px', borderRadius: 7,
-            background: '#111115', border: `1px solid ${error ? 'rgba(255,107,122,0.4)' : '#2a2a2e'}`,
-            color: '#ededed', fontSize: 13, outline: 'none', boxSizing: 'border-box',
-            fontFamily: 'var(--font-geist, ui-sans-serif)' }}
+            background: 'var(--surface-2)', border: `1px solid ${error ? 'var(--danger)' : 'var(--border)'}`,
+            color: 'var(--text)', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
         />
         {error && (
-          <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 11,
-            color: '#ff6b7a', marginTop: 5 }}>
+          <div style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--danger)', marginTop: 5 }}>
             {error}
           </div>
         )}
       </div>
-      <button type="submit" disabled={isPending || !name.trim()}
-        style={{ height: 36, padding: '0 16px', borderRadius: 7, flexShrink: 0,
-          background: isPending || !name.trim() ? '#2a2a2e' : '#7c5cff',
-          border: 'none', color: isPending || !name.trim() ? '#5a5a60' : '#fff',
-          fontSize: 13, fontWeight: 500, cursor: isPending || !name.trim() ? 'not-allowed' : 'pointer' }}>
+      <button type="submit" disabled={isPending || !name.trim()} className="ply-btn ply-btn-primary"
+        style={{ height: 36, opacity: isPending || !name.trim() ? 0.5 : 1,
+          cursor: isPending || !name.trim() ? 'not-allowed' : 'pointer' }}>
         {isPending ? 'Creating…' : 'Create key'}
       </button>
     </form>
@@ -227,116 +203,103 @@ export default function SettingsPage() {
   };
 
   return (
-    <div style={{ height: '100%', overflowY: 'auto', padding: '28px 40px 80px',
-      fontFamily: 'var(--font-geist, ui-sans-serif)' }}>
-      <div style={{ maxWidth: 720, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 36 }}>
+    <>
+      <PageHeader
+        title="Settings"
+        subtitle="Create named API keys for SDK and script access. Each key is shown once — store it securely."
+      />
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '20px 28px 80px' }}>
+        <div style={{ maxWidth: 720, display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-        {/* Header */}
-        <div>
-          <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 11,
-            color: '#7c5cff', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 8 }}>
-            / settings
-          </div>
-          <h1 style={{ fontFamily: 'var(--font-instrument-serif, Georgia, serif)', fontWeight: 400,
-            fontSize: 36, letterSpacing: '-0.02em', lineHeight: 1.15, margin: '0 0 6px', color: '#ededed' }}>
-            API Keys
-          </h1>
-          <p style={{ fontSize: 13.5, color: '#8a8a90', margin: 0, lineHeight: 1.6 }}>
-            Create named keys to authenticate SDK and script access. Each key is shown once — store it securely.
-          </p>
-        </div>
+          {newKey && <NewKeyBanner created={newKey} onDismiss={() => setNewKey(null)} />}
 
-        {/* New key banner */}
-        {newKey && (
-          <NewKeyBanner created={newKey} onDismiss={() => setNewKey(null)} />
-        )}
-
-        {/* Create form */}
-        <div style={{ background: '#1a1a1a', border: '1px solid #1f1f23', borderRadius: 10, padding: 20 }}>
-          <div style={{ fontSize: 13, fontWeight: 500, color: '#ededed', marginBottom: 4 }}>
-            Create a new key
-          </div>
-          <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 11,
-            color: '#5a5a60', marginBottom: 14 }}>
-            Give it a descriptive name so you can tell keys apart later.
-          </div>
-          <CreateKeyForm onCreated={setNewKey} />
-        </div>
-
-        {/* Keys list */}
-        <div style={{ background: '#1a1a1a', border: '1px solid #1f1f23', borderRadius: 10, overflow: 'hidden' }}>
-
-          {/* List header: title + total + status filter */}
-          <div style={{ padding: '16px 20px', borderBottom: '1px solid #1f1f23',
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div style={{ fontSize: 13, fontWeight: 500, color: '#ededed' }}>Keys</div>
-              <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 11,
-                color: '#5a5a60' }}>{total}</span>
-            </div>
-            <select
-              value={status}
-              onChange={(e) => handleStatusChange(e.target.value as ApiKeyStatus)}
-              style={{ height: 28, padding: '0 8px', borderRadius: 6, border: '1px solid #2a2a2e',
-                background: '#111115', color: '#8a8a90', fontSize: 12, cursor: 'pointer', outline: 'none' }}>
-              <option value="all">All</option>
-              <option value="active">Active</option>
-              <option value="revoked">Revoked</option>
-            </select>
-          </div>
-
-          {/* Rows */}
-          {isLoading ? (
-            <div style={{ padding: '28px 20px', textAlign: 'center',
-              fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 12, color: '#5a5a60' }}>
-              Loading…
-            </div>
-          ) : keys.length === 0 ? (
-            <div style={{ padding: '28px 20px', textAlign: 'center',
-              fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 12, color: '#5a5a60' }}>
-              {status === 'active' ? 'No active keys — create one above.'
-                : status === 'revoked' ? 'No revoked keys.'
-                : 'No keys yet — create one above.'}
-            </div>
-          ) : (
-            keys.map((k) => (
-              <ApiKeyRow key={k.id} apiKey={k} onRevoke={revoke} />
-            ))
-          )}
-
-          {/* Pagination footer */}
-          {totalPages > 1 && (
-            <div style={{ padding: '12px 20px', borderTop: '1px solid #1f1f23',
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 11, color: '#5a5a60' }}>
-                Page {page} of {totalPages}
-              </span>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <button
-                  onClick={() => setPage((p) => p - 1)}
-                  disabled={page === 1}
-                  style={{ height: 28, padding: '0 12px', borderRadius: 6, border: '1px solid #2a2a2e',
-                    background: 'transparent', fontSize: 12,
-                    color: page === 1 ? '#3a3a3e' : '#8a8a90',
-                    cursor: page === 1 ? 'not-allowed' : 'pointer' }}>
-                  Prev
-                </button>
-                <button
-                  onClick={() => setPage((p) => p + 1)}
-                  disabled={page === totalPages}
-                  style={{ height: 28, padding: '0 12px', borderRadius: 6, border: '1px solid #2a2a2e',
-                    background: 'transparent', fontSize: 12,
-                    color: page === totalPages ? '#3a3a3e' : '#8a8a90',
-                    cursor: page === totalPages ? 'not-allowed' : 'pointer' }}>
-                  Next
-                </button>
+          {/* Create form */}
+          <div className="ply-card" style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)', marginBottom: 3 }}>
+                Create a new key
+              </div>
+              <div style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--text-subtle)' }}>
+                Give it a descriptive name so you can tell keys apart later.
               </div>
             </div>
-          )}
+            <CreateKeyForm onCreated={setNewKey} />
+          </div>
+
+          {/* Keys list */}
+          <div className="ply-card" style={{ padding: 0, overflow: 'hidden' }}>
+            <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)' }}>Keys</div>
+                <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--text-subtle)' }}>
+                  {total}
+                </span>
+              </div>
+              <select
+                value={status}
+                onChange={(e) => handleStatusChange(e.target.value as ApiKeyStatus)}
+                style={{ height: 28, padding: '0 8px', borderRadius: 6, border: '1px solid var(--border)',
+                  background: 'var(--surface-2)', color: 'var(--text-muted)', fontSize: 12,
+                  cursor: 'pointer', outline: 'none' }}>
+                <option value="all">All</option>
+                <option value="active">Active</option>
+                <option value="revoked">Revoked</option>
+              </select>
+            </div>
+
+            {isLoading ? (
+              <div style={{ padding: '28px 18px', textAlign: 'center',
+                fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--text-subtle)' }}>
+                Loading…
+              </div>
+            ) : keys.length === 0 ? (
+              <div style={{ padding: '28px 18px', textAlign: 'center',
+                fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--text-subtle)' }}>
+                {status === 'active' ? 'No active keys — create one above.'
+                  : status === 'revoked' ? 'No revoked keys.'
+                  : 'No keys yet — create one above.'}
+              </div>
+            ) : (
+              keys.map((k) => <ApiKeyRow key={k.id} apiKey={k} onRevoke={revoke} />)
+            )}
+
+            {totalPages > 1 && (
+              <div style={{ padding: '12px 18px', borderTop: '1px solid var(--border)',
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--text-subtle)' }}>
+                  Page {page} of {totalPages}
+                </span>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button onClick={() => setPage((p) => p - 1)} disabled={page === 1} className="ply-btn"
+                    style={{ opacity: page === 1 ? 0.4 : 1, cursor: page === 1 ? 'not-allowed' : 'pointer' }}>
+                    Prev
+                  </button>
+                  <button onClick={() => setPage((p) => p + 1)} disabled={page === totalPages} className="ply-btn"
+                    style={{ opacity: page === totalPages ? 0.4 : 1, cursor: page === totalPages ? 'not-allowed' : 'pointer' }}>
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Usage snippet */}
+          <div className="ply-card" style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ fontWeight: 500, color: 'var(--text)', fontSize: 13 }}>Using your key</div>
+            <pre className="ply-prompt-block" style={{ margin: 0, fontSize: 11.5 }}>{`curl https://api.promptly.ai/v1/chat/ \\
+  -H "Authorization: Bearer qac_••••••••" \\
+  -H "Content-Type: application/json" \\
+  -d '{ "prompt": "..." }'`}</pre>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              Use the key prefix <code style={{ fontFamily: 'var(--mono)', color: 'var(--text)' }}>qac_</code> in{' '}
+              <code style={{ fontFamily: 'var(--mono)', color: 'var(--text)' }}>Authorization: Bearer</code>.
+              Both JWT and API keys are accepted.
+            </div>
+          </div>
 
         </div>
-
       </div>
-    </div>
+    </>
   );
 }

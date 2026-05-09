@@ -6,7 +6,7 @@ import { api } from '@/lib/api';
 import type { PaginatedPromptFamilyList, PromptFamily } from '@/types/api';
 import { formatDistanceToNow } from 'date-fns';
 import Link from 'next/link';
-import { Loader2 } from 'lucide-react';
+import { PageHeader } from '@/components/layout/page-header';
 
 const PAGE_SIZE = 20;
 
@@ -40,51 +40,49 @@ function FamilyRow({ f }: { f: PromptFamily }) {
   return (
     <Link href={`/versions/${f.prompt_id}`}
       style={{ display: 'grid', gridTemplateColumns: '1fr auto',
-        gap: 20, alignItems: 'center', padding: '18px 20px',
-        borderBottom: '1px solid #1f1f23', textDecoration: 'none',
+        gap: 20, alignItems: 'center', padding: '16px 20px',
+        borderBottom: '1px solid var(--border)', textDecoration: 'none',
         cursor: 'pointer', transition: 'background 120ms' }}
-      onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.015)')}
+      onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-2)')}
       onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 15, fontWeight: 500, color: '#ededed',
+          <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text)',
             letterSpacing: '-0.005em' }}>{f.name}</span>
-          <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5,
-            padding: '2px 6px', borderRadius: 4, background: '#222226',
-            border: '1px solid #2a2a2e', color: '#8a8a90' }}>
+          <span className="ply-pill" style={{ fontFamily: 'var(--mono)', fontSize: 10 }}>
             {f.prompt_id.slice(0, 8)}
           </span>
         </div>
-        <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 11.5,
-          color: '#8a8a90', overflow: 'hidden', textOverflow: 'ellipsis',
+        <div style={{ fontFamily: 'var(--mono)', fontSize: 11.5,
+          color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis',
           whiteSpace: 'nowrap', maxWidth: 520 }}>
           {snip}
         </div>
       </div>
 
-      <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 11,
-        color: '#5a5a60', display: 'flex', gap: 40, alignItems: 'center' }}>
+      <div style={{ fontFamily: 'var(--mono)', fontSize: 11,
+        color: 'var(--text-subtle)', display: 'flex', gap: 32, alignItems: 'center' }}>
         {starredCount > 0 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="#f43f5e" stroke="#f43f5e" strokeWidth="1.6">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="var(--danger)" stroke="var(--danger)" strokeWidth="1.6">
               <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
             </svg>
-            <span style={{ color: '#f43f5e' }}>{starredCount}</span>
+            <span style={{ color: 'var(--danger)' }}>{starredCount}</span>
           </div>
         )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <div style={{ display: 'flex', gap: 3 }}>
             {Array.from({ length: f.versions.length }).map((_, i) => (
               <div key={i} style={{ width: 18, height: 4, borderRadius: 2,
-                background: i === f.versions.length - 1 ? '#7c5cff' : 'rgba(124,92,255,0.2)' }} />
+                background: i === f.versions.length - 1 ? 'var(--primary)' : 'var(--border-strong)' }} />
             ))}
           </div>
           <span style={{ minWidth: 30 }}>v{f.versions.length}</span>
         </div>
         <span style={{ minWidth: 80, textAlign: 'right' }}>{updated}</span>
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
-          stroke="#5a5a60" strokeWidth="1.6"><path d="M9 6l6 6-6 6"/></svg>
+          stroke="var(--text-subtle)" strokeWidth="1.6"><path d="M9 6l6 6-6 6"/></svg>
       </div>
     </Link>
   );
@@ -119,44 +117,29 @@ export default function VersionsPage() {
   })();
 
   return (
-    <div style={{ height: '100%', overflowY: 'auto' }}>
-      <div style={{ padding: '28px 40px 120px', maxWidth: 1180, margin: '0 auto',
-        fontFamily: 'var(--font-geist, ui-sans-serif)' }}>
-
-        {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
-          marginBottom: 40, gap: 24 }}>
-          <div>
-            <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 11,
-              color: '#7c5cff', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 8 }}>
-              / versions
-            </div>
-            <h1 style={{ fontFamily: 'var(--font-instrument-serif, Georgia, serif)', fontWeight: 400,
-              fontSize: 42, letterSpacing: '-0.02em', lineHeight: 1.12, margin: 0, color: '#ededed' }}>
-              Every prompt,<br /><em style={{ color: '#7c5cff', fontStyle: 'italic' }}>every version</em>.
-            </h1>
-          </div>
-          <div style={{ display: 'flex', gap: 8, paddingTop: 8 }}>
-            <Link href="/optimize"
-              style={{ height: 28, padding: '0 12px', borderRadius: 6,
-                background: '#7c5cff', border: '1px solid #7c5cff', fontSize: 12,
-                color: '#fff', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 6 }}>
-              + New family
-            </Link>
-          </div>
-        </div>
+    <>
+      <PageHeader
+        title="Versions"
+        subtitle="Every prompt you've optimized, tracked across versions."
+        right={
+          <Link href="/optimize" className="ply-btn ply-btn-primary" style={{ textDecoration: 'none' }}>
+            + New family
+          </Link>
+        }
+      />
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '20px 28px 80px' }}>
 
         {isLoading && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: '48px 0', color: '#8a8a90', gap: 8 }}>
-            <Loader2 style={{ width: 16, height: 16, animation: 'spin 1s linear infinite' }} />
+            padding: '48px 0', color: 'var(--text-muted)', gap: 8 }}>
+            <span className="ply-dot ply-dot-pulse" style={{ width: 8, height: 8, background: 'var(--primary)' }} />
             <span style={{ fontSize: 13 }}>Loading…</span>
           </div>
         )}
 
         {!isLoading && families.length === 0 && (
-          <div style={{ background: '#1a1a1a', border: '1px solid #1f1f23', borderRadius: 10,
-            padding: '48px 20px', textAlign: 'center', color: '#8a8a90', fontSize: 13 }}>
+          <div className="ply-card" style={{ padding: '48px 20px', textAlign: 'center',
+            color: 'var(--text-muted)', fontSize: 13 }}>
             No prompt versions yet. Save a prompt during optimization to start tracking versions.
           </div>
         )}
@@ -165,18 +148,18 @@ export default function VersionsPage() {
           const items = grouped[bucket];
           if (items.length === 0) return null;
           return (
-            <div key={bucket} style={{ marginBottom: 32 }}>
-              <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5,
-                color: '#5a5a60', textTransform: 'uppercase', letterSpacing: '0.12em',
+            <div key={bucket} style={{ marginBottom: 28 }}>
+              <div style={{ fontFamily: 'var(--mono)', fontSize: 10.5,
+                color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.12em',
                 marginBottom: 10, paddingLeft: 2 }}>
                 {BUCKET_LABELS[bucket]}
               </div>
-              <div style={{ background: '#1a1a1a', border: '1px solid #1f1f23', borderRadius: 10, overflow: 'hidden' }}>
+              <div className="ply-card" style={{ padding: 0, overflow: 'hidden' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr auto',
-                  padding: '10px 20px', borderBottom: '1px solid #1f1f23',
-                  background: 'rgba(255,255,255,0.015)',
-                  fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5,
-                  color: '#5a5a60', textTransform: 'uppercase', letterSpacing: '0.12em' }}>
+                  padding: '10px 20px', borderBottom: '1px solid var(--border)',
+                  background: 'var(--surface-2)',
+                  fontFamily: 'var(--mono)', fontSize: 10.5,
+                  color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.12em' }}>
                   <span>Family · latest version</span>
                   <span style={{ display: 'flex', gap: 40 }}>
                     <span>Versions</span>
@@ -189,38 +172,24 @@ export default function VersionsPage() {
           );
         })}
 
-        {/* Pagination */}
         {totalPages > 1 && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            marginTop: 8 }}>
-            <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 11,
-              color: '#5a5a60' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
+            <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--text-subtle)' }}>
               {total} families · page {page} of {totalPages}
             </span>
             <div style={{ display: 'flex', gap: 6 }}>
-              <button
-                onClick={() => setPage(p => p - 1)}
-                disabled={page === 1}
-                style={{ height: 28, padding: '0 12px', borderRadius: 6, border: '1px solid #2a2a2e',
-                  background: 'transparent', fontSize: 12,
-                  color: page === 1 ? '#3a3a3e' : '#8a8a90',
-                  cursor: page === 1 ? 'not-allowed' : 'pointer' }}>
+              <button onClick={() => setPage(p => p - 1)} disabled={page === 1} className="ply-btn"
+                style={{ opacity: page === 1 ? 0.4 : 1, cursor: page === 1 ? 'not-allowed' : 'pointer' }}>
                 Prev
               </button>
-              <button
-                onClick={() => setPage(p => p + 1)}
-                disabled={page === totalPages}
-                style={{ height: 28, padding: '0 12px', borderRadius: 6, border: '1px solid #2a2a2e',
-                  background: 'transparent', fontSize: 12,
-                  color: page === totalPages ? '#3a3a3e' : '#8a8a90',
-                  cursor: page === totalPages ? 'not-allowed' : 'pointer' }}>
+              <button onClick={() => setPage(p => p + 1)} disabled={page === totalPages} className="ply-btn"
+                style={{ opacity: page === totalPages ? 0.4 : 1, cursor: page === totalPages ? 'not-allowed' : 'pointer' }}>
                 Next
               </button>
             </div>
           </div>
         )}
-
       </div>
-    </div>
+    </>
   );
 }

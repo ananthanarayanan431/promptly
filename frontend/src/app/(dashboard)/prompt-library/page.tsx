@@ -6,7 +6,8 @@ import type { ListFavoritesParams } from '@/lib/favorites';
 import type { FavoriteResponse, FavoriteCategory } from '@/types/api';
 import { formatDistanceToNow } from 'date-fns';
 import Link from 'next/link';
-import { Loader2, Heart, Pin } from 'lucide-react';
+import { Heart, Pin } from 'lucide-react';
+import { PageHeader } from '@/components/layout/page-header';
 
 const CATEGORY_OPTIONS: Array<{ value: FavoriteCategory | ''; label: string }> = [
   { value: '', label: 'All categories' },
@@ -25,11 +26,11 @@ const SORT_OPTIONS: Array<{ value: ListFavoritesParams['sort']; label: string }>
 ];
 
 const CATEGORY_COLORS: Record<FavoriteCategory, { bg: string; color: string }> = {
-  Work: { bg: 'rgba(124,92,255,0.15)', color: '#a78bfa' },
-  Personal: { bg: 'rgba(244,63,94,0.12)', color: '#fb7185' },
-  Research: { bg: 'rgba(59,130,246,0.12)', color: '#60a5fa' },
-  Creative: { bg: 'rgba(234,179,8,0.12)', color: '#fbbf24' },
-  Other: { bg: 'rgba(138,138,144,0.15)', color: '#8a8a90' },
+  Work:     { bg: 'var(--primary-soft)',  color: 'var(--primary)'  },
+  Personal: { bg: 'var(--danger-soft)',   color: 'var(--danger)'   },
+  Research: { bg: 'var(--accent-soft)',   color: 'var(--accent)'   },
+  Creative: { bg: 'var(--warning-soft)',  color: 'var(--warning)'  },
+  Other:    { bg: 'var(--surface-2)',     color: 'var(--text-muted)' },
 };
 
 function FavoriteCard({ item }: { item: FavoriteResponse }) {
@@ -42,132 +43,48 @@ function FavoriteCard({ item }: { item: FavoriteResponse }) {
   return (
     <Link
       href={`/prompt-library/${item.id}`}
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 12,
-        padding: '18px 20px',
-        background: '#1a1a1a',
-        border: '1px solid #1f1f23',
-        borderRadius: 10,
-        textDecoration: 'none',
-        cursor: 'pointer',
-        transition: 'border-color 120ms, background 120ms',
-      }}
-      onMouseEnter={e => {
-        e.currentTarget.style.borderColor = '#2e2e34';
-        e.currentTarget.style.background = 'rgba(255,255,255,0.018)';
-      }}
-      onMouseLeave={e => {
-        e.currentTarget.style.borderColor = '#1f1f23';
-        e.currentTarget.style.background = '#1a1a1a';
-      }}
+      className="ply-card"
+      style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '16px 18px',
+        textDecoration: 'none', cursor: 'pointer', minHeight: 160,
+        transition: 'border-color 120ms, background 120ms' }}
+      onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border-strong)'; }}
+      onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; }}
     >
-      {/* Top row: name + version + pin + heart */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
           {item.is_pinned && (
-            <Pin
-              style={{ width: 12, height: 12, color: '#fbbf24', flexShrink: 0 }}
-              fill="#fbbf24"
-            />
+            <Pin style={{ width: 11, height: 11, color: 'var(--warning)', flexShrink: 0 }} fill="var(--warning)" />
           )}
-          <span
-            style={{
-              fontSize: 14,
-              fontWeight: 500,
-              color: '#ededed',
-              letterSpacing: '-0.005em',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-          >
+          <span style={{ fontSize: 13.5, fontWeight: 500, color: 'var(--text)', letterSpacing: '-0.005em',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {item.family_name}
           </span>
-          <span
-            style={{
-              fontFamily: 'var(--font-geist-mono, monospace)',
-              fontSize: 10,
-              padding: '1px 5px',
-              borderRadius: 4,
-              background: '#222226',
-              border: '1px solid #2a2a2e',
-              color: '#8a8a90',
-              flexShrink: 0,
-            }}
-          >
+          <span className="ply-pill" style={{ fontFamily: 'var(--mono)', fontSize: 10, flexShrink: 0 }}>
             v{item.version}
           </span>
         </div>
-        <Heart
-          style={{ width: 13, height: 13, color: '#f43f5e', flexShrink: 0 }}
-          fill="#f43f5e"
-        />
+        <Heart style={{ width: 12, height: 12, color: 'var(--danger)', flexShrink: 0 }} fill="var(--danger)" />
       </div>
 
-      {/* Content preview */}
-      <div
-        style={{
-          fontFamily: 'var(--font-geist-mono, monospace)',
-          fontSize: 11.5,
-          color: '#6a6a70',
-          lineHeight: 1.55,
-          overflow: 'hidden',
-          display: '-webkit-box',
-          WebkitLineClamp: 3,
-          WebkitBoxOrient: 'vertical',
-        }}
-      >
+      <div style={{ fontFamily: 'var(--mono)', fontSize: 11.5, color: 'var(--text-muted)', lineHeight: 1.55,
+        overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}>
         {preview}{hasMore ? '…' : ''}
       </div>
 
-      {/* Bottom row: tags + category + date */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-          flexWrap: 'wrap',
-          marginTop: 2,
-        }}
-      >
+      <div style={{ flex: 1 }} />
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
         {visibleTags.map(tag => (
-          <span
-            key={tag}
-            style={{
-              fontFamily: 'var(--font-geist-mono, monospace)',
-              fontSize: 10,
-              padding: '2px 6px',
-              borderRadius: 4,
-              background: 'rgba(124,92,255,0.1)',
-              border: '1px solid rgba(124,92,255,0.2)',
-              color: '#9d7ff5',
-            }}
-          >
+          <span key={tag} className="ply-pill" style={{ fontFamily: 'var(--mono)', fontSize: 10,
+            color: 'var(--primary)', background: 'var(--primary-soft)' }}>
             {tag}
           </span>
         ))}
-        <span
-          style={{
-            fontFamily: 'var(--font-geist-mono, monospace)',
-            fontSize: 10,
-            padding: '2px 6px',
-            borderRadius: 4,
-            background: catColor.bg,
-            color: catColor.color,
-          }}
-        >
+        <span className="ply-pill" style={{ fontFamily: 'var(--mono)', fontSize: 10,
+          background: catColor.bg, color: catColor.color }}>
           {item.category}
         </span>
-        <span
-          style={{
-            marginLeft: 'auto',
-            fontFamily: 'var(--font-geist-mono, monospace)',
-            fontSize: 10,
-            color: '#5a5a60',
-          }}
-        >
+        <span style={{ marginLeft: 'auto', fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--text-subtle)' }}>
           {likedAgo}
         </span>
       </div>
@@ -181,7 +98,6 @@ export default function PromptLibraryPage() {
   const [category, setCategory] = useState<FavoriteCategory | ''>('');
   const [sort, setSort] = useState<NonNullable<ListFavoritesParams['sort']>>('recently_liked');
 
-  // Debounce search input 300ms
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedQ(q), 300);
     return () => clearTimeout(timer);
@@ -198,263 +114,83 @@ export default function PromptLibraryPage() {
   const { data, isLoading } = useFavorites(params);
 
   const selectStyle: React.CSSProperties = {
-    height: 34,
-    padding: '0 10px',
-    borderRadius: 6,
-    border: '1px solid #2a2a2e',
-    background: '#111113',
-    color: '#b5b5ba',
-    fontSize: 12,
-    fontFamily: 'var(--font-geist, ui-sans-serif)',
-    cursor: 'pointer',
-    outline: 'none',
-    appearance: 'none',
-    WebkitAppearance: 'none',
-    paddingRight: 28,
+    height: 34, padding: '0 28px 0 10px', borderRadius: 6,
+    border: '1px solid var(--border)', background: 'var(--surface-2)',
+    color: 'var(--text-muted)', fontSize: 12, cursor: 'pointer', outline: 'none',
+    appearance: 'none', WebkitAppearance: 'none',
   };
 
   return (
-    <div style={{ height: '100%', overflowY: 'auto' }}>
-    <div
-      style={{
-        padding: '28px 40px 120px',
-        maxWidth: 1180,
-        margin: '0 auto',
-        fontFamily: 'var(--font-geist, ui-sans-serif)',
-      }}
-    >
-      {/* Header */}
-      <div style={{ marginBottom: 36 }}>
-        <div
-          style={{
-            fontFamily: 'var(--font-geist-mono, monospace)',
-            fontSize: 11,
-            color: '#7c5cff',
-            textTransform: 'uppercase',
-            letterSpacing: '0.12em',
-            marginBottom: 8,
-          }}
-        >
-          / prompt-library
+    <>
+      <PageHeader
+        title="Library"
+        subtitle="Your saved prompts."
+        badge={data ? (
+          <span className="ply-pill" style={{ fontFamily: 'var(--mono)', fontSize: 11 }}>
+            {data.total} {data.total === 1 ? 'prompt' : 'prompts'}
+          </span>
+        ) : undefined}
+      />
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '20px 28px 80px' }}>
+
+        {/* Toolbar */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
+          <div style={{ position: 'relative', flex: '1 1 200px', maxWidth: 340 }}>
+            <svg style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}
+              width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-subtle)" strokeWidth="2">
+              <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
+            </svg>
+            <input type="text" value={q} onChange={e => setQ(e.target.value)}
+              placeholder="Search prompts…"
+              style={{ width: '100%', height: 34, paddingLeft: 30, paddingRight: 10, borderRadius: 6,
+                border: '1px solid var(--border)', background: 'var(--surface-2)',
+                color: 'var(--text)', fontSize: 12, outline: 'none', boxSizing: 'border-box' }} />
+          </div>
+          <div style={{ flex: 1 }} />
+          <div style={{ position: 'relative' }}>
+            <select value={category} onChange={e => setCategory(e.target.value as FavoriteCategory | '')}
+              style={selectStyle}>
+              {CATEGORY_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+            </select>
+            <svg style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}
+              width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--text-subtle)" strokeWidth="2.5">
+              <path d="M6 9l6 6 6-6" />
+            </svg>
+          </div>
+          <div style={{ position: 'relative' }}>
+            <select value={sort} onChange={e => setSort(e.target.value as NonNullable<ListFavoritesParams['sort']>)}
+              style={selectStyle}>
+              {SORT_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+            </select>
+            <svg style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}
+              width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--text-subtle)" strokeWidth="2.5">
+              <path d="M6 9l6 6 6-6" />
+            </svg>
+          </div>
         </div>
-        <h1
-          style={{
-            fontFamily: 'var(--font-instrument-serif, Georgia, serif)',
-            fontWeight: 400,
-            fontSize: 42,
-            letterSpacing: '-0.02em',
-            lineHeight: 1.12,
-            margin: 0,
-            color: '#ededed',
-          }}
-        >
-          Prompt Library
-        </h1>
-        <p
-          style={{
-            margin: '10px 0 0',
-            fontSize: 13,
-            color: '#8a8a90',
-            lineHeight: 1.5,
-          }}
-        >
-          Your saved prompts.
-          {data && (
-            <span
-              style={{
-                fontFamily: 'var(--font-geist-mono, monospace)',
-                fontSize: 11,
-                color: '#5a5a60',
-                marginLeft: 10,
-              }}
-            >
-              {data.total} {data.total === 1 ? 'prompt' : 'prompts'}
-            </span>
-          )}
-        </p>
+
+        {isLoading && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '64px 0', color: 'var(--text-muted)', gap: 8 }}>
+            <span className="ply-dot ply-dot-pulse" style={{ width: 8, height: 8, background: 'var(--primary)' }} />
+            <span style={{ fontSize: 13 }}>Loading…</span>
+          </div>
+        )}
+
+        {!isLoading && data && data.items.length === 0 && (
+          <div className="ply-card" style={{ padding: '56px 20px', textAlign: 'center',
+            color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.6 }}>
+            <Heart style={{ width: 22, height: 22, color: 'var(--border-strong)', margin: '0 auto 12px', display: 'block' }} />
+            No saved prompts yet. Like a result after optimizing to save it here.
+          </div>
+        )}
+
+        {!isLoading && data && data.items.length > 0 && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12 }}>
+            {data.items.map(item => <FavoriteCard key={item.id} item={item} />)}
+          </div>
+        )}
       </div>
-
-      {/* Toolbar */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          marginBottom: 24,
-          flexWrap: 'wrap',
-        }}
-      >
-        {/* Search */}
-        <div style={{ position: 'relative', flex: '1 1 200px', maxWidth: 360 }}>
-          <svg
-            style={{
-              position: 'absolute',
-              left: 10,
-              top: '50%',
-              transform: 'translateY(-50%)',
-              pointerEvents: 'none',
-            }}
-            width="13"
-            height="13"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="#5a5a60"
-            strokeWidth="2"
-          >
-            <circle cx="11" cy="11" r="8" />
-            <path d="M21 21l-4.35-4.35" />
-          </svg>
-          <input
-            type="text"
-            value={q}
-            onChange={e => setQ(e.target.value)}
-            placeholder="Search prompts…"
-            style={{
-              width: '100%',
-              height: 34,
-              paddingLeft: 30,
-              paddingRight: 10,
-              borderRadius: 6,
-              border: '1px solid #2a2a2e',
-              background: '#111113',
-              color: '#ededed',
-              fontSize: 12,
-              fontFamily: 'inherit',
-              outline: 'none',
-              boxSizing: 'border-box',
-            }}
-          />
-        </div>
-
-        {/* Spacer */}
-        <div style={{ flex: 1 }} />
-
-        {/* Category dropdown */}
-        <div style={{ position: 'relative' }}>
-          <select
-            value={category}
-            onChange={e => setCategory(e.target.value as FavoriteCategory | '')}
-            style={selectStyle}
-          >
-            {CATEGORY_OPTIONS.map(opt => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-          <svg
-            style={{
-              position: 'absolute',
-              right: 8,
-              top: '50%',
-              transform: 'translateY(-50%)',
-              pointerEvents: 'none',
-            }}
-            width="10"
-            height="10"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="#5a5a60"
-            strokeWidth="2.5"
-          >
-            <path d="M6 9l6 6 6-6" />
-          </svg>
-        </div>
-
-        {/* Sort dropdown */}
-        <div style={{ position: 'relative' }}>
-          <select
-            value={sort}
-            onChange={e => setSort(e.target.value as NonNullable<ListFavoritesParams['sort']>)}
-            style={selectStyle}
-          >
-            {SORT_OPTIONS.map(opt => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-          <svg
-            style={{
-              position: 'absolute',
-              right: 8,
-              top: '50%',
-              transform: 'translateY(-50%)',
-              pointerEvents: 'none',
-            }}
-            width="10"
-            height="10"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="#5a5a60"
-            strokeWidth="2.5"
-          >
-            <path d="M6 9l6 6 6-6" />
-          </svg>
-        </div>
-      </div>
-
-      {/* Loading */}
-      {isLoading && (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '64px 0',
-            color: '#8a8a90',
-            gap: 8,
-          }}
-        >
-          <Loader2
-            style={{ width: 16, height: 16, animation: 'spin 1s linear infinite' }}
-          />
-          <span style={{ fontSize: 13 }}>Loading…</span>
-        </div>
-      )}
-
-      {/* Empty state */}
-      {!isLoading && data && data.items.length === 0 && (
-        <div
-          style={{
-            background: '#1a1a1a',
-            border: '1px solid #1f1f23',
-            borderRadius: 10,
-            padding: '56px 20px',
-            textAlign: 'center',
-            color: '#8a8a90',
-            fontSize: 13,
-            lineHeight: 1.6,
-          }}
-        >
-          <Heart
-            style={{
-              width: 24,
-              height: 24,
-              color: '#2a2a2e',
-              margin: '0 auto 14px',
-              display: 'block',
-            }}
-          />
-          No saved prompts yet. Like a result after optimizing to save it here.
-        </div>
-      )}
-
-      {/* Grid */}
-      {!isLoading && data && data.items.length > 0 && (
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-            gap: 12,
-          }}
-        >
-          {data.items.map(item => (
-            <FavoriteCard key={item.id} item={item} />
-          ))}
-        </div>
-      )}
-    </div>
-    </div>
+    </>
   );
 }

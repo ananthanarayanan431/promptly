@@ -35,13 +35,13 @@ function TemplatePickerModal({
         background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)' }}
       onClick={onClose}>
       <div
-        style={{ width: 640, maxHeight: '78vh', borderRadius: 14, background: '#141414',
-          border: '1px solid #2a2a2e', display: 'flex', flexDirection: 'column',
+        style={{ width: 640, maxHeight: '78vh', borderRadius: 14, background: 'var(--bg)',
+          border: '1px solid var(--border)', display: 'flex', flexDirection: 'column',
           overflow: 'hidden', boxShadow: '0 24px 64px rgba(0,0,0,0.5)' }}
         onClick={e => e.stopPropagation()}>
 
         {/* Header */}
-        <div style={{ padding: '14px 20px', borderBottom: '1px solid #1f1f23',
+        <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7c5cff" strokeWidth="1.6">
@@ -53,14 +53,14 @@ function TemplatePickerModal({
               Prompt Templates
             </span>
             <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5,
-              padding: '1px 6px', borderRadius: 4, background: '#222226',
-              border: '1px solid #2a2a2e', color: '#5a5a60' }}>
+              padding: '1px 6px', borderRadius: 4, background: 'var(--surface-2)',
+              border: '1px solid var(--border)', color: 'var(--text-subtle)' }}>
               {data.total}
             </span>
           </div>
           <button onClick={onClose}
             style={{ background: 'none', border: 'none', cursor: 'pointer',
-              color: '#5a5a60', width: 24, height: 24, display: 'flex',
+              color: 'var(--text-subtle)', width: 24, height: 24, display: 'flex',
               alignItems: 'center', justifyContent: 'center', borderRadius: 4 }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
               <path d="M18 6L6 18M6 6l12 12"/>
@@ -70,13 +70,13 @@ function TemplatePickerModal({
 
         {/* Category tabs */}
         <div style={{ display: 'flex', gap: 4, padding: '10px 16px',
-          borderBottom: '1px solid #1f1f23', overflowX: 'auto' as const }}>
+          borderBottom: '1px solid var(--border)', overflowX: 'auto' as const }}>
           {data.categories.map(g => (
             <button key={g.category} onClick={() => setActiveCategory(g.category)}
               style={{ padding: '4px 12px', borderRadius: 6, fontSize: 12,
                 border: '1px solid transparent', cursor: 'pointer', whiteSpace: 'nowrap' as const,
                 background: activeCategory === g.category ? 'rgba(124,92,255,0.15)' : 'transparent',
-                color: activeCategory === g.category ? '#7c5cff' : '#8a8a90',
+                color: activeCategory === g.category ? 'var(--primary)' : 'var(--text-muted)',
                 borderColor: activeCategory === g.category ? 'rgba(124,92,255,0.3)' : 'transparent',
                 fontFamily: 'var(--font-geist-mono, monospace)',
                 textTransform: 'capitalize' as const }}>
@@ -91,7 +91,7 @@ function TemplatePickerModal({
           {(data.categories.find(g => g.category === activeCategory)?.templates ?? []).map(t => (
             <button key={t.id} onClick={() => { onSelect(t.content); onClose(); }}
               style={{ textAlign: 'left', padding: '12px 14px', borderRadius: 8,
-                border: '1px solid #1f1f23', background: 'transparent', cursor: 'pointer',
+                border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer',
                 transition: 'background 120ms, border-color 120ms',
                 fontFamily: 'var(--font-geist, ui-sans-serif)' }}
               onMouseEnter={e => {
@@ -100,13 +100,13 @@ function TemplatePickerModal({
               }}
               onMouseLeave={e => {
                 e.currentTarget.style.background = 'transparent';
-                e.currentTarget.style.borderColor = '#1f1f23';
+                e.currentTarget.style.borderColor = 'var(--border)';
               }}>
-              <div style={{ fontSize: 13, fontWeight: 500, color: '#ededed', marginBottom: 4 }}>
+              <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)', marginBottom: 4 }}>
                 {t.name}
               </div>
               <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 11,
-                color: '#5a5a60', lineHeight: 1.5 }}>
+                color: 'var(--text-subtle)', lineHeight: 1.5 }}>
                 {t.description}
               </div>
             </button>
@@ -489,15 +489,15 @@ export function OptimizeChat() {
               <div style={{ width: 48, height: 48, borderRadius: '50%',
                 background: 'rgba(124,92,255,0.15)', border: '1px solid rgba(124,92,255,0.3)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Sparkles style={{ width: 22, height: 22, color: '#7c5cff' }} />
+                <Sparkles style={{ width: 22, height: 22, color: 'var(--primary)' }} />
               </div>
               <div style={{ textAlign: 'center' }}>
                 <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 11,
-                  color: '#7c5cff', textTransform: 'uppercase', letterSpacing: '0.12em',
+                  color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.12em',
                   marginBottom: 8 }}>Hello, {firstName}</div>
                 <h1 style={{ fontFamily: 'var(--font-instrument-serif, Georgia, serif)',
                   fontWeight: 400, fontSize: 36, letterSpacing: '-0.02em', lineHeight: 1.15,
-                  margin: 0, color: '#ededed' }}>
+                  margin: 0, color: 'var(--text)' }}>
                   What prompt can I<br />
                   <em style={{ color: '#7c5cff', fontStyle: 'italic' }}>optimize</em> for you?
                 </h1>

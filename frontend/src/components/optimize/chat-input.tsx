@@ -126,15 +126,15 @@ export function ChatInput({
               </svg>
             </button>
           </div>
-          <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5, color: '#5a5a60' }}>
+          <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5, color: 'var(--text-subtle)' }}>
             Result will be saved as a versioned prompt
           </span>
         </div>
       )}
 
       <div style={{ position: 'relative', borderRadius: 12,
-        border: `1px solid ${focused ? 'rgba(124,92,255,0.5)' : '#2a2a2e'}`,
-        background: '#1a1a1a',
+        border: `1px solid ${focused ? 'rgba(124,92,255,0.5)' : 'var(--border)'}`,
+        background: 'var(--surface)',
         boxShadow: focused ? '0 0 0 3px rgba(124,92,255,0.1)' : 'none',
         transition: 'border-color 150ms, box-shadow 150ms' }}>
         <textarea ref={textareaRef} value={text} onChange={(e) => setText(e.target.value)}
@@ -144,7 +144,7 @@ export function ChatInput({
           style={{ width: '100%', resize: 'none', background: 'transparent',
             padding: hasPreviousTurns ? '14px 16px 44px' : '16px 16px 44px',
             minHeight: hasPreviousTurns ? 56 : 128,
-            fontSize: 14, lineHeight: 1.6, color: '#ededed', outline: 'none', border: 'none',
+            fontSize: 14, lineHeight: 1.6, color: 'var(--text)', outline: 'none', border: 'none',
             fontFamily: 'inherit', boxSizing: 'border-box',
             opacity: isLoading ? 0.5 : 1 }} />
 
@@ -158,7 +158,7 @@ export function ChatInput({
                 borderRadius: 999, fontSize: 11.5, fontWeight: 500, cursor: 'pointer',
                 border: versioning ? '1px solid rgba(124,92,255,0.3)' : '1px solid transparent',
                 background: versioning ? 'rgba(124,92,255,0.08)' : 'transparent',
-                color: versioning ? '#7c5cff' : '#5a5a60',
+                color: versioning ? 'var(--primary)' : 'var(--text-subtle)',
                 fontFamily: 'inherit', transition: 'all 120ms' }}>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                 <path d="M6 3v12"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/>
@@ -178,17 +178,15 @@ export function ChatInput({
                   borderRadius: 999, fontSize: 11.5, fontWeight: 500, cursor: 'pointer',
                   border: '1px solid rgba(124,92,255,0.35)',
                   background: 'rgba(124,92,255,0.12)',
-                  color: '#a78bfa',
+                  color: 'var(--primary)',
                   fontFamily: 'inherit', transition: 'all 120ms' }}
                 onMouseEnter={e => {
                   e.currentTarget.style.background = 'rgba(124,92,255,0.22)';
                   e.currentTarget.style.borderColor = 'rgba(124,92,255,0.6)';
-                  e.currentTarget.style.color = '#c4b5fd';
                 }}
                 onMouseLeave={e => {
                   e.currentTarget.style.background = 'rgba(124,92,255,0.12)';
                   e.currentTarget.style.borderColor = 'rgba(124,92,255,0.35)';
-                  e.currentTarget.style.color = '#a78bfa';
                 }}>
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                   <rect x="3" y="3" width="7" height="8" rx="1"/>
@@ -203,9 +201,9 @@ export function ChatInput({
 
           <button type="button" onClick={handleSubmit} disabled={!canSubmit}
             style={{ width: 32, height: 32, borderRadius: '50%', border: 'none', cursor: canSubmit ? 'pointer' : 'not-allowed',
-              background: canSubmit ? '#7c5cff' : '#222226',
+              background: canSubmit ? 'var(--primary)' : 'var(--surface-3)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: canSubmit ? '#fff' : '#5a5a60',
+              color: canSubmit ? '#fff' : 'var(--text-subtle)',
               transition: 'background 120ms, transform 120ms',
               transform: canSubmit ? 'scale(1)' : 'scale(0.95)' }}>
             {isLoading ? (
@@ -224,7 +222,7 @@ export function ChatInput({
 
       {!hasPreviousTurns && (
         <p style={{ marginTop: 8, textAlign: 'center', fontFamily: 'var(--font-geist-mono, monospace)',
-          fontSize: 11, color: '#3a3a40' }}>
+          fontSize: 11, color: 'var(--text-subtle)' }}>
           Enter to optimize · Shift+Enter for new line · 10 credits per run
         </p>
       )}

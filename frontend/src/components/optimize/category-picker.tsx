@@ -143,8 +143,8 @@ export function CategoryPicker({ selectedSlug, onChange }: CategoryPickerProps) 
             width: 320,
             maxHeight: 380,
             overflowY: 'auto',
-            background: '#141414',
-            border: '1px solid #2a2a2e',
+            background: 'var(--bg)',
+            border: '1px solid var(--border)',
             borderRadius: 10,
             boxShadow: '0 12px 32px rgba(0,0,0,0.4)',
             fontFamily: 'var(--font-geist, ui-sans-serif)',
@@ -158,7 +158,7 @@ export function CategoryPicker({ selectedSlug, onChange }: CategoryPickerProps) 
               fontSize: 10.5,
               textTransform: 'uppercase',
               letterSpacing: '0.12em',
-              color: '#5a5a60',
+              color: 'var(--text-subtle)',
             }}
           >
             Prompt category
@@ -181,7 +181,7 @@ export function CategoryPicker({ selectedSlug, onChange }: CategoryPickerProps) 
                   }}
                   onMouseEnter={e => {
                     if (!isSelected) {
-                      e.currentTarget.style.background = 'rgba(255,255,255,0.025)';
+                      e.currentTarget.style.background = 'var(--surface-2)';
                     }
                   }}
                   onMouseLeave={e => {
@@ -221,7 +221,7 @@ export function CategoryPicker({ selectedSlug, onChange }: CategoryPickerProps) 
                       style={{
                         fontSize: 12.5,
                         fontWeight: 500,
-                        color: isSelected ? '#c4b5fd' : '#ededed',
+                        color: isSelected ? 'var(--primary)' : 'var(--text)',
                       }}
                     >
                       {cat.name}
@@ -229,7 +229,7 @@ export function CategoryPicker({ selectedSlug, onChange }: CategoryPickerProps) 
                     <span
                       style={{
                         fontSize: 11,
-                        color: '#7a7a82',
+                        color: 'var(--text-muted)',
                         lineHeight: 1.45,
                       }}
                     >
@@ -248,13 +248,13 @@ export function CategoryPicker({ selectedSlug, onChange }: CategoryPickerProps) 
                         background: 'none',
                         border: 'none',
                         cursor: 'pointer',
-                        color: '#5a5a60',
+                        color: 'var(--text-subtle)',
                         padding: 2,
                         display: 'flex',
                         alignItems: 'center',
                       }}
                       onMouseEnter={e => (e.currentTarget.style.color = '#f43f5e')}
-                      onMouseLeave={e => (e.currentTarget.style.color = '#5a5a60')}
+                      onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-subtle)')}
                     >
                       <svg
                         width="12"
@@ -276,7 +276,7 @@ export function CategoryPicker({ selectedSlug, onChange }: CategoryPickerProps) 
           {/* Add new — divider + form */}
           <div
             style={{
-              borderTop: '1px solid #1f1f23',
+              borderTop: '1px solid var(--border)',
               padding: '8px 14px 12px',
               marginTop: 4,
             }}
@@ -329,9 +329,9 @@ export function CategoryPicker({ selectedSlug, onChange }: CategoryPickerProps) 
                     height: 30,
                     padding: '0 10px',
                     borderRadius: 6,
-                    border: '1px solid #2a2a2e',
-                    background: '#0e0e10',
-                    color: '#ededed',
+                    border: '1px solid var(--border)',
+                    background: 'var(--surface-2)',
+                    color: 'var(--text)',
                     fontSize: 12,
                     outline: 'none',
                     fontFamily: 'inherit',
@@ -346,9 +346,9 @@ export function CategoryPicker({ selectedSlug, onChange }: CategoryPickerProps) 
                   style={{
                     padding: '8px 10px',
                     borderRadius: 6,
-                    border: '1px solid #2a2a2e',
-                    background: '#0e0e10',
-                    color: '#ededed',
+                    border: '1px solid var(--border)',
+                    background: 'var(--surface-2)',
+                    color: 'var(--text)',
                     fontSize: 12,
                     outline: 'none',
                     resize: 'vertical',
@@ -369,9 +369,9 @@ export function CategoryPicker({ selectedSlug, onChange }: CategoryPickerProps) 
                       height: 28,
                       padding: '0 12px',
                       borderRadius: 6,
-                      border: '1px solid #2a2a2e',
+                      border: '1px solid var(--border)',
                       background: 'transparent',
-                      color: '#8a8a90',
+                      color: 'var(--text-muted)',
                       fontSize: 11.5,
                       cursor: 'pointer',
                       fontFamily: 'inherit',

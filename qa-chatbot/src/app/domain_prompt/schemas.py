@@ -83,3 +83,15 @@ class UpdateDatasetRequest(BaseModel):
 
 class AugmentDatasetRequest(BaseModel):
     count: int = Field(default=10, ge=1, le=50)
+
+
+class TournamentStateResponse(BaseModel):
+    round: int
+    total_rounds: int
+    candidate_count: int
+    names: list[str]
+    elos: list[float]
+    W: list[list[int]]
+    duel_i: int
+    duel_j: int
+    question: str

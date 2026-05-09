@@ -65,7 +65,7 @@ function DimensionBreakdown({ scores, rationale }: {
             <div key={key} style={{ display: 'flex', alignItems: 'center',
               justifyContent: 'space-between', padding: '5px 14px' }}>
               <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 11,
-                color: '#8a8a90', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
                 {DIMENSION_LABELS[key]}
               </span>
               <ScoreDot score={score} />
@@ -76,7 +76,7 @@ function DimensionBreakdown({ scores, rationale }: {
       {rationale && (
         <div style={{ padding: '8px 14px', borderTop: '1px solid rgba(34,197,94,0.15)',
           fontFamily: 'var(--font-geist, ui-sans-serif)', fontSize: 12,
-          color: '#8a8a90', fontStyle: 'italic', lineHeight: 1.6 }}>
+          color: 'var(--text-muted)', fontStyle: 'italic', lineHeight: 1.6 }}>
           {rationale}
         </div>
       )}
@@ -275,7 +275,7 @@ export function ResultPanel({ result, onClose, onForceOptimize, isLoading = fals
             disabled={isLoading}
             className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             style={{ border: '1px solid rgba(124,92,255,0.4)', background: 'rgba(124,92,255,0.08)',
-              color: '#7c5cff', cursor: isLoading ? 'not-allowed' : 'pointer' }}
+              color: 'var(--primary)', cursor: isLoading ? 'not-allowed' : 'pointer' }}
             onMouseEnter={e => {
               if (!isLoading) {
                 e.currentTarget.style.background = 'rgba(124,92,255,0.15)';
