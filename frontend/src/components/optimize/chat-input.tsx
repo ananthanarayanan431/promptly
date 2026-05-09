@@ -13,6 +13,8 @@ interface ChatInputProps {
   hasPreviousTurns: boolean;
   defaultValue?: string;
   defaultName?: string;
+  defaultCategorySlug?: string;
+  categoryNonce?: number;
   onPresetPrompts?: () => void;
   autoFocus?: boolean;
 }
@@ -23,6 +25,8 @@ export function ChatInput({
   hasPreviousTurns,
   defaultValue = '',
   defaultName = '',
+  defaultCategorySlug,
+  categoryNonce,
   onPresetPrompts,
   autoFocus = false,
 }: ChatInputProps) {
@@ -38,6 +42,13 @@ export function ChatInput({
   useEffect(() => {
     setCategorySlug(loadStoredCategorySlug());
   }, []);
+
+  // Override category when parent passes one (e.g. preset chip click).
+  // categoryNonce ensures this fires even if the same slug is selected again.
+  useEffect(() => {
+    if (defaultCategorySlug) setCategorySlug(defaultCategorySlug);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultCategorySlug, categoryNonce]);
 
   useEffect(() => {
     if (defaultValue) setText(defaultValue);

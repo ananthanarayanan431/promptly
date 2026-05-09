@@ -154,6 +154,17 @@ export function OptimizeChat() {
 
   const [showTemplates, setShowTemplates] = useState(false);
   const [templateDefault, setTemplateDefault] = useState('');
+  const [templateCategorySlug, setTemplateCategorySlug] = useState<string | undefined>();
+  // Incremented on every chip click so ChatInput's useEffect fires even if slug didn't change
+  const [categoryNonce, setCategoryNonce] = useState(0);
+
+  // Maps template seed categories → prompt category slugs
+  const TEMPLATE_TO_CATEGORY_SLUG: Record<string, string> = {
+    coding: 'code-generation',
+    writing: 'writing-content',
+    'customer-support': 'qa-rag',
+    analysis: 'analysis-reasoning',
+  };
 
   const { data: templatesData } = useQuery({
     queryKey: ['templates'],
@@ -480,32 +491,87 @@ export function OptimizeChat() {
             Loading conversation…
           </div>
         ) : !hasMessages ? (
-          /* Empty state — greeting top, input + chips bottom */
+          /* Empty state */
           <div style={{ display: 'flex', flexDirection: 'column', height: '100%',
             fontFamily: 'var(--font-geist, ui-sans-serif)' }}>
-            {/* Greeting */}
+            {/* Center hero */}
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center',
-              justifyContent: 'center', flex: 1, gap: 12, paddingBottom: 32 }}>
-              <div style={{ width: 48, height: 48, borderRadius: '50%',
-                background: 'rgba(124,92,255,0.15)', border: '1px solid rgba(124,92,255,0.3)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Sparkles style={{ width: 22, height: 22, color: 'var(--primary)' }} />
+              justifyContent: 'center', flex: 1, gap: 20, paddingBottom: 24, paddingTop: 24 }}>
+              {/* Icon */}
+              <div style={{
+                width: 64, height: 64, borderRadius: 18,
+                background: 'linear-gradient(135deg, #7c5cff 0%, #6366f1 100%)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxShadow: '0 8px 24px rgba(124,92,255,0.35)',
+              }}>
+                <Sparkles style={{ width: 26, height: 26, color: '#fff' }} />
               </div>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 11,
-                  color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.12em',
-                  marginBottom: 8 }}>Hello, {firstName}</div>
-                <h1 style={{ fontFamily: 'var(--font-instrument-serif, Georgia, serif)',
-                  fontWeight: 400, fontSize: 36, letterSpacing: '-0.02em', lineHeight: 1.15,
-                  margin: 0, color: 'var(--text)' }}>
-                  What prompt can I<br />
-                  <em style={{ color: '#7c5cff', fontStyle: 'italic' }}>optimize</em> for you?
+
+              {/* Heading + subtitle */}
+              <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <h1 style={{ margin: 0, fontSize: 28, fontWeight: 700,
+                  letterSpacing: '-0.02em', lineHeight: 1.2, color: 'var(--text)' }}>
+                  What prompt should we optimize?
                 </h1>
+                <p style={{ margin: 0, fontSize: 14, color: 'var(--text-muted)', lineHeight: 1.6, maxWidth: 440 }}>
+                  Paste a system prompt below and we&apos;ll return a sharper, better-structured version.<br />
+                  Pick a preset to get started, or write your own.
+                </p>
               </div>
+
+              {/* Preset chips — one per template category */}
+              {templatesData && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, justifyContent: 'center', maxWidth: 520 }}>
+                  {templatesData.categories.slice(0, 4).map(group => {
+                    const first = group.templates[0];
+                    if (!first) return null;
+                    return (
+                      <button
+                        key={group.category}
+                        type="button"
+                        onClick={() => {
+                          const slug = TEMPLATE_TO_CATEGORY_SLUG[group.category] ?? 'general';
+                          setTemplateDefault(first.content);
+                          setTemplateCategorySlug(slug);
+                          setCategoryNonce(n => n + 1);
+                        }}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 7,
+                          padding: '8px 16px', borderRadius: 999,
+                          border: '1px solid var(--border)',
+                          background: 'var(--surface)',
+                          color: 'var(--text)',
+                          fontSize: 13.5, fontWeight: 500, cursor: 'pointer',
+                          fontFamily: 'inherit',
+                          transition: 'border-color 120ms, background 120ms',
+                          boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+                        }}
+                        onMouseEnter={e => {
+                          e.currentTarget.style.borderColor = 'rgba(124,92,255,0.4)';
+                          e.currentTarget.style.background = 'rgba(124,92,255,0.05)';
+                        }}
+                        onMouseLeave={e => {
+                          e.currentTarget.style.borderColor = 'var(--border)';
+                          e.currentTarget.style.background = 'var(--surface)';
+                        }}
+                      >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+                          stroke="var(--primary)" strokeWidth="1.8">
+                          <rect x="3" y="3" width="7" height="8" rx="1"/>
+                          <rect x="14" y="3" width="7" height="5" rx="1"/>
+                          <rect x="14" y="12" width="7" height="9" rx="1"/>
+                          <rect x="3" y="15" width="7" height="6" rx="1"/>
+                        </svg>
+                        {first.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
-            {/* Input */}
-            <div style={{ width: '100%', maxWidth: 680, margin: '0 auto',
+            {/* Input pinned to bottom */}
+            <div style={{ width: '100%', maxWidth: 720, margin: '0 auto',
               paddingBottom: 32, paddingLeft: 16, paddingRight: 16 }}>
               <ChatInput
                 onSubmit={handleSubmit}
@@ -513,6 +579,8 @@ export function OptimizeChat() {
                 hasPreviousTurns={false}
                 defaultValue={templateDefault || prefillText}
                 defaultName={prefillName}
+                defaultCategorySlug={templateCategorySlug}
+                categoryNonce={categoryNonce}
                 onPresetPrompts={templatesData ? () => setShowTemplates(true) : undefined}
                 autoFocus
               />
