@@ -44,9 +44,7 @@ def upgrade() -> None:
             "this migration."
         )
 
-    op.execute(
-        f"CREATE UNIQUE INDEX {INDEX_NAME} " "ON prompt_categories(slug) WHERE user_id IS NULL"
-    )
+    op.execute(f"CREATE UNIQUE INDEX {INDEX_NAME} ON prompt_categories(slug) WHERE user_id IS NULL")
 
 
 def downgrade() -> None:

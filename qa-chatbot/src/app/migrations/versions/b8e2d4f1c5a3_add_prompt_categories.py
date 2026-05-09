@@ -48,8 +48,7 @@ PREDEFINED_CATEGORIES: list[tuple[str, str, str]] = [
     (
         "qa-rag",
         "Question Answering / RAG",
-        "Answering questions from supplied context — grounding and don't-fabricate rules "
-        "dominate.",
+        "Answering questions from supplied context — grounding and don't-fabricate rules dominate.",
     ),
     (
         "code-generation",

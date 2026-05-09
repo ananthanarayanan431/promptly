@@ -12,6 +12,7 @@ from app.api.v1 import (
     templates,
     users,
 )
+from app.domain_prompt import router as domain_prompt_router
 
 api_router = APIRouter()
 
@@ -25,3 +26,4 @@ api_router.include_router(users.router)
 api_router.include_router(favorites.router)
 api_router.include_router(api_keys.router)
 api_router.include_router(categories.router)
+api_router.include_router(domain_prompt_router.router)
