@@ -303,10 +303,11 @@ function TournamentRunningViz({ domainId, vizMode, onVizChange }: {
 
 /* ── Optimize tab ────────────────────────────────────────────────── */
 
-function OptimizeTab({ domain, onReoptimize, reoptimizing }: {
+function OptimizeTab({ domain, onReoptimize, reoptimizing, sessionResult }: {
   domain: DomainPrompt;
   onReoptimize: (prompt: string) => void;
   reoptimizing: boolean;
+  sessionResult: { optimized_prompt: string; win_rate: number | null; candidates_tried: number | null; } | null;
 }) {
   const [draft, setDraft] = useState('');
   const [copied, setCopied] = useState(false);
@@ -315,12 +316,12 @@ function OptimizeTab({ domain, onReoptimize, reoptimizing }: {
   const isRunning = ['pending', 'preparing_dataset', 'optimizing'].includes(domain.status);
   const busy = isRunning || reoptimizing;
   const datasetReady = !!domain.dataset?.dataset_key;
-  const hasResult = !!domain.optimized_prompt && !!domain.last_prompt;
+  const hasResult = !!sessionResult;
   const canSubmit = datasetReady && !busy && draft.trim().length >= 10;
 
   function copyResult() {
-    if (!domain.optimized_prompt) return;
-    navigator.clipboard.writeText(domain.optimized_prompt).then(() => {
+    if (!sessionResult?.optimized_prompt) return;
+    navigator.clipboard.writeText(sessionResult?.optimized_prompt ?? '').then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }).catch(() => undefined);
@@ -337,8 +338,8 @@ function OptimizeTab({ domain, onReoptimize, reoptimizing }: {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, flex: 1, minHeight: 0 }}>
       {hasResult && !busy && (
         <div className="ply-card" style={{ padding: '14px 18px', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 0 }}>
-          <Stat label="Win rate" value={domain.win_rate !== null ? `${Math.round((domain.win_rate ?? 0) * 100)}%` : '—'} hint="winner head-to-head" color="var(--success)" />
-          <Stat label="Candidates" value={String(domain.candidates_tried ?? '—')} hint="tested in tournament" />
+          <Stat label="Win rate" value={sessionResult?.win_rate != null ? `${Math.round(sessionResult.win_rate * 100)}%` : '—'} hint="winner head-to-head" color="var(--success)" />
+          <Stat label="Candidates" value={String(sessionResult?.candidates_tried ?? '—')} hint="tested in tournament" />
           <Stat label="Trials" value="40" hint="head-to-head" />
           <Stat label="Knowledge" value={String(domain.dataset?.row_count ?? '—')} hint="Q&A pairs" />
         </div>
@@ -378,7 +379,7 @@ function OptimizeTab({ domain, onReoptimize, reoptimizing }: {
                 <div style={{ fontWeight: 600, fontSize: 14 }}>PDO winner · empirically tested</div>
                 <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
                   Tournament win rate: <span className="mono" style={{ color: 'var(--success)', fontWeight: 600 }}>
-                    {domain.win_rate !== null ? `${Math.round((domain.win_rate ?? 0) * 100)}%` : '—'}
+                    {sessionResult?.win_rate != null ? `${Math.round(sessionResult.win_rate * 100)}%` : '—'}
                   </span>
                 </div>
               </div>
@@ -394,12 +395,12 @@ function OptimizeTab({ domain, onReoptimize, reoptimizing }: {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1px 1fr', minHeight: 280 }}>
             <div style={{ padding: '16px 20px' }}>
               <div style={{ fontSize: 11, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 600, marginBottom: 8 }}>Input prompt</div>
-              <pre className="ply-prompt-block" style={{ margin: 0, color: 'var(--text-muted)' }}>{domain.last_prompt}</pre>
+              <pre className="ply-prompt-block" style={{ margin: 0, color: 'var(--text-muted)' }}>{draft}</pre>
             </div>
             <div style={{ background: 'var(--border)' }} />
             <div style={{ padding: '16px 20px' }}>
               <div style={{ fontSize: 11, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 600, marginBottom: 8 }}>PDO optimized</div>
-              <pre className="ply-prompt-block" style={{ margin: 0 }}>{domain.optimized_prompt}</pre>
+              <pre className="ply-prompt-block" style={{ margin: 0 }}>{sessionResult?.optimized_prompt}</pre>
             </div>
           </div>
         </div>
@@ -949,6 +950,11 @@ export function DomainWorkspace() {
   const [showNew, setShowNew] = useState(false);
   const [pollingJobId, setPollingJobId] = useState<string | null>(null);
   const [reoptimizing, setReoptimizing] = useState(false);
+  const [sessionResult, setSessionResult] = useState<{
+    optimized_prompt: string;
+    win_rate: number | null;
+    candidates_tried: number | null;
+  } | null>(null);
 
   const { data, isLoading } = useQuery<DomainListResponse>({
     queryKey: ['domain-prompts'],
@@ -967,12 +973,28 @@ export function DomainWorkspace() {
   }, [domains, selectedId]);
 
   useEffect(() => {
+    setSessionResult(null);
+  }, [selectedId]);
+
+  useEffect(() => {
     if (!pollingJobId) return;
     const iv = setInterval(async () => {
       try {
-        const res = await api.get<{ data: { status: string } }>(`/api/v1/domain-prompts/jobs/${pollingJobId}`);
-        const { status } = res.data.data;
-        if (status === 'completed' || status === 'failed') {
+        const res = await api.get<{ data: { status: string; result?: Record<string, unknown> } }>(`/api/v1/domain-prompts/jobs/${pollingJobId}`);
+        const { status, result } = res.data.data;
+        if (status === 'completed') {
+          setPollingJobId(null);
+          setReoptimizing(false);
+          void qc.invalidateQueries({ queryKey: ['domain-prompts'] });
+          void qc.invalidateQueries({ queryKey: ['domain-runs', selectedId] });
+          if (result) {
+            setSessionResult({
+              optimized_prompt: String(result.optimized_prompt ?? ''),
+              win_rate: result.win_rate != null ? Number(result.win_rate) : null,
+              candidates_tried: result.candidates_tried != null ? Number(result.candidates_tried) : null,
+            });
+          }
+        } else if (status === 'failed') {
           setPollingJobId(null);
           setReoptimizing(false);
           void qc.invalidateQueries({ queryKey: ['domain-prompts'] });
@@ -980,7 +1002,7 @@ export function DomainWorkspace() {
       } catch { setPollingJobId(null); setReoptimizing(false); }
     }, 3000);
     return () => clearInterval(iv);
-  }, [pollingJobId, qc]);
+  }, [pollingJobId, qc, selectedId]);
 
   const handleReoptimize = useCallback(async (prompt: string) => {
     if (!selected) return;
@@ -1103,7 +1125,7 @@ export function DomainWorkspace() {
 
         {selected && tab === 'optimize' && (
           <div style={{ padding: '18px 24px 24px', display: 'flex', flexDirection: 'column', gap: 14, minHeight: '100%' }}>
-            <OptimizeTab domain={selected} onReoptimize={handleReoptimize} reoptimizing={reoptimizing} />
+            <OptimizeTab domain={selected} onReoptimize={handleReoptimize} reoptimizing={reoptimizing} sessionResult={sessionResult} />
           </div>
         )}
         {selected && tab === 'dataset' && <DatasetTab domain={selected} />}
