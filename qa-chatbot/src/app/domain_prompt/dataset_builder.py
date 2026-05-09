@@ -71,7 +71,7 @@ async def generate_qa_pairs(text: str, api_key: str) -> list[dict[str, str]]:
     """Generate Q&A pairs from extracted PDF text using an LLM."""
     llm = ChatOpenAI(
         model="openai/gpt-4o-mini",
-        openai_api_base="https://openrouter.ai/api/v1",
+        base_url="https://openrouter.ai/api/v1",
         openai_api_key=api_key,
         temperature=0.3,
         max_tokens=2048,

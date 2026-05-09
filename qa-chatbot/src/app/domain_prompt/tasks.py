@@ -87,13 +87,23 @@ def prepare_domain_dataset(
             async with AsyncSessionLocal() as db:
                 repo = DomainPromptRepository(db)
                 domain_with_ds = await repo.get_by_id(UUID(domain_id))
-                if domain_with_ds is not None and domain_with_ds.dataset is not None:
-                    await repo.update_dataset(
-                        domain_with_ds.dataset,
-                        dataset_key=dataset_key,
-                        row_count=len(pairs),
-                    )
                 if domain_with_ds is not None:
+                    if domain_with_ds.dataset is not None:
+                        await repo.update_dataset(
+                            domain_with_ds.dataset,
+                            dataset_key=dataset_key,
+                            row_count=len(pairs),
+                        )
+                    else:
+                        pdf_key = object_key(user_id, domain_id, "source.pdf")
+                        await repo.save_dataset(
+                            domain_id=domain_with_ds.id,
+                            user_id=domain_with_ds.user_id,
+                            bucket=bucket,
+                            pdf_key=pdf_key,
+                            dataset_key=dataset_key,
+                            row_count=len(pairs),
+                        )
                     await repo.set_status(domain_with_ds, DomainPromptStatus.completed)
                 await db.commit()
 
@@ -167,6 +177,8 @@ def run_domain_optimization(
 
         reset_connection_pool()
         await dispose_async_engine()
+
+        await set_dp_job_status(job_id, "started")
 
         minio_cfg = get_minio_settings()
         llm_cfg = get_llm_settings()
@@ -278,6 +290,7 @@ def augment_domain_dataset(
         from app.db.session import AsyncSessionLocal, dispose_async_engine
         from app.domain_prompt.cache import set_dp_job_result, set_dp_job_status
         from app.domain_prompt.dataset_builder import generate_qa_pairs, pairs_to_jsonl
+        from app.domain_prompt.models import DomainPromptStatus
         from app.domain_prompt.repository import DomainPromptRepository
         from app.domain_prompt.storage import download_text, object_key, upload_text
 
@@ -324,12 +337,23 @@ def augment_domain_dataset(
             async with AsyncSessionLocal() as db:
                 repo = DomainPromptRepository(db)
                 domain = await repo.get_by_id(UUID(domain_id))
-                if domain is not None and domain.dataset is not None:
-                    await repo.update_dataset(
-                        domain.dataset,
-                        dataset_key=dataset_key_val,
-                        row_count=len(merged),
-                    )
+                if domain is not None:
+                    if domain.dataset is not None:
+                        await repo.update_dataset(
+                            domain.dataset,
+                            dataset_key=dataset_key_val,
+                            row_count=len(merged),
+                        )
+                    else:
+                        pdf_key = object_key(user_id, domain_id, "source.pdf")
+                        await repo.save_dataset(
+                            domain_id=domain.id,
+                            user_id=domain.user_id,
+                            bucket=bucket,
+                            pdf_key=pdf_key,
+                            dataset_key=dataset_key_val,
+                            row_count=len(merged),
+                        )
                 await db.commit()
 
             await set_dp_job_status(job_id, "completed")
@@ -339,6 +363,17 @@ def augment_domain_dataset(
             )
 
         except Exception as exc:
+            async with AsyncSessionLocal() as db:
+                repo = DomainPromptRepository(db)
+                domain_failed = await repo.get_by_id(UUID(domain_id))
+                if domain_failed is not None:
+                    await repo.set_status(
+                        domain_failed,
+                        DomainPromptStatus.failed,
+                        error_message=str(exc)[:500],
+                    )
+                    await db.commit()
+
             await set_dp_job_status(job_id, "failed")
             await set_dp_job_result(job_id, {"error": "Internal server error"})
             if isinstance(exc, ValueError):

@@ -104,6 +104,7 @@ export function DomainDetail({ domain, onClose, onReoptimize, onDeleted, reoptim
               ) : (
                 <button
                   onClick={() => setConfirmDelete(true)}
+                  aria-label="Delete domain"
                   title="Delete domain"
                   style={{ background: 'none', border: 'none', color: '#4a4a52', cursor: 'pointer', padding: '2px 4px', lineHeight: 1 }}
                 >
@@ -114,7 +115,7 @@ export function DomainDetail({ domain, onClose, onReoptimize, onDeleted, reoptim
                   </svg>
                 </button>
               )}
-              <button onClick={onClose} style={{
+              <button onClick={onClose} aria-label="Close" style={{
                 background: 'none', border: 'none', color: '#5a5a60', cursor: 'pointer',
                 fontSize: 20, lineHeight: 1, padding: '0 2px',
               }}>×</button>
@@ -746,7 +747,7 @@ function DatasetTab({ domain }: { domain: DomainPrompt }) {
                     <span style={{ fontSize: 10, color: '#7c5cff', fontWeight: 700, width: 14, paddingTop: 5, flexShrink: 0 }}>Q</span>
                     <textarea value={row.question} onChange={e => updateRow(i, 'question', e.target.value)}
                       style={{ ...editAreaStyle, minHeight: 36 }} placeholder="Question" />
-                    <button onClick={() => removeRow(i)} style={{
+                    <button onClick={() => removeRow(i)} aria-label="Remove row" style={{
                       background: 'none', border: 'none', color: '#4a4a52', cursor: 'pointer',
                       fontSize: 16, padding: '1px 3px', flexShrink: 0,
                     }}>×</button>

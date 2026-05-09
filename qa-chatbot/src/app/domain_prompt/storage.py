@@ -57,7 +57,7 @@ def download_text(bucket: str, key: str) -> str:
 
 
 def delete_objects_with_prefix(bucket: str, prefix: str) -> None:
-    """Delete all objects under the given prefix. Silently skips if none exist."""
+    """Delete all objects under the given prefix. Silently skips if bucket is missing."""
     client = _client()
     try:
         paginator = client.get_paginator("list_objects_v2")
@@ -66,10 +66,12 @@ def delete_objects_with_prefix(bucket: str, prefix: str) -> None:
             for page in paginator.paginate(Bucket=bucket, Prefix=prefix)
             for obj in page.get("Contents", [])
         ]
-        if keys:
-            client.delete_objects(Bucket=bucket, Delete={"Objects": keys})
-    except ClientError:
-        pass  # bucket may not exist yet; nothing to delete
+        for i in range(0, len(keys), 1000):
+            client.delete_objects(Bucket=bucket, Delete={"Objects": keys[i : i + 1000]})
+    except ClientError as exc:
+        code = exc.response.get("Error", {}).get("Code", "")
+        if code not in ("NoSuchBucket", "NotFound", "404"):
+            raise
 
 
 def object_key(user_id: str, domain_id: str, filename: str) -> str:
