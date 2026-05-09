@@ -312,6 +312,7 @@ function OptimizeTab({ domain, onReoptimize, reoptimizing, sessionResult }: {
   const [draft, setDraft] = useState('');
   const [copied, setCopied] = useState(false);
   const [vizMode, setVizMode] = useState<VizMode>('matrix');
+  const submittedPromptRef = useRef('');
 
   const isRunning = ['pending', 'preparing_dataset', 'optimizing'].includes(domain.status);
   const busy = isRunning || reoptimizing;
@@ -330,6 +331,7 @@ function OptimizeTab({ domain, onReoptimize, reoptimizing, sessionResult }: {
   function submit() {
     if (!canSubmit) return;
     const t = draft.trim();
+    submittedPromptRef.current = t;
     setDraft('');
     onReoptimize(t);
   }
@@ -395,7 +397,7 @@ function OptimizeTab({ domain, onReoptimize, reoptimizing, sessionResult }: {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1px 1fr', minHeight: 280 }}>
             <div style={{ padding: '16px 20px' }}>
               <div style={{ fontSize: 11, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 600, marginBottom: 8 }}>Input prompt</div>
-              <pre className="ply-prompt-block" style={{ margin: 0, color: 'var(--text-muted)' }}>{draft}</pre>
+              <pre className="ply-prompt-block" style={{ margin: 0, color: 'var(--text-muted)' }}>{submittedPromptRef.current}</pre>
             </div>
             <div style={{ background: 'var(--border)' }} />
             <div style={{ padding: '16px 20px' }}>
