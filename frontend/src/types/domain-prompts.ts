@@ -55,3 +55,15 @@ export interface DatasetRowsResponse {
   rows: QAPair[];
   row_count: number;
 }
+
+export interface TournamentState {
+  round: number;
+  total_rounds: number;
+  candidate_count: number;
+  names: string[];
+  elos: number[];
+  W: number[][];
+  duel_i: number;
+  duel_j: number;
+  question: string;
+}

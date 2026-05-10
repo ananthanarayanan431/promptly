@@ -1,5 +1,5 @@
-import { DomainPromptsClient } from './_components/domain-prompts-client';
+import { DomainWorkspace } from './_components/domain-workspace';
 
 export default function DomainPromptsPage() {
-  return <DomainPromptsClient />;
+  return <DomainWorkspace />;
 }

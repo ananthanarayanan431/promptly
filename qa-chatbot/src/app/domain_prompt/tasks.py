@@ -195,6 +195,7 @@ def run_domain_optimization(
                 base_prompt=prompt_to_optimize,
                 dataset_jsonl=dataset_jsonl,
                 api_key=api_key,
+                domain_id=domain_id,
             )
 
             result_key = object_key(user_id, domain_id, "result.json")

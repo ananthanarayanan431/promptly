@@ -170,7 +170,7 @@ function ProgressBar({ pct }: { pct: number }) {
       width: '100%',
       height: 3,
       borderRadius: 999,
-      background: 'rgba(255,255,255,0.06)',
+      background: 'var(--surface-2)',
       overflow: 'hidden',
       marginTop: 10,
     }}>
@@ -245,7 +245,7 @@ export function JobProgress({ progress }: Props) {
           {/* Animated pulse dot */}
           <div style={{
             width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
-            background: '#7c5cff',
+            background: 'var(--primary)',
             boxShadow: '0 0 0 0 rgba(124,92,255,0.4)',
             animation: 'progressPulse 1.6s ease-in-out infinite',
           }} />
@@ -253,7 +253,7 @@ export function JobProgress({ progress }: Props) {
             fontFamily: 'var(--font-geist-mono, monospace)',
             fontSize: 12,
             fontWeight: 500,
-            color: '#c4b5fd',
+            color: 'var(--primary)',
           }}>
             {phaseInfo.label}
           </span>
@@ -263,7 +263,7 @@ export function JobProgress({ progress }: Props) {
         <span style={{
           fontFamily: 'var(--font-geist-mono, monospace)',
           fontSize: 10.5,
-          color: '#5a5a60',
+          color: 'var(--text-subtle)',
           paddingLeft: 15,
         }}>
           {phaseInfo.sublabel}
@@ -286,7 +286,7 @@ export function JobProgress({ progress }: Props) {
       >
         <svg
           width="10" height="10" viewBox="0 0 12 12" fill="none"
-          stroke="#3a3a40" strokeWidth="1.6"
+          stroke="var(--text-subtle)" strokeWidth="1.6"
           style={{
             transform: detailsOpen ? 'rotate(90deg)' : 'rotate(0deg)',
             transition: 'transform 200ms',
@@ -298,7 +298,7 @@ export function JobProgress({ progress }: Props) {
         <span style={{
           fontFamily: 'var(--font-geist-mono, monospace)',
           fontSize: 10,
-          color: '#3a3a40',
+          color: 'var(--text-subtle)',
           userSelect: 'none',
         }}>
           {detailsOpen ? 'Hide details' : 'Show details'}
@@ -310,7 +310,7 @@ export function JobProgress({ progress }: Props) {
         <div style={{
           marginTop: 8,
           paddingTop: 10,
-          borderTop: '1px solid #1f1f23',
+          borderTop: '1px solid var(--border)',
           display: 'flex', flexDirection: 'column', gap: 8,
         }}>
           {detailSteps.map((step, i) => {
@@ -328,8 +328,8 @@ export function JobProgress({ progress }: Props) {
                 <div style={{
                   width: 14, height: 14, borderRadius: '50%', flexShrink: 0,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  background: isComplete ? 'rgba(124,92,255,0.12)' : isActive ? 'rgba(124,92,255,0.08)' : 'rgba(255,255,255,0.03)',
-                  border: `1px solid ${isComplete || isActive ? 'rgba(124,92,255,0.35)' : '#222226'}`,
+                  background: isComplete ? 'rgba(124,92,255,0.12)' : isActive ? 'rgba(124,92,255,0.08)' : 'var(--surface-2)',
+                  border: `1px solid ${isComplete || isActive ? 'rgba(124,92,255,0.35)' : 'var(--border)'}`,
                 }}>
                   {isComplete ? (
                     <svg width="7" height="7" viewBox="0 0 12 12" fill="none">
@@ -343,7 +343,7 @@ export function JobProgress({ progress }: Props) {
                       animation: 'pulse 1.4s ease-in-out infinite',
                     }} />
                   ) : (
-                    <div style={{ width: 4, height: 4, borderRadius: '50%', background: '#2a2a2e' }} />
+                    <div style={{ width: 4, height: 4, borderRadius: '50%', background: 'var(--surface-3)' }} />
                   )}
                 </div>
 
@@ -352,8 +352,8 @@ export function JobProgress({ progress }: Props) {
                   fontFamily: 'var(--font-geist-mono, monospace)',
                   fontSize: 10.5,
                   color: isComplete
-                    ? (step.isRefinement ? '#a78bfa' : '#7c5cff')
-                    : isActive ? '#c4b5fd' : '#3a3a40',
+                    ? 'var(--primary)'
+                    : isActive ? 'var(--primary)' : 'var(--text-subtle)',
                   transition: 'color 300ms',
                 }}>
                   {step.label}
@@ -368,7 +368,7 @@ export function JobProgress({ progress }: Props) {
                 {isComplete && !step.id.startsWith('quality_') && (
                   <span style={{
                     fontFamily: 'var(--font-geist-mono, monospace)',
-                    fontSize: 9.5, color: '#2a2a2e', marginLeft: 'auto',
+                    fontSize: 9.5, color: 'var(--text-subtle)', marginLeft: 'auto',
                   }}>
                     done
                   </span>

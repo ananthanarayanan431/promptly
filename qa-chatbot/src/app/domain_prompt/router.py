@@ -37,6 +37,7 @@ from app.domain_prompt.schemas import (
     DomainPromptResponse,
     OptimizeDomainRequest,
     QAPair,
+    TournamentStateResponse,
     UpdateDatasetRequest,
 )
 from app.domain_prompt.storage import object_key, upload_bytes
@@ -322,6 +323,34 @@ async def augment_dataset(
     )
 
     return SuccessResponse(data=CreateDomainJobResponse(job_id=job_id, domain_id=domain_id))
+
+
+@router.get(
+    "/{domain_id}/tournament-state",
+    response_model=SuccessResponse[TournamentStateResponse],
+    dependencies=[Depends(_read_limiter)],
+)
+async def get_tournament_state(
+    domain_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> SuccessResponse[TournamentStateResponse]:
+    """Return live tournament state written by the optimizer during a running PDO job."""
+    from app.domain_prompt.cache import get_dp_tournament_state
+    from app.domain_prompt.exceptions import DomainNotFoundException
+
+    repo = DomainPromptRepository(db)
+    domain = await repo.get_by_id_and_user(domain_id, current_user.id)
+    if domain is None:
+        raise DomainNotFoundException()
+
+    state = await get_dp_tournament_state(str(domain_id))
+    if state is None:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=404, detail="No tournament state available yet.")
+
+    return SuccessResponse(data=TournamentStateResponse(**state))
 
 
 @router.post(

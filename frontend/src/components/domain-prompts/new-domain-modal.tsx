@@ -48,11 +48,11 @@ export function NewDomainModal({ onClose, onJobStarted }: Props) {
 
   const inputStyle: React.CSSProperties = {
     width: '100%', padding: '9px 12px', borderRadius: 7,
-    border: '1px solid #2a2a2e', background: '#1a1a1e',
-    color: '#ededed', fontSize: 13, outline: 'none', boxSizing: 'border-box',
+    border: '1px solid var(--border)', background: 'var(--surface-2)',
+    color: 'var(--text)', fontSize: 13, outline: 'none', boxSizing: 'border-box',
   };
   const labelStyle: React.CSSProperties = {
-    display: 'block', fontSize: 12, color: '#8a8a90', marginBottom: 6, fontWeight: 500,
+    display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 6, fontWeight: 500,
   };
 
   return (
@@ -65,14 +65,15 @@ export function NewDomainModal({ onClose, onJobStarted }: Props) {
     >
       <div
         style={{
-          background: '#101014', border: '1px solid #222226', borderRadius: 14,
+          background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 14,
           padding: 28, width: '100%', maxWidth: 540,
           fontFamily: 'var(--font-geist, ui-sans-serif)',
+          boxShadow: '0 24px 64px rgba(0,0,0,0.4)',
         }}
         onClick={e => e.stopPropagation()}
       >
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 20 }}>
-          <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#ededed', flex: 1 }}>
+          <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text)', flex: 1 }}>
             New Domain Prompt
           </h2>
           <span style={{
@@ -81,7 +82,7 @@ export function NewDomainModal({ onClose, onJobStarted }: Props) {
             color: '#fff', marginRight: 12,
           }}>PREMIUM · 10 credits</span>
           <button onClick={onClose} style={{
-            background: 'none', border: 'none', color: '#5a5a60', cursor: 'pointer', fontSize: 18,
+            background: 'none', border: 'none', color: 'var(--text-subtle)', cursor: 'pointer', fontSize: 18,
           }}>×</button>
         </div>
 
@@ -113,15 +114,15 @@ export function NewDomainModal({ onClose, onJobStarted }: Props) {
               onClick={() => fileRef.current?.click()}
               onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileRef.current?.click(); } }}
               style={{
-                border: '1.5px dashed #2a2a2e', borderRadius: 8, padding: '20px 16px',
-                textAlign: 'center', cursor: 'pointer', color: '#5a5a60', fontSize: 13,
+                border: '1.5px dashed var(--border)', borderRadius: 8, padding: '20px 16px',
+                textAlign: 'center', cursor: 'pointer', color: 'var(--text-subtle)', fontSize: 13,
                 transition: 'border-color 150ms',
               }}
-              onMouseEnter={e => ((e.currentTarget as HTMLDivElement).style.borderColor = '#7c5cff')}
-              onMouseLeave={e => ((e.currentTarget as HTMLDivElement).style.borderColor = '#2a2a2e')}
+              onMouseEnter={e => ((e.currentTarget as HTMLDivElement).style.borderColor = 'var(--primary)')}
+              onMouseLeave={e => ((e.currentTarget as HTMLDivElement).style.borderColor = 'var(--border)')}
             >
               {file
-                ? <span style={{ color: '#7c5cff' }}>{file.name}</span>
+                ? <span style={{ color: 'var(--primary)' }}>{file.name}</span>
                 : (
                   <>
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
@@ -152,8 +153,8 @@ export function NewDomainModal({ onClose, onJobStarted }: Props) {
             disabled={submitting}
             style={{
               padding: '10px 0', borderRadius: 8, border: 'none',
-              background: submitting ? '#2a2a2e' : '#7c5cff',
-              color: submitting ? '#5a5a60' : '#fff',
+              background: submitting ? 'var(--surface-3)' : 'var(--primary)',
+              color: submitting ? 'var(--text-subtle)' : '#fff',
               fontWeight: 600, fontSize: 14, cursor: submitting ? 'not-allowed' : 'pointer',
               transition: 'background 150ms',
             }}

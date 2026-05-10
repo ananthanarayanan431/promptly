@@ -547,12 +547,48 @@ def _update_elo(candidates: list[_Candidate], winner: int, loser: int) -> None:
     candidates[loser].elo -= _ELO_K * (1.0 - ea)
 
 
+# ── Live state emission ───────────────────────────────────────────────────────
+async def _emit_tournament_state(
+    domain_id: str | None,
+    round_idx: int,
+    total_rounds: int,
+    candidates: list[_Candidate],
+    wm: _WinMatrix,
+    duel_i: int,
+    duel_j: int,
+    question_snippet: str,
+) -> None:
+    """Write live tournament state to Redis for frontend polling. Fire-and-forget."""
+    if domain_id is None:
+        return
+    try:
+        from app.domain_prompt.cache import set_dp_tournament_state  # local import avoids circular
+
+        names = [f"C{k}" for k in range(len(candidates))]
+        state: dict[str, object] = {
+            "round": round_idx + 1,
+            "total_rounds": total_rounds,
+            "candidate_count": len(candidates),
+            "names": names,
+            "elos": [round(c.elo, 1) for c in candidates],
+            # W matrix as flat list-of-lists of ints for JSON compactness
+            "W": [[int(wm.W[r][c]) for c in range(wm.size)] for r in range(wm.size)],
+            "duel_i": duel_i,
+            "duel_j": duel_j,
+            "question": question_snippet[:120],
+        }
+        await set_dp_tournament_state(domain_id, state)
+    except Exception as exc:  # noqa: BLE001
+        _log.warning("Failed to emit tournament state: %s", exc)
+
+
 # ── Main entry point ──────────────────────────────────────────────────────────
 async def optimize_domain_prompt(
     base_prompt: str,
     dataset_jsonl: str,
     api_key: str,
     num_candidates: int = _NUM_CANDIDATES,
+    domain_id: str | None = None,
 ) -> dict[str, object]:
     """
     Run the PDO algorithm and return the best domain-specific system prompt.
@@ -654,6 +690,11 @@ async def optimize_domain_prompt(
         i, j = _select_duel_pair(wm, rng)
         ex = rng.choice(duel_pool)
         question, gold = ex["question"], ex["answer"]
+
+        # Emit state BEFORE the duel so UI shows "answering Q…" for current pair
+        await _emit_tournament_state(
+            domain_id, round_idx, _TOURNAMENT_ROUNDS, candidates, wm, i, j, question
+        )
 
         # _duel returns 0 (i wins) or 1 (j wins)
         duel_result = await _duel(

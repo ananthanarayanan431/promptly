@@ -38,6 +38,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
   return (
     <html lang="en" suppressHydrationWarning>
+      {/* Apply theme before first paint to avoid flash */}
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: `(function(){try{var t=localStorage.getItem('ply-theme');if(t==='light'||t==='dark'){document.documentElement.setAttribute('data-theme',t);}else if(window.matchMedia('(prefers-color-scheme: light)').matches){document.documentElement.setAttribute('data-theme','light');}}catch(e){}})();` }} />
+      </head>
       <body className={`${geist.variable} ${geistMono.variable} ${instrumentSerif.variable}`}
             style={{ fontFamily: 'var(--font-geist), ui-sans-serif, system-ui, sans-serif' }}>
         <AuthInitializer token={token} />
