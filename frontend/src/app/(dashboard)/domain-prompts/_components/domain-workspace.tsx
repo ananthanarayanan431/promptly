@@ -278,7 +278,7 @@ function TournamentRunningViz({ domainId, vizMode, onVizChange }: {
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                   <span className="mono" style={{ fontSize: 11, color: C_COLORS[state.duel_j % C_COLORS.length], fontWeight: 700 }}>B · {state.names[state.duel_j]}</span>
                   <span className="mono" style={{ fontSize: 11, color: 'var(--text-subtle)' }}>
-                    copeland {(state.copeland_scores[state.duel_j] * 100).toFixed(0)}%
+                    win rate {(state.avg_win_rates[state.duel_j] * 100).toFixed(0)}%
                   </span>
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--text-subtle)', fontStyle: 'italic' }}>answering Q…</div>
