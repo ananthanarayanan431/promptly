@@ -117,9 +117,9 @@ function TournamentRunningViz({ domainId, vizMode, onVizChange }: {
   });
 
   const n = state?.names.length ?? 0;
-  const maxCopeland = state ? Math.max(...state.copeland_scores) : 1;
-  const minCopeland = state ? Math.min(...state.copeland_scores) : 0;
-  const copelandRange = Math.max(maxCopeland - minCopeland, 0.01);
+  const maxWinRate = state ? Math.max(...state.avg_win_rates) : 1;
+  const minWinRate = state ? Math.min(...state.avg_win_rates) : 0;
+  const winRateRange = Math.max(maxWinRate - minWinRate, 0.01);
 
   return (
     <div className="ply-card anim-fade" style={{ overflow: 'hidden' }}>
@@ -159,7 +159,7 @@ function TournamentRunningViz({ domainId, vizMode, onVizChange }: {
             color: vizMode === v ? 'var(--primary)' : 'var(--text-muted)',
             fontWeight: vizMode === v ? 600 : 400, fontSize: 12.5, marginBottom: -1,
           }}>
-            {v === 'matrix' ? `WIN MATRIX · W[I, J]` : 'COPELAND SCORES'}
+            {v === 'matrix' ? `WIN MATRIX · W[I, J]` : 'WIN RATES'}
           </button>
         ))}
       </div>
@@ -230,9 +230,9 @@ function TournamentRunningViz({ domainId, vizMode, onVizChange }: {
           {state && vizMode === 'bracket' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {state.names.map((name, i) => {
-                const score = state.copeland_scores[i];
-                const pct = ((score - minCopeland) / copelandRange) * 80 + 10;
-                const isLeading = score === maxCopeland;
+                const rate = state.avg_win_rates[i];
+                const pct = ((rate - minWinRate) / winRateRange) * 80 + 10;
+                const isLeading = rate === maxWinRate;
                 return (
                   <div key={i} style={{ display: 'grid', gridTemplateColumns: '56px 1fr 64px', alignItems: 'center', gap: 10 }}>
                     <span className="mono" style={{ fontSize: 12, fontWeight: 700, color: C_COLORS[i % C_COLORS.length] }}>{name}</span>
@@ -245,7 +245,7 @@ function TournamentRunningViz({ domainId, vizMode, onVizChange }: {
                       }} />
                     </div>
                     <span className="mono" style={{ fontSize: 11.5, color: isLeading ? 'var(--primary)' : 'var(--text-muted)', textAlign: 'right', fontWeight: isLeading ? 700 : 400 }}>
-                      {(score * 100).toFixed(0)}%
+                      {(rate * 100).toFixed(0)}%
                     </span>
                   </div>
                 );
@@ -265,7 +265,7 @@ function TournamentRunningViz({ domainId, vizMode, onVizChange }: {
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                   <span className="mono" style={{ fontSize: 11, color: C_COLORS[state.duel_i % C_COLORS.length], fontWeight: 700 }}>A · {state.names[state.duel_i]}</span>
                   <span className="mono" style={{ fontSize: 11, color: 'var(--text-subtle)' }}>
-                    copeland {(state.copeland_scores[state.duel_i] * 100).toFixed(0)}%
+                    win rate {(state.avg_win_rates[state.duel_i] * 100).toFixed(0)}%
                   </span>
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--text-subtle)', fontStyle: 'italic' }}>answering Q…</div>
