@@ -175,7 +175,7 @@ export default function BillingPage() {
             <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginTop: 6 }}>
               100 credits on signup · unlimited runs
             </div>
-            <button onClick={() => setTopupOpen(true)} className="ply-btn"
+            <button onClick={() => { window.scrollTo({ top: 0, behavior: 'smooth' }); setTopupOpen(true); }} className="ply-btn"
               style={{ marginTop: 14 }}>
               Top up
             </button>

@@ -12,17 +12,15 @@ function getInitialTheme(): Theme {
 }
 
 export function useTheme() {
-  const [theme, setThemeState] = useState<Theme>('dark');
+  const [theme, setThemeState] = useState<Theme>(getInitialTheme);
 
   useEffect(() => {
-    const t = getInitialTheme();
-    setThemeState(t);
-    document.documentElement.setAttribute('data-theme', t);
-  }, []);
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
 
   const setTheme = (next: Theme) => {
     setThemeState(next);
-    document.documentElement.setAttribute('data-theme', next);
+    document.documentElement.dataset.theme = next;
     localStorage.setItem('ply-theme', next);
   };
 

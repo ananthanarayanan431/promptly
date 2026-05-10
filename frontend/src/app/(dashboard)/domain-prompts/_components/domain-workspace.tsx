@@ -786,8 +786,18 @@ function DatasetTab({ domain }: { domain: DomainPrompt }) {
             className="ply-btn ply-btn-sm"
             style={{ gap: 5, whiteSpace: 'nowrap' }}
             onClick={() => {
-              if (!editMode) { setEditRows(rows); setEditMode(true); setPage(Math.ceil((rows.length + 1) / PAGE_SIZE)); }
-              else { setEditRows(r => [...r, { question: '', answer: '' }]); setPage(Math.ceil((editRows.length + 1) / PAGE_SIZE)); }
+              if (!editMode) {
+                const newRows = [...rows, { question: '', answer: '' }];
+                setEditRows(newRows);
+                setEditMode(true);
+                setPage(Math.ceil(newRows.length / PAGE_SIZE));
+              } else {
+                setEditRows(r => {
+                  const updated = [...r, { question: '', answer: '' }];
+                  setPage(Math.ceil(updated.length / PAGE_SIZE));
+                  return updated;
+                });
+              }
             }}
           >
             <Icon name="plus" size={12} /> Add row

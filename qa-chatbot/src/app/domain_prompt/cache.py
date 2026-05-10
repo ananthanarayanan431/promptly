@@ -77,3 +77,8 @@ async def get_dp_tournament_state(domain_id: str) -> dict[str, Any] | None:
     if raw is None:
         return None
     return dict(json.loads(raw))
+
+
+async def clear_dp_tournament_state(domain_id: str) -> None:
+    redis = await get_redis_client()
+    await redis.delete(f"{_TOURNAMENT_PREFIX}{domain_id}")

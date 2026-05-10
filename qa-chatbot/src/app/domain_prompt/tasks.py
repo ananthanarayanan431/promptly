@@ -177,7 +177,11 @@ def run_domain_optimization(
         from app.config.llm import get_llm_settings
         from app.db.redis import reset_connection_pool
         from app.db.session import AsyncSessionLocal, dispose_async_engine
-        from app.domain_prompt.cache import set_dp_job_result, set_dp_job_status
+        from app.domain_prompt.cache import (
+            clear_dp_tournament_state,
+            set_dp_job_result,
+            set_dp_job_status,
+        )
         from app.domain_prompt.models import DomainPromptStatus
         from app.domain_prompt.optimizer import optimize_domain_prompt
         from app.domain_prompt.repository import DomainPromptRepository
@@ -195,6 +199,9 @@ def run_domain_optimization(
 
         is_terminal = False
         try:
+            # Clear any stale tournament state from a previous run before starting
+            await clear_dp_tournament_state(domain_id)
+
             # MinIO work outside the DB session to avoid greenlet conflict
             dataset_key = object_key(user_id, domain_id, "dataset.jsonl")
             dataset_jsonl = download_text(bucket, dataset_key)
@@ -302,6 +309,11 @@ def run_domain_optimization(
 
             raise self.retry(exc=exc) from exc
         finally:
+            # Clear tournament state so stale snapshot doesn't survive between runs
+            try:
+                await clear_dp_tournament_state(domain_id)
+            except Exception:  # noqa: BLE001, S110
+                pass
             await dispose_async_engine()
 
     asyncio.run(_run())

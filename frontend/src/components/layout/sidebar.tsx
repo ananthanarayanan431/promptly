@@ -178,9 +178,14 @@ export function Sidebar() {
 
   const handleLogout = async () => {
     logout();
-    await clearToken();
-    router.push('/login');
-    router.refresh();
+    try {
+      await clearToken();
+    } catch (e) {
+      console.error('clearToken failed', e);
+    } finally {
+      router.push('/login');
+      router.refresh();
+    }
   };
 
   return (

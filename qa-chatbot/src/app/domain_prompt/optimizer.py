@@ -72,8 +72,8 @@ _SCORE_MAX_TOKENS = 64  # {"score": 0.87}
 
 _VARIANT_SYSTEM = textwrap.dedent("""
     You are a world-class prompt engineer specializing in system prompt optimization.
-    You will receive an existing system prompt and must produce ONE complete, improved
-    rewrite of it using the optimization strategy described below.
+    You will receive an existing system prompt and must produce an improved version
+    by applying the targeted edit strategy described below.
 
     Domain context (what this assistant must be expert at):
     {domain_summary}
@@ -81,130 +81,126 @@ _VARIANT_SYSTEM = textwrap.dedent("""
     Sample questions this assistant must handle well:
     {sample_questions}
 
-    Optimization strategy: {strategy_name}
+    Edit strategy: {strategy_name}
     {strategy_instructions}
 
-    ABSOLUTE RULES:
-    - Output a COMPLETE system prompt — not a diff, not an extension, not a summary.
-    - The output must stand alone as a fully functional system prompt.
-    - Preserve the core role and intent of the original — do not change what the assistant IS.
-    - You may restructure, reword, expand, tighten, or reorganize any part of the original.
-    - Do NOT include Q&A examples or worked demonstrations in the output — these belong in
-      the conversation, not the system prompt. Use explicit conditional rules instead.
-    - Do NOT use placeholders like "[same as original]" or "[previous content]".
-    - Output ONLY the system prompt text. No explanation, no preamble, no quotes.
+    HOW TO APPLY THE EDIT:
+    - Copy the entire original prompt verbatim as your starting point.
+    - Apply the edit strategy ONLY to the specific sections it targets.
+    - Leave every other section word-for-word exactly as it appears in the original.
+    - The output is the full prompt with your targeted improvements merged in.
+    - Do NOT summarize, abbreviate, or reference any part of the original — write it all out.
+    - Do NOT include Q&A examples or worked demonstrations — use conditional rules instead.
+    - Output ONLY the final prompt text. No explanation, no preamble, no quotes.
 """).strip()
 
-# Four variant strategies — each produces a complete rewrite through a distinct lens.
+# Four variant strategies — each targets a specific section of the prompt for surgical editing.
 # Research basis: MPO (modular section optimization), SPRIG (edit-based genetic), APO (gradients).
-# No "few-shot examples" strategy — conditional rules are strictly preferred for system prompts.
+# Section-targeted editing avoids the "full rewrite truncation" failure mode on long prompts.
 _VARIANT_STRATEGIES: list[tuple[str, str]] = [
     (
-        "ROLE PRECISION & BEHAVIORAL RULES",
-        "Rewrite the prompt with a sharp, specific role definition followed by clear behavioral "
-        "rules stated as positive obligations ('always do X', 'base every claim on Y'). "
-        "Replace any vague or hedged language ('try to', 'consider', 'generally') with concrete "
-        "directives. Keep the role section to 2–3 sentences; enumerate 5–8 behavioral rules as "
-        "a bullet list. Research shows enumerated constraints are processed more reliably than "
-        "prose — make every rule a discrete, checkable statement.",
+        "SHARPEN THE ROLE & CORE BEHAVIORAL RULES",
+        "Target: the opening role definition and any top-level behavioral instructions. "
+        "Rewrite ONLY those sections to make the role sharper and more specific, and convert "
+        "any vague or hedged language ('try to', 'consider', 'generally') into concrete positive "
+        "obligations ('always do X', 'base every claim on Y'). If behavioral rules exist as prose, "
+        "convert them to a numbered or bulleted list where each item is a discrete, checkable "
+        "directive. Do not touch any other sections — copy them verbatim.",
     ),
     (
-        "DOMAIN KNOWLEDGE & CONDITIONAL USE-CASES",
-        "Rewrite the prompt to embed the domain's core principles, frameworks, and decision "
-        "logic directly into the instructions. Study the sample questions to identify the "
-        "specific situations this assistant will face, then add conditional use-case rules: "
-        "'When the user asks about X, apply Y framework and consider Z.' "
-        "'If the question involves [situation], prioritize [approach] over [alternative].' "
-        "These conditional rules encode the domain expert's judgment as explicit branching "
-        "logic — not examples, but IF/WHEN/IF-NOT rules the model can apply deterministically.",
+        "ADD CONDITIONAL USE-CASE RULES",
+        "Target: anywhere the prompt describes how to handle specific situations, or the absence "
+        "of such instructions. Study the sample questions to identify 3–5 recurring situations "
+        "this assistant faces. For each, insert an explicit IF/WHEN conditional rule directly "
+        "into the relevant section: 'When the user asks about X, apply Y and prioritize Z.' "
+        "'If the input contains [condition], do [action] rather than [alternative].' "
+        "These rules must be woven into the existing structure — not appended as a new block. "
+        "Do not touch any sections unrelated to these situations — copy them verbatim.",
     ),
     (
-        "STRUCTURED REASONING PROTOCOL",
-        "Rewrite the prompt to define a mandatory reasoning protocol the model must follow "
-        "for every response. Based on the sample questions, identify what type of reasoning "
-        "this domain requires (analytical, comparative, procedural, diagnostic, etc.), then "
-        "embed a numbered step protocol: step 1 identify the question type, step 2 recall the "
-        "most relevant domain principle, step 3 reason through it explicitly, step 4 state the "
-        "answer with appropriate precision, step 5 flag uncertainty or edge cases. "
-        "This protocol should be domain-specific — not a generic 'think step by step' instruction.",
+        "EMBED A DOMAIN REASONING PROTOCOL",
+        "Target: any section that describes HOW the assistant should think or reason, or insert "
+        "one if absent. Based on the sample questions, identify the reasoning pattern this domain "
+        "requires (analytical, comparative, procedural, diagnostic, etc.). Write a numbered "
+        "step-by-step protocol specific to this domain — not generic 'think step by step' — and "
+        "place it in the most appropriate existing section. The protocol should reference actual "
+        "domain concepts from the prompt. Do not touch any other sections — copy them verbatim.",
     ),
     (
-        "OUTPUT FORMAT & FALLBACK BEHAVIOR",
-        "Rewrite the prompt to specify exactly how outputs should be structured and what to do "
-        "in every edge case. Define: when to use bullet points vs prose vs tables; expected "
-        "answer length for different question types; how to express uncertainty (e.g. 'Based on "
-        "available information...' rather than making up facts); what to say verbatim when a "
-        "question is out of scope or unanswerable from available knowledge; and how to handle "
-        "contradictory or incomplete information. Every edge case must have a scripted behavior "
-        "— the model must never improvise in ambiguous situations.",
+        "TIGHTEN OUTPUT FORMAT & FALLBACK RULES",
+        "Target: any section describing output format, response structure, or edge case behavior. "
+        "Rewrite ONLY those sections to be more precise: specify when to use bullets vs prose vs "
+        "tables, define expected response length for different question types, and add explicit "
+        "scripted fallback behavior for out-of-scope or unanswerable questions. Every edge case "
+        "must have a scripted rule — the model must never improvise. "
+        "Do not touch any sections unrelated to format or fallback — copy them verbatim.",
     ),
 ]
 
 _MUTATION_SYSTEM = textwrap.dedent("""
     You are a world-class prompt engineer. You are given the current best-performing system
-    prompt and must produce ONE improved rewrite following the mutation strategy below.
+    prompt and must produce an improved version by applying the targeted mutation below.
 
     Domain context: {domain_summary}
 
     Mutation strategy: {strategy_name}
     {strategy_instructions}
 
-    ABSOLUTE RULES:
-    - Output the COMPLETE rewritten prompt — not a diff, not a patch, not an extension.
-    - The result must be a fully self-contained, functional system prompt.
-    - Preserve the core role and identity of the assistant — do not change what it IS.
-    - You may restructure, tighten, expand, or reorganize any part.
-    - Do NOT include Q&A examples or worked demonstrations — use explicit conditional rules instead.
-    - NEVER use placeholders like "[ALL PREVIOUS CONTENT REMAINS IDENTICAL]", "[same as above]",
-      "[unchanged]", or any shorthand. Write the full text every time.
-
-    Output ONLY the rewritten prompt text. No preamble, no explanation, no quotes.
+    HOW TO APPLY THE MUTATION:
+    - Copy the entire current prompt verbatim as your starting point.
+    - Apply the mutation ONLY to the specific sections it targets.
+    - Leave every other section word-for-word exactly as it appears in the current prompt.
+    - The output is the full prompt with your targeted improvement merged in.
+    - Do NOT summarize, abbreviate, or reference any section — write everything out in full.
+    - Do NOT include Q&A examples or worked demonstrations — use conditional rules instead.
+    - Output ONLY the final prompt text. No preamble, no explanation, no quotes.
 """).strip()
 
-# Five mutation strategies cycling through different improvement axes.
-# All produce conditional/rule-based improvements — no example injection.
+# Five mutation strategies — each targets a specific improvement axis.
+# Section-targeted approach prevents full-rewrite truncation on long prompts.
 _MUTATION_STRATEGIES: list[tuple[str, str]] = [
     (
-        "INSTRUCTION SHARPENING",
-        "Audit every sentence in the current prompt for vagueness. Rewrite the entire prompt "
-        "replacing hedged or weak instructions with concrete, positive obligations. "
-        "Every 'try to', 'consider', 'generally', 'if possible' becomes a hard rule. "
-        "Every prohibition ('don't do X') becomes a positive directive ('instead do Y'). "
-        "The result should have zero ambiguous instructions.",
+        "SHARPEN WEAK INSTRUCTIONS",
+        "Target: every sentence in the prompt that uses hedged or weak language. "
+        "Scan the entire prompt for 'try to', 'consider', 'generally', 'if possible', 'may', "
+        "'might', 'should where appropriate' — replace each with a concrete positive obligation "
+        "('always do X', 'in every response include Y'). Also convert prohibitions ('don't do X') "
+        "into positive directives ('instead, do Y'). "
+        "Edit only those sentences — copy all others verbatim.",
     ),
     (
-        "CONDITIONAL USE-CASE RULES",
-        "Study the domain context and identify 3–5 specific situations or question types this "
-        "assistant will regularly face. Rewrite the prompt to add explicit conditional rules "
-        "for each: 'When the user asks about [situation], apply [specific approach].' "
-        "'If the question involves [condition], prioritize [action] over [alternative].' "
-        "'If information is missing or ambiguous, [specific scripted response].' "
-        "These rules replace any generic instructions with domain-specific branching logic.",
+        "INSERT CONDITIONAL SITUATION RULES",
+        "Target: identify 3–5 specific recurring situations or question types from the domain "
+        "context that the prompt does not yet have explicit rules for. For each, write an "
+        "IF/WHEN conditional rule and insert it into the most relevant existing section: "
+        "'When the user asks about [X], apply [Y] and prioritize [Z].' "
+        "'If the input involves [condition], respond with [action] rather than [alternative].' "
+        "Weave the new rules into the existing text — do not append a separate block. "
+        "Copy all sections that don't receive a new rule verbatim.",
     ),
     (
-        "DOMAIN PRINCIPLES SECTION",
-        "Rewrite the prompt to add a clearly delineated 'Domain Knowledge' or 'Core Principles' "
-        "section containing 4–6 domain-specific rules-of-thumb, decision frameworks, or "
-        "factual anchors the model must apply. These must be specific to this domain — not "
-        "generic reasoning advice. Each principle should be 1–2 sentences, stated as a rule "
-        "the model actively applies, not background information.",
+        "STRENGTHEN DOMAIN KNOWLEDGE ANCHORS",
+        "Target: any section that states domain facts, principles, or frameworks — or the "
+        "absence of one. Add 3–4 specific, concrete domain facts or decision rules that are "
+        "directly relevant to the sample questions. Each must be a rule the model actively "
+        "applies, not background context. Place them in the most appropriate existing section. "
+        "Copy all other sections verbatim.",
     ),
     (
-        "RESPONSE FORMAT PRECISION",
-        "Rewrite the prompt to specify output format with surgical precision. Define: the exact "
-        "structure for different answer types (factual vs analytical vs procedural questions); "
-        "when to use numbered lists, bullets, or prose; target length ranges; how to express "
-        "confidence levels; mandatory epistemic qualifiers for uncertain claims. Format rules "
-        "should be stated as 'always', 'never', and 'when X use Y' — not vague preferences.",
+        "MAKE OUTPUT FORMAT RULES EXPLICIT",
+        "Target: any section describing response format, structure, or presentation. "
+        "Rewrite ONLY those sections to add precision: specify the exact structure for at least "
+        "two different question types, state when to use bullet lists vs prose vs tables, "
+        "define a target length range, and add at least one mandatory epistemic qualifier rule "
+        "for uncertain claims. Copy all other sections verbatim.",
     ),
     (
-        "FALLBACK & EDGE-CASE HARDENING",
-        "Identify the gaps in the current prompt — situations where the model would have to "
-        "improvise because no rule covers them. Rewrite the prompt to add explicit fallback "
-        "behaviors: what to say when a question is out of scope; how to handle contradictory "
-        "information; what to do when the user asks for something the assistant cannot verify; "
-        "how to escalate or redirect when needed. Every gap must have a scripted rule, "
-        "not left to the model's discretion.",
+        "FILL EDGE-CASE GAPS",
+        "Target: read the entire prompt and identify 2–3 situations the model would face that "
+        "have NO explicit instruction — where it would have to improvise. Write a scripted rule "
+        "for each gap and insert it into the most relevant existing section. At minimum cover: "
+        "what to do when a question is out of scope, and how to handle missing or contradictory "
+        "input. Copy all sections that don't receive a new rule verbatim.",
     ),
 ]
 
@@ -283,6 +279,23 @@ _PLACEHOLDER_MARKERS = (
     "[original content]",
     "remains identical]",
     "remains unchanged]",
+    # Broader patterns — catch truncation with any trailing words after "remains identical"
+    "rest of the prompt remains",
+    "remaining sections remain",
+    "remaining content remains",
+    "rest remains identical",
+    "rest remains the same",
+    "rest of the content remains",
+    "all other sections remain",
+    "preserving all existing",
+    "all remaining sections",
+    "refer to the original",
+    "refer to original prompt",
+    "same as the original",
+    "identical to the original",
+    "[continues as before]",
+    "[content continues]",
+    "[same structure follows]",
 )
 
 
@@ -381,7 +394,13 @@ async def _generate_one_variant(
         response = await gen_llm.ainvoke(
             [
                 {"role": "system", "content": system},
-                {"role": "user", "content": f"Original system prompt to rewrite:\n\n{base_prompt}"},
+                {
+                    "role": "user",
+                    "content": (
+                        "Apply the edit strategy to this prompt. "
+                        f"Copy it in full, then apply your targeted improvements:\n\n{base_prompt}"
+                    ),
+                },
             ]
         )
         variant = _strip_fences(str(response.content).strip())
@@ -444,7 +463,13 @@ async def _mutate_prompt(
         response = await mut_llm.ainvoke(
             [
                 {"role": "system", "content": system},
-                {"role": "user", "content": f"Current best-performing prompt:\n\n{prompt}"},
+                {
+                    "role": "user",
+                    "content": (
+                        "Apply the mutation to this prompt. "
+                        f"Copy it in full, then apply your targeted improvement:\n\n{prompt}"
+                    ),
+                },
             ]
         )
         mutated = _strip_fences(str(response.content).strip())
