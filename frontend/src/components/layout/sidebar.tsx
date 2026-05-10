@@ -42,9 +42,11 @@ const NAV_GROUPS = [
   {
     group: 'Library',
     items: [
-      { href: '/versions',      label: 'Versions',        icon: 'gitBranch' },
+      { href: '/versions',       label: 'Versions',        icon: 'gitBranch' },
       { href: '/prompt-library', label: 'Prompt Library',  icon: 'heart' },
-      { href: '/history',       label: 'History',          icon: 'history' },
+      { href: '/prompt-project', label: 'Prompt Project',  icon: 'folder' },
+      { href: '/prompts-media',  label: 'Prompt Media',    icon: 'image' },
+      { href: '/history',        label: 'History',         icon: 'history' },
     ],
   },
   {
@@ -66,6 +68,8 @@ function NavIcon({ name }: { name: string }) {
     history: 'M3 12a9 9 0 109-9 9 9 0 00-6.4 2.6L3 8M3 3v5h5M12 7v5l3 2',
     chip: 'M5 5h14v14H5zM9 9h6v6H9zM9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3',
     creditCard: 'M2 5h20v14H2zM2 10h20',
+    folder: 'M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z',
+    image: 'M21 15l-5-5L5 21M21 3H3a2 2 0 00-2 2v14a2 2 0 002 2h18a2 2 0 002-2V5a2 2 0 00-2-2zM8.5 10a1.5 1.5 0 100-3 1.5 1.5 0 000 3z',
   };
   const d = paths[name] || '';
   return (
@@ -84,9 +88,11 @@ function deriveInitials(name: string): string {
   return name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
 }
 
+const CREDITS_START = 100;
+
 function CreditsCard({ credits }: { credits: number }) {
   const optimizationsLeft = Math.floor(credits / 10);
-  const pct = Math.min(100, (credits / 200) * 100);
+  const pct = Math.min(100, (credits / CREDITS_START) * 100);
   return (
     <div className="ply-card" style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8, boxShadow: 'none' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
@@ -174,9 +180,14 @@ export function Sidebar() {
 
   const handleLogout = async () => {
     logout();
-    await clearToken();
-    router.push('/login');
-    router.refresh();
+    try {
+      await clearToken();
+    } catch (e) {
+      console.error('clearToken failed', e);
+    } finally {
+      router.push('/login');
+      router.refresh();
+    }
   };
 
   return (
@@ -188,7 +199,9 @@ export function Sidebar() {
     }}>
       {/* Logo */}
       <div style={{ padding: '18px 16px 14px' }}>
-        <Logo />
+        <Link href="/" style={{ textDecoration: 'none' }}>
+          <Logo />
+        </Link>
       </div>
 
       {/* New optimization button */}

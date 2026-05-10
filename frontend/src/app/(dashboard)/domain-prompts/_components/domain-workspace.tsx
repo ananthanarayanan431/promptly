@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import type { DomainPrompt, DomainListResponse, DatasetRowsResponse, QAPair, TournamentState } from '@/types/domain-prompts';
+import type { DomainPrompt, DomainListResponse, DatasetRowsResponse, QAPair, TournamentState, OptimizationRun, RunListResponse } from '@/types/domain-prompts';
 import { NewDomainModal } from '@/components/domain-prompts/new-domain-modal';
 
 /* ── Icons ─────────────────────────────────────────────────────────── */
@@ -79,7 +79,7 @@ function LiveStatsBar({ domainId, datasetSize }: { domainId: string; datasetSize
   });
 
   const candidates = state?.candidate_count ?? '—';
-  const trials = state ? `${state.round}/40` : '—';
+  const trials = state ? `${state.round}/${state.total_rounds}` : '—';
 
   return (
     <div className="ply-card" style={{ padding: '14px 18px', display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 0 }}>
@@ -117,9 +117,9 @@ function TournamentRunningViz({ domainId, vizMode, onVizChange }: {
   });
 
   const n = state?.names.length ?? 0;
-  const maxElo = state ? Math.max(...state.elos) : 1500;
-  const minElo = state ? Math.min(...state.elos) : 1200;
-  const eloRange = Math.max(maxElo - minElo, 100);
+  const maxCopeland = state ? Math.max(...state.copeland_scores) : 1;
+  const minCopeland = state ? Math.min(...state.copeland_scores) : 0;
+  const copelandRange = Math.max(maxCopeland - minCopeland, 0.01);
 
   return (
     <div className="ply-card anim-fade" style={{ overflow: 'hidden' }}>
@@ -159,7 +159,7 @@ function TournamentRunningViz({ domainId, vizMode, onVizChange }: {
             color: vizMode === v ? 'var(--primary)' : 'var(--text-muted)',
             fontWeight: vizMode === v ? 600 : 400, fontSize: 12.5, marginBottom: -1,
           }}>
-            {v === 'matrix' ? `WIN MATRIX · W[I, J]` : 'ELO BARS'}
+            {v === 'matrix' ? `WIN MATRIX · W[I, J]` : 'COPELAND SCORES'}
           </button>
         ))}
       </div>
@@ -218,7 +218,7 @@ function TournamentRunningViz({ domainId, vizMode, onVizChange }: {
                         border: isDuelCell ? '1.5px solid var(--primary)' : '1.5px solid transparent',
                         transition: 'background .4s ease, color .4s ease',
                       }}>
-                        {isSelf ? '–' : wins}
+                        {isSelf ? '–' : wins.toFixed(1)}
                       </div>
                     );
                   })
@@ -230,9 +230,9 @@ function TournamentRunningViz({ domainId, vizMode, onVizChange }: {
           {state && vizMode === 'bracket' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {state.names.map((name, i) => {
-                const elo = state.elos[i];
-                const pct = ((elo - minElo) / eloRange) * 80 + 10;
-                const isLeading = elo === maxElo;
+                const score = state.copeland_scores[i];
+                const pct = ((score - minCopeland) / copelandRange) * 80 + 10;
+                const isLeading = score === maxCopeland;
                 return (
                   <div key={i} style={{ display: 'grid', gridTemplateColumns: '56px 1fr 64px', alignItems: 'center', gap: 10 }}>
                     <span className="mono" style={{ fontSize: 12, fontWeight: 700, color: C_COLORS[i % C_COLORS.length] }}>{name}</span>
@@ -245,7 +245,7 @@ function TournamentRunningViz({ domainId, vizMode, onVizChange }: {
                       }} />
                     </div>
                     <span className="mono" style={{ fontSize: 11.5, color: isLeading ? 'var(--primary)' : 'var(--text-muted)', textAlign: 'right', fontWeight: isLeading ? 700 : 400 }}>
-                      {Math.round(elo)}
+                      {(score * 100).toFixed(0)}%
                     </span>
                   </div>
                 );
@@ -264,10 +264,9 @@ function TournamentRunningViz({ domainId, vizMode, onVizChange }: {
               <div className="ply-card" style={{ padding: '10px 12px', borderColor: `${C_COLORS[state.duel_i % C_COLORS.length]}55` }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                   <span className="mono" style={{ fontSize: 11, color: C_COLORS[state.duel_i % C_COLORS.length], fontWeight: 700 }}>A · {state.names[state.duel_i]}</span>
-                  <span className="mono" style={{ fontSize: 11, color: 'var(--text-subtle)' }}>elo {Math.round(state.elos[state.duel_i])}</span>
-                </div>
-                <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginBottom: 8 }}>
-                  {['Expert persona', 'Step-by-step', 'Output format', 'Safety scope', 'Comprehensive', 'Mutation'][state.duel_i % 6]}
+                  <span className="mono" style={{ fontSize: 11, color: 'var(--text-subtle)' }}>
+                    copeland {(state.copeland_scores[state.duel_i] * 100).toFixed(0)}%
+                  </span>
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--text-subtle)', fontStyle: 'italic' }}>answering Q…</div>
                 <div style={{ marginTop: 6, height: 2, background: 'var(--surface-2)', borderRadius: 999, overflow: 'hidden' }}>
@@ -278,10 +277,9 @@ function TournamentRunningViz({ domainId, vizMode, onVizChange }: {
               <div className="ply-card" style={{ padding: '10px 12px', borderColor: `${C_COLORS[state.duel_j % C_COLORS.length]}55` }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                   <span className="mono" style={{ fontSize: 11, color: C_COLORS[state.duel_j % C_COLORS.length], fontWeight: 700 }}>B · {state.names[state.duel_j]}</span>
-                  <span className="mono" style={{ fontSize: 11, color: 'var(--text-subtle)' }}>elo {Math.round(state.elos[state.duel_j])}</span>
-                </div>
-                <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginBottom: 8 }}>
-                  {['Expert persona', 'Step-by-step', 'Output format', 'Safety scope', 'Comprehensive', 'Mutation'][state.duel_j % 6]}
+                  <span className="mono" style={{ fontSize: 11, color: 'var(--text-subtle)' }}>
+                    copeland {(state.copeland_scores[state.duel_j] * 100).toFixed(0)}%
+                  </span>
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--text-subtle)', fontStyle: 'italic' }}>answering Q…</div>
                 <div style={{ marginTop: 6, height: 2, background: 'var(--surface-2)', borderRadius: 999, overflow: 'hidden' }}>
@@ -303,43 +301,82 @@ function TournamentRunningViz({ domainId, vizMode, onVizChange }: {
 
 /* ── Optimize tab ────────────────────────────────────────────────── */
 
-function OptimizeTab({ domain, onReoptimize, reoptimizing }: {
+function OptimizeTab({ domain, onReoptimize, reoptimizing, sessionResult, onClearResult }: {
   domain: DomainPrompt;
   onReoptimize: (prompt: string) => void;
   reoptimizing: boolean;
+  sessionResult: { optimized_prompt: string; prompt_input: string; win_rate: number | null; candidates_tried: number | null; } | null;
+  onClearResult: () => void;
 }) {
   const [draft, setDraft] = useState('');
   const [copied, setCopied] = useState(false);
   const [vizMode, setVizMode] = useState<VizMode>('matrix');
+  const [runAgainMode, setRunAgainMode] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Reset local state whenever the domain itself changes
+  useEffect(() => {
+    setRunAgainMode(false);
+    setDraft('');
+    setCopied(false);
+  }, [domain.id]);
+
+  useEffect(() => {
+    if (sessionResult) setRunAgainMode(false);
+  }, [sessionResult]);
+
+  const { data: runsData } = useQuery<RunListResponse>({
+    queryKey: ['domain-runs', domain.id],
+    queryFn: async () => {
+      const res = await api.get<{ data: RunListResponse }>(`/api/v1/domain-prompts/${domain.id}/runs`);
+      return res.data.data;
+    },
+  });
+
+  const latestRun = runsData?.runs?.find(r => r.status === 'completed') ?? null;
+  const displayResult = sessionResult ?? (!runAgainMode && latestRun ? {
+    optimized_prompt: latestRun.optimized_prompt,
+    prompt_input: latestRun.prompt_input,
+    win_rate: latestRun.win_rate,
+    candidates_tried: latestRun.candidates_tried,
+  } : null);
 
   const isRunning = ['pending', 'preparing_dataset', 'optimizing'].includes(domain.status);
   const busy = isRunning || reoptimizing;
   const datasetReady = !!domain.dataset?.dataset_key;
-  const hasResult = !!domain.optimized_prompt && !!domain.last_prompt;
+  const hasResult = !!displayResult && !busy;
   const canSubmit = datasetReady && !busy && draft.trim().length >= 10;
 
   function copyResult() {
-    if (!domain.optimized_prompt) return;
-    navigator.clipboard.writeText(domain.optimized_prompt).then(() => {
+    if (!displayResult?.optimized_prompt) return;
+    navigator.clipboard.writeText(displayResult.optimized_prompt).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }).catch(() => undefined);
+  }
+
+  function runAgain() {
+    onClearResult();
+    setRunAgainMode(true);
+    textareaRef.current?.focus();
   }
 
   function submit() {
     if (!canSubmit) return;
     const t = draft.trim();
     setDraft('');
+    setRunAgainMode(true);
+    onClearResult();
     onReoptimize(t);
   }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, flex: 1, minHeight: 0 }}>
-      {hasResult && !busy && (
+      {hasResult && (
         <div className="ply-card" style={{ padding: '14px 18px', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 0 }}>
-          <Stat label="Win rate" value={domain.win_rate !== null ? `${Math.round((domain.win_rate ?? 0) * 100)}%` : '—'} hint="winner head-to-head" color="var(--success)" />
-          <Stat label="Candidates" value={String(domain.candidates_tried ?? '—')} hint="tested in tournament" />
-          <Stat label="Trials" value="40" hint="head-to-head" />
+          <Stat label="Win rate" value={displayResult?.win_rate != null ? `${Math.round(displayResult.win_rate * 100)}%` : '—'} hint="winner head-to-head" color="var(--success)" />
+          <Stat label="Candidates" value={String(displayResult?.candidates_tried ?? '—')} hint="tested in tournament" />
+          <Stat label="Trials" value={String(latestRun?.rounds_run ?? 30)} hint="head-to-head" />
           <Stat label="Knowledge" value={String(domain.dataset?.row_count ?? '—')} hint="Q&A pairs" />
         </div>
       )}
@@ -365,7 +402,7 @@ function OptimizeTab({ domain, onReoptimize, reoptimizing }: {
         <TournamentRunningViz domainId={domain.id} vizMode={vizMode} onVizChange={setVizMode} />
       )}
 
-      {hasResult && !busy && (
+      {hasResult && (
         <div className="ply-card anim-fade" style={{ padding: 0, overflow: 'hidden' }}>
           <div style={{
             padding: '14px 18px', borderBottom: '1px solid var(--border)',
@@ -378,12 +415,15 @@ function OptimizeTab({ domain, onReoptimize, reoptimizing }: {
                 <div style={{ fontWeight: 600, fontSize: 14 }}>PDO winner · empirically tested</div>
                 <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
                   Tournament win rate: <span className="mono" style={{ color: 'var(--success)', fontWeight: 600 }}>
-                    {domain.win_rate !== null ? `${Math.round((domain.win_rate ?? 0) * 100)}%` : '—'}
+                    {displayResult?.win_rate != null ? `${Math.round(displayResult.win_rate * 100)}%` : '—'}
                   </span>
                 </div>
               </div>
             </div>
             <div style={{ display: 'flex', gap: 6 }}>
+              <button className="ply-btn ply-btn-sm" onClick={runAgain}>
+                <Icon name="sparkles" size={12} /> Run again
+              </button>
               <button className="ply-btn ply-btn-sm" onClick={copyResult}>
                 <Icon name={copied ? 'check' : 'copy'} size={12} />
                 {copied ? 'Copied' : 'Copy'}
@@ -394,12 +434,12 @@ function OptimizeTab({ domain, onReoptimize, reoptimizing }: {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1px 1fr', minHeight: 280 }}>
             <div style={{ padding: '16px 20px' }}>
               <div style={{ fontSize: 11, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 600, marginBottom: 8 }}>Input prompt</div>
-              <pre className="ply-prompt-block" style={{ margin: 0, color: 'var(--text-muted)' }}>{domain.last_prompt}</pre>
+              <pre className="ply-prompt-block" style={{ margin: 0, color: 'var(--text-muted)' }}>{displayResult?.prompt_input}</pre>
             </div>
             <div style={{ background: 'var(--border)' }} />
             <div style={{ padding: '16px 20px' }}>
               <div style={{ fontSize: 11, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 600, marginBottom: 8 }}>PDO optimized</div>
-              <pre className="ply-prompt-block" style={{ margin: 0 }}>{domain.optimized_prompt}</pre>
+              <pre className="ply-prompt-block" style={{ margin: 0 }}>{displayResult?.optimized_prompt}</pre>
             </div>
           </div>
         </div>
@@ -426,10 +466,11 @@ function OptimizeTab({ domain, onReoptimize, reoptimizing }: {
       {datasetReady && (
         <div className="ply-card" style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
           <textarea
+            ref={textareaRef}
             value={draft}
             onChange={e => setDraft(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(); } }}
-            placeholder="Paste your system prompt here to optimize against this domain… (⌘↵ to run)"
+            placeholder={hasResult ? 'Paste a new prompt to run another tournament… (⌘↵ to run)' : 'Paste your system prompt here to optimize against this domain… (⌘↵ to run)'}
             disabled={busy}
             rows={3}
             style={{
@@ -451,7 +492,7 @@ function OptimizeTab({ domain, onReoptimize, reoptimizing }: {
               style={{ opacity: !canSubmit ? 0.5 : 1, cursor: !canSubmit ? 'not-allowed' : 'pointer' }}
             >
               <Icon name="trophy" size={14} />
-              {busy ? 'Running PDO…' : 'Run PDO'}
+              {busy ? 'Running PDO…' : hasResult ? 'Run again' : 'Run PDO'}
               <span className="mono" style={{ marginLeft: 6, fontSize: 11, opacity: .75, paddingLeft: 8, borderLeft: '1px solid rgba(255,255,255,.25)' }}>−10 cr</span>
             </button>
           </div>
@@ -743,8 +784,18 @@ function DatasetTab({ domain }: { domain: DomainPrompt }) {
             className="ply-btn ply-btn-sm"
             style={{ gap: 5, whiteSpace: 'nowrap' }}
             onClick={() => {
-              if (!editMode) { setEditRows(rows); setEditMode(true); setPage(Math.ceil((rows.length + 1) / PAGE_SIZE)); }
-              else { setEditRows(r => [...r, { question: '', answer: '' }]); setPage(Math.ceil((editRows.length + 1) / PAGE_SIZE)); }
+              if (!editMode) {
+                const newRows = [...rows, { question: '', answer: '' }];
+                setEditRows(newRows);
+                setEditMode(true);
+                setPage(Math.ceil(newRows.length / PAGE_SIZE));
+              } else {
+                setEditRows(r => {
+                  const updated = [...r, { question: '', answer: '' }];
+                  setPage(Math.ceil(updated.length / PAGE_SIZE));
+                  return updated;
+                });
+              }
             }}
           >
             <Icon name="plus" size={12} /> Add row
@@ -758,22 +809,113 @@ function DatasetTab({ domain }: { domain: DomainPrompt }) {
 
 /* ── History tab ───────────────────────────────────────────────────── */
 function HistoryTab({ domain }: { domain: DomainPrompt }) {
-  const runs = domain.optimized_prompt ? [
-    { date: 'Today', winner: 'Comprehensive', wr: domain.win_rate ?? 0.72, rounds: 40 },
-  ] : [];
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const { data, isLoading } = useQuery<RunListResponse>({
+    queryKey: ['domain-runs', domain.id],
+    queryFn: async () => {
+      const res = await api.get<{ data: RunListResponse }>(`/api/v1/domain-prompts/${domain.id}/runs`);
+      return res.data.data;
+    },
+  });
+
+  const runs = data?.runs ?? [];
+
+  if (isLoading) {
+    return (
+      <div className="ply-card" style={{ padding: '32px', textAlign: 'center', color: 'var(--text-subtle)', fontSize: 13 }}>
+        Loading history…
+      </div>
+    );
+  }
+
+  if (runs.length === 0) {
+    return (
+      <div className="ply-card" style={{ padding: '32px', textAlign: 'center', color: 'var(--text-subtle)', fontSize: 13 }}>
+        No runs yet. Submit a prompt in the Optimize tab to start the first tournament.
+      </div>
+    );
+  }
+
   return (
     <div className="ply-card" style={{ padding: 0, overflow: 'hidden' }}>
-      <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontWeight: 600, fontSize: 13 }}>Tournament history</div>
-      {runs.map((r, i) => (
-        <div key={i} style={{ display: 'grid', gridTemplateColumns: '160px 1.4fr 100px 100px 1fr', gap: 10, alignItems: 'center', padding: '12px 16px', fontSize: 12.5, borderBottom: i < runs.length - 1 ? '1px solid var(--border)' : 'none' }}>
-          <span style={{ color: 'var(--text-muted)' }}>{r.date}</span>
-          <span style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="trophy" size={12} /> {r.winner}</span>
-          <span className="mono">{Math.round(r.wr * 100)}% wr</span>
-          <span className="mono" style={{ color: 'var(--text-muted)' }}>{r.rounds} rounds</span>
+      <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontWeight: 600, fontSize: 13 }}>
+        Tournament history · {domain.name}
+        <span style={{ marginLeft: 8, fontWeight: 400, fontSize: 11.5, color: 'var(--text-subtle)' }}>
+          {runs.length} run{runs.length !== 1 ? 's' : ''}
+        </span>
+      </div>
+      {runs.slice(0, 5).map((run: OptimizationRun) => {
+        const isFailed = run.status === 'failed';
+        return (
+          <div key={run.id}>
+            <div
+              onClick={() => setExpandedId(expandedId === run.id ? null : run.id)}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '160px 1fr 100px 100px 1fr',
+                gap: 10, alignItems: 'center',
+                padding: '12px 16px', fontSize: 12.5,
+                borderBottom: '1px solid var(--border)',
+                cursor: 'pointer',
+                background: expandedId === run.id ? 'var(--surface-2)' : undefined,
+                opacity: isFailed ? 0.8 : 1,
+              }}
+            >
+              <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--mono)', fontSize: 11.5 }}>
+                {new Date(run.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+              </span>
+              <span style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
+                {isFailed
+                  ? <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: 'var(--danger-soft, rgba(239,68,68,0.12))', color: 'var(--danger)', letterSpacing: '.04em' }}>FAILED</span>
+                  : <Icon name="trophy" size={12} />
+                }
+                {run.domain_name}
+              </span>
+              <span className="mono" style={{ color: isFailed ? 'var(--text-subtle)' : undefined }}>
+                {isFailed ? '—' : (run.win_rate != null ? `${Math.round(run.win_rate * 100)}% wr` : '—')}
+              </span>
+              <span className="mono" style={{ color: 'var(--text-muted)' }}>
+                {isFailed ? '—' : `${run.rounds_run ?? 40} rounds`}
+              </span>
+              <span style={{ color: expandedId === run.id ? 'var(--primary)' : 'var(--text-subtle)', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
+                {expandedId === run.id ? '▲ hide' : (isFailed ? '▼ view error' : '▼ view prompt')}
+              </span>
+            </div>
+            {expandedId === run.id && (
+              <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', background: 'var(--surface-2)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div>
+                  <div style={{ fontSize: 11, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 600, marginBottom: 6 }}>Input prompt</div>
+                  <pre className="ply-prompt-block" style={{ margin: 0, fontSize: 12, maxHeight: 120, overflowY: 'auto' }}>{run.prompt_input}</pre>
+                </div>
+                {isFailed ? (
+                  <div>
+                    <div style={{ fontSize: 11, color: 'var(--danger)', textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 600, marginBottom: 6 }}>Error</div>
+                    <pre className="ply-prompt-block" style={{ margin: 0, fontSize: 12, color: 'var(--danger)', maxHeight: 120, overflowY: 'auto' }}>{run.error_message ?? 'Unknown error'}</pre>
+                  </div>
+                ) : (
+                  <>
+                    <div>
+                      <div style={{ fontSize: 11, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 600, marginBottom: 6 }}>PDO optimized</div>
+                      <pre className="ply-prompt-block" style={{ margin: 0, fontSize: 12, maxHeight: 180, overflowY: 'auto' }}>{run.optimized_prompt}</pre>
+                    </div>
+                    <div style={{ display: 'flex', gap: 16, fontSize: 12 }}>
+                      {run.score_before != null && <span>Score before: <strong>{run.score_before.toFixed(3)}</strong></span>}
+                      {run.score_after != null && <span>Score after: <strong>{run.score_after.toFixed(3)}</strong></span>}
+                      {run.candidates_tried != null && <span>Candidates: <strong>{run.candidates_tried}</strong></span>}
+                      {run.dataset_size != null && <span>Dataset: <strong>{run.dataset_size} Q&A</strong></span>}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+      {runs.length > 5 && (
+        <div style={{ padding: '10px 16px', fontSize: 12, color: 'var(--text-subtle)', textAlign: 'center' }}>
+          Showing 5 of {runs.length} runs
         </div>
-      ))}
-      {runs.length === 0 && (
-        <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-subtle)', fontSize: 13 }}>No runs yet.</div>
       )}
     </div>
   );
@@ -877,7 +1019,15 @@ export function DomainWorkspace() {
   const [tab, setTab] = useState<'optimize' | 'dataset' | 'history'>('optimize');
   const [showNew, setShowNew] = useState(false);
   const [pollingJobId, setPollingJobId] = useState<string | null>(null);
+  const [pollingDomainId, setPollingDomainId] = useState<string | null>(null);
   const [reoptimizing, setReoptimizing] = useState(false);
+  const [sessionResult, setSessionResult] = useState<{
+    optimized_prompt: string;
+    prompt_input: string;
+    win_rate: number | null;
+    candidates_tried: number | null;
+  } | null>(null);
+  const pendingPromptRef = useRef('');
 
   const { data, isLoading } = useQuery<DomainListResponse>({
     queryKey: ['domain-prompts'],
@@ -885,39 +1035,71 @@ export function DomainWorkspace() {
       const res = await api.get<{ data: DomainListResponse }>('/api/v1/domain-prompts/');
       return res.data.data;
     },
-    refetchInterval: pollingJobId ? 3000 : false,
+    refetchInterval: (query) => {
+      if (pollingJobId) return 3000;
+      const domains = (query.state.data as DomainListResponse | undefined)?.domains ?? [];
+      const hasActive = domains.some(d => ['pending', 'preparing_dataset', 'optimizing'].includes(d.status));
+      return hasActive ? 3000 : false;
+    },
   });
 
   const domains = data?.domains ?? [];
-  const selected = domains.find(d => d.id === selectedId) ?? domains[0] ?? null;
+  // Only fall back to domains[0] when selectedId is null (nothing explicitly chosen).
+  // If selectedId is set but not found yet (new domain still loading), keep selected=null
+  // so the tab body shows a loading state instead of the previous domain's content.
+  const selected = selectedId
+    ? (domains.find(d => d.id === selectedId) ?? null)
+    : (domains[0] ?? null);
 
   useEffect(() => {
     if (!selectedId && domains.length > 0) setSelectedId(domains[0].id);
   }, [domains, selectedId]);
 
   useEffect(() => {
+    setSessionResult(null);
+  }, [selectedId]);
+
+  useEffect(() => {
     if (!pollingJobId) return;
     const iv = setInterval(async () => {
       try {
-        const res = await api.get<{ data: { status: string } }>(`/api/v1/domain-prompts/jobs/${pollingJobId}`);
-        const { status } = res.data.data;
-        if (status === 'completed' || status === 'failed') {
+        const res = await api.get<{ data: { status: string; result?: Record<string, unknown> } }>(`/api/v1/domain-prompts/jobs/${pollingJobId}`);
+        const { status, result } = res.data.data;
+        if (status === 'completed') {
           setPollingJobId(null);
+          setPollingDomainId(null);
+          setReoptimizing(false);
+          void qc.invalidateQueries({ queryKey: ['domain-prompts'] });
+          void qc.invalidateQueries({ queryKey: ['domain-runs', pollingDomainId] });
+          if (result) {
+            setSessionResult({
+              optimized_prompt: String(result.optimized_prompt ?? ''),
+              prompt_input: pendingPromptRef.current,
+              win_rate: result.win_rate != null ? Number(result.win_rate) : null,
+              candidates_tried: result.candidates_tried != null ? Number(result.candidates_tried) : null,
+            });
+          }
+        } else if (status === 'failed') {
+          setPollingJobId(null);
+          setPollingDomainId(null);
           setReoptimizing(false);
           void qc.invalidateQueries({ queryKey: ['domain-prompts'] });
         }
-      } catch { setPollingJobId(null); setReoptimizing(false); }
+      } catch { setPollingJobId(null); setPollingDomainId(null); setReoptimizing(false); }
     }, 3000);
     return () => clearInterval(iv);
-  }, [pollingJobId, qc]);
+  }, [pollingJobId, pollingDomainId, qc]);
 
   const handleReoptimize = useCallback(async (prompt: string) => {
     if (!selected) return;
+    pendingPromptRef.current = prompt;
     setReoptimizing(true);
+    const capturedDomainId = selected.id;
     try {
       const res = await api.post<{ data: { job_id: string; domain_id: string } }>(
-        `/api/v1/domain-prompts/${selected.id}/optimize`, { prompt }
+        `/api/v1/domain-prompts/${capturedDomainId}/optimize`, { prompt }
       );
+      setPollingDomainId(capturedDomainId);
       setPollingJobId(res.data.data.job_id);
     } catch { setReoptimizing(false); }
   }, [selected]);
@@ -1032,7 +1214,7 @@ export function DomainWorkspace() {
 
         {selected && tab === 'optimize' && (
           <div style={{ padding: '18px 24px 24px', display: 'flex', flexDirection: 'column', gap: 14, minHeight: '100%' }}>
-            <OptimizeTab domain={selected} onReoptimize={handleReoptimize} reoptimizing={reoptimizing} />
+            <OptimizeTab domain={selected} onReoptimize={handleReoptimize} reoptimizing={reoptimizing} sessionResult={sessionResult} onClearResult={() => setSessionResult(null)} />
           </div>
         )}
         {selected && tab === 'dataset' && <DatasetTab domain={selected} />}
@@ -1046,9 +1228,10 @@ export function DomainWorkspace() {
       {showNew && (
         <NewDomainModal
           onClose={() => setShowNew(false)}
-          onJobStarted={(jobId) => {
+          onJobStarted={(jobId, domainId) => {
             setPollingJobId(jobId);
             setShowNew(false);
+            if (domainId) setSelectedId(domainId);
             void qc.invalidateQueries({ queryKey: ['domain-prompts'] });
           }}
         />

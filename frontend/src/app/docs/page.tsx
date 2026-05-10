@@ -5,6 +5,7 @@ import Link from 'next/link';
 
 // ─── Design tokens (matches home page) ───────────────────────────────────────
 const violet  = '#7c5cff';
+const amber   = '#f59e0b';
 const ink     = '#141414';
 const paper   = '#fafaf7';
 const line    = '#e5e5e1';
@@ -18,6 +19,7 @@ const sans    = 'var(--font-geist, ui-sans-serif)';
 const SECTIONS = [
   { id: 'getting-started',  label: 'Getting started' },
   { id: 'optimize',         label: 'Optimize' },
+  { id: 'domain',           label: 'Domain Optimization' },
   { id: 'health-score',     label: 'Health Score' },
   { id: 'advisory',         label: 'Advisory Review' },
   { id: 'versions',         label: 'Versions' },
@@ -270,10 +272,11 @@ export default function DocsPage() {
               Quick links
             </div>
             {[
-              { l: '← Home',      href: '/' },
-              { l: 'Dashboard',   href: '/dashboard' },
-              { l: 'Optimize',    href: '/optimize' },
-              { l: 'Analyze',     href: '/analyze' },
+              { l: '← Home',          href: '/' },
+              { l: 'Dashboard',        href: '/dashboard' },
+              { l: 'Optimize',         href: '/optimize' },
+              { l: 'Domain Prompts',   href: '/domain-prompts' },
+              { l: 'Analyze',          href: '/analyze' },
             ].map(({ l, href }) => (
               <Link key={l} href={href}
                 style={{ display: 'block', padding: '5px 10px', fontSize: 13,
@@ -431,6 +434,131 @@ export default function DocsPage() {
             and Promptly will re-run the council with your feedback incorporated.
             Each follow-up costs another 10 credits.
           </P>
+
+          <Divider />
+
+          {/* ══════════════════════════════════════════════════════════
+              DOMAIN OPTIMIZATION
+          ══════════════════════════════════════════════════════════ */}
+          <SectionAnchor id="domain" />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+            <Eyebrow>Domain Optimization</Eyebrow>
+            <span style={{ fontFamily: mono, fontSize: 10, textTransform: 'uppercase',
+              letterSpacing: '0.12em', color: amber,
+              background: `${amber}18`, border: `1px solid ${amber}44`,
+              borderRadius: 4, padding: '2px 7px', marginBottom: 10 }}>
+              new
+            </span>
+          </div>
+          <H2>Prove your prompt wins against your own knowledge base.</H2>
+          <Lead>
+            Domain Optimization is for prompts that need to perform on a specific
+            body of knowledge — internal documentation, a product FAQ, a compliance
+            manual, a research corpus. Instead of general improvement, it runs
+            an empirical tournament: candidate prompts compete against each other
+            on questions drawn from your PDF, and the strongest one wins.
+          </Lead>
+
+          <H3>How it works</H3>
+          <StepList steps={[
+            {
+              title: 'Create a domain and upload your PDF',
+              body: (
+                <>
+                  Go to <strong>Domain Optimization</strong> in the sidebar and click{' '}
+                  <strong>New domain</strong>. Give it a name and upload your source document —
+                  a PDF of up to several hundred pages. Promptly extracts the content and
+                  builds a question-and-answer dataset from it. This happens once; the
+                  dataset is reused for every future tournament on this domain.
+                </>
+              ),
+            },
+            {
+              title: 'Paste your system prompt and run the tournament',
+              body: (
+                <>
+                  Switch to the <strong>Optimize</strong> tab inside your domain.
+                  Paste the system prompt you want to test — the one your chatbot or
+                  agent uses to answer questions about this material. Click{' '}
+                  <strong>Run PDO</strong>. The tournament runs candidate variants of
+                  your prompt against the dataset and selects the one that scores highest
+                  on accuracy and relevance across those questions.
+                </>
+              ),
+            },
+            {
+              title: 'Get the winning prompt with performance stats',
+              body: (
+                <>
+                  When the tournament completes you&apos;ll see the winning prompt,
+                  its <strong>win rate</strong> (how often it outperformed competing
+                  variants in head-to-head evaluations), and the number of candidates
+                  evaluated. Copy the result and deploy it directly — it has been
+                  tested against your actual content, not synthetic benchmarks.
+                </>
+              ),
+            },
+          ]} />
+
+          <H3>What you see in the result</H3>
+          <FieldTable rows={[
+            { field: 'Winning prompt',    what: 'The full text of the prompt that performed best across all tournament rounds. Ready to copy and use.' },
+            { field: 'Win rate',          what: 'Percentage of head-to-head match-ups this prompt won against other candidates, as judged against the questions from your PDF.' },
+            { field: 'Candidates tried',  what: 'Total number of distinct prompt variants evaluated during the tournament. More candidates means broader exploration.' },
+            { field: 'Input prompt',      what: 'The prompt you submitted to start the tournament — shown alongside the result so you can compare what changed.' },
+          ]} />
+
+          <H3>The Dataset tab</H3>
+          <P>
+            The <strong>Dataset</strong> tab shows the status of your domain&apos;s
+            question-and-answer dataset. Before you can run a tournament, Promptly
+            needs to process your PDF and generate evaluation questions from it.
+            This usually takes a minute or two and only happens once per domain.
+          </P>
+          <P>
+            You can also <strong>augment</strong> the dataset from this tab —
+            adding additional questions beyond those auto-generated from the PDF,
+            either by uploading another document or by providing questions directly.
+            Augmenting expands the evaluation coverage without replacing the
+            existing dataset.
+          </P>
+
+          <CalloutBox icon="💡" label="When to use Domain vs Optimize" tone="tip">
+            Use <strong>Optimize</strong> when you want to improve a general-purpose
+            prompt — one that works across many topics or users.
+            Use <strong>Domain Optimization</strong> when your prompt has one job:
+            answering questions about a specific body of content. The tournament
+            measures what actually matters — accuracy on your material, not abstract
+            quality dimensions.
+          </CalloutBox>
+
+          <H3>The History tab</H3>
+          <P>
+            The <strong>History</strong> tab inside each domain lists every tournament
+            you&apos;ve run, in reverse chronological order. Each entry shows the
+            date, the win rate, and the number of candidates evaluated.
+            Click any run to load its winning prompt and compare it against your
+            current one.
+          </P>
+          <P>
+            Results persist across sessions — if you navigate away and come back,
+            your most recent tournament result is restored automatically without
+            needing to re-run.
+          </P>
+
+          <CalloutBox icon="⚡" label="Credit cost" tone="cost">
+            <strong>10 credits</strong> per tournament run. The dataset setup (PDF
+            processing and question generation) is free — credits are only consumed
+            when you run a tournament.
+          </CalloutBox>
+
+          <CalloutBox icon="⚠️" label="Dataset lifecycle" tone="warn">
+            Your domain&apos;s dataset is created <strong>once</strong> from your
+            uploaded PDF and reused for every tournament. It does not regenerate
+            automatically when you run a new tournament. Use <strong>Augment</strong>{' '}
+            in the Dataset tab to expand the question set if you want to add
+            coverage for new material.
+          </CalloutBox>
 
           <Divider />
 
@@ -731,9 +859,10 @@ export default function DocsPage() {
           </Lead>
 
           <FieldTable rows={[
-            { field: 'Optimize',      what: '10 credits — one full council run: four proposals, four critiques, one synthesis.' },
-            { field: 'Health Score',  what: '5 credits — a full ten-dimension quality evaluation with rationale.' },
-            { field: 'Advisory',      what: '5 credits — a full qualitative review with dimension scores, strengths, weaknesses, and improvements.' },
+            { field: 'Optimize',             what: '10 credits — one full council run: four proposals, four critiques, one synthesis.' },
+            { field: 'Domain Optimization',  what: '10 credits — one full tournament run against your domain\'s dataset. Dataset setup is free.' },
+            { field: 'Health Score',         what: '5 credits — a full ten-dimension quality evaluation with rationale.' },
+            { field: 'Advisory',             what: '5 credits — a full qualitative review with dimension scores, strengths, weaknesses, and improvements.' },
           ]} />
 
           <H3>When credits are deducted</H3>

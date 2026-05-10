@@ -28,7 +28,7 @@ export default function PromptProjectPage() {
           </div>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <h1 style={{ fontSize: 22, fontWeight: 600, color: '#ededed', margin: 0, letterSpacing: '-0.3px' }}>
+              <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--text)', margin: 0, letterSpacing: '-0.3px' }}>
                 Prompt Projects
               </h1>
               <span style={{
@@ -45,7 +45,7 @@ export default function PromptProjectPage() {
                 Coming soon
               </span>
             </div>
-            <p style={{ margin: '4px 0 0', fontSize: 13.5, color: '#8a8a90', lineHeight: 1.5 }}>
+            <p style={{ margin: '4px 0 0', fontSize: 13.5, color: 'var(--text-muted)', lineHeight: 1.5 }}>
               A purpose-built workspace for crafting, testing, and managing prompts for your AI agents.
             </p>
           </div>
@@ -86,19 +86,19 @@ export default function PromptProjectPage() {
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 32, flexShrink: 0 }}>
                 <div style={{
                   width: 32, height: 32, borderRadius: '50%',
-                  background: '#17171b', border: '1px solid #7c5cff50',
+                  background: 'var(--surface)', border: '1px solid #7c5cff50',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: 13, color: '#9e82ff', fontWeight: 600, flexShrink: 0,
                 }}>
                   {i + 1}
                 </div>
                 {i < FLOW.length - 1 && (
-                  <div style={{ width: 1, flex: 1, minHeight: 20, background: '#1f1f23', margin: '4px 0' }} />
+                  <div style={{ width: 1, flex: 1, minHeight: 20, background: 'var(--border)', margin: '4px 0' }} />
                 )}
               </div>
               <div style={{ paddingBottom: i < FLOW.length - 1 ? 20 : 0, paddingTop: 6 }}>
-                <div style={{ fontSize: 13.5, fontWeight: 500, color: '#d4d4d8', marginBottom: 3 }}>{step.label}</div>
-                <div style={{ fontSize: 12.5, color: '#8a8a90', lineHeight: 1.6 }}>{step.desc}</div>
+                <div style={{ fontSize: 13.5, fontWeight: 500, color: 'var(--text)', marginBottom: 3 }}>{step.label}</div>
+                <div style={{ fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.6 }}>{step.desc}</div>
               </div>
             </div>
           ))}
@@ -113,12 +113,12 @@ export default function PromptProjectPage() {
             <div key={f.label} style={{
               display: 'flex', alignItems: 'flex-start', gap: 12,
               padding: '12px 16px', borderRadius: 8,
-              background: '#17171b', border: '1px solid #1f1f23',
+              background: 'var(--surface)', border: '1px solid var(--border)',
             }}>
               <span style={{ fontSize: 15, marginTop: 1 }}>{f.icon}</span>
               <div>
-                <div style={{ fontSize: 13, fontWeight: 500, color: '#d4d4d8', marginBottom: 2 }}>{f.label}</div>
-                <div style={{ fontSize: 12.5, color: '#8a8a90', lineHeight: 1.5 }}>{f.desc}</div>
+                <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)', marginBottom: 2 }}>{f.label}</div>
+                <div style={{ fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.5 }}>{f.desc}</div>
               </div>
             </div>
           ))}
@@ -128,13 +128,13 @@ export default function PromptProjectPage() {
       {/* Footer */}
       <div style={{
         padding: '16px 20px', borderRadius: 8,
-        background: '#17171b', border: '1px solid #1f1f23',
+        background: 'var(--surface)', border: '1px solid var(--border)',
         display: 'flex', alignItems: 'center', gap: 12,
       }}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7c5cff" strokeWidth="1.5" style={{ flexShrink: 0 }}>
           <circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>
         </svg>
-        <p style={{ margin: 0, fontSize: 12.5, color: '#8a8a90', lineHeight: 1.6 }}>
+        <p style={{ margin: 0, fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.6 }}>
           Prompt Projects and the Agent Interaction System are actively being designed.
           Features described here reflect current plans and may evolve as we build.
         </p>
@@ -155,7 +155,7 @@ export default function PromptProjectPage() {
 
 function Label({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ fontSize: 11, fontWeight: 600, color: '#5a5a60', letterSpacing: '0.6px', textTransform: 'uppercase' as const }}>
+    <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-subtle)', letterSpacing: '0.6px', textTransform: 'uppercase' as const }}>
       {children}
     </div>
   );
@@ -167,10 +167,10 @@ function Section({ eyebrow, title, body }: { eyebrow: string; title: string; bod
       <div style={{ fontSize: 11, fontWeight: 600, color: '#7c5cff', letterSpacing: '0.6px', textTransform: 'uppercase' as const, marginBottom: 8 }}>
         {eyebrow}
       </div>
-      <h2 style={{ fontSize: 17, fontWeight: 600, color: '#ededed', margin: '0 0 10px', letterSpacing: '-0.2px' }}>
+      <h2 style={{ fontSize: 17, fontWeight: 600, color: 'var(--text)', margin: '0 0 10px', letterSpacing: '-0.2px' }}>
         {title}
       </h2>
-      <p style={{ fontSize: 13.5, color: '#8a8a90', lineHeight: 1.75, margin: 0, maxWidth: 620 }}>
+      <p style={{ fontSize: 13.5, color: 'var(--text-muted)', lineHeight: 1.75, margin: 0, maxWidth: 620 }}>
         {body}
       </p>
     </div>
@@ -181,11 +181,11 @@ function UsecaseCard({ icon, title, body }: { icon: string; title: string; body:
   return (
     <div style={{
       padding: '16px 18px', borderRadius: 10,
-      background: '#17171b', border: '1px solid #1f1f23',
+      background: 'var(--surface)', border: '1px solid var(--border)',
     }}>
       <div style={{ fontSize: 20, marginBottom: 10 }}>{icon}</div>
-      <div style={{ fontSize: 13, fontWeight: 500, color: '#d4d4d8', marginBottom: 6 }}>{title}</div>
-      <div style={{ fontSize: 12.5, color: '#8a8a90', lineHeight: 1.6 }}>{body}</div>
+      <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)', marginBottom: 6 }}>{title}</div>
+      <div style={{ fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.6 }}>{body}</div>
     </div>
   );
 }

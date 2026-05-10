@@ -24,7 +24,7 @@ function gradeLabel(score: number): string {
 }
 
 function gradeGradient(score: number): string {
-  if (score >= 8) return 'linear-gradient(135deg, #6366f1, #8b5cf6)';
+  if (score >= 8) return 'linear-gradient(135deg, var(--primary), var(--accent))';
   if (score >= 6) return 'linear-gradient(135deg, var(--primary), var(--accent))';
   return 'linear-gradient(135deg, var(--warning), oklch(72% 0.16 35))';
 }
@@ -43,6 +43,8 @@ export default function AnalyzePage() {
   async function runAnalyze() {
     if (!canRun) return;
     setLoading(true);
+    setHealthScore(null);
+    setAdvisory(null);
     try {
       /* Run both in parallel, show whichever succeeds */
       const [healthRes, advisoryRes] = await Promise.allSettled([
@@ -52,10 +54,14 @@ export default function AnalyzePage() {
       if (healthRes.status === 'fulfilled') {
         setHealthScore(healthRes.value.data.data);
         setTab('health');
+      } else {
+        setHealthScore(null);
       }
       if (advisoryRes.status === 'fulfilled') {
         setAdvisory(advisoryRes.value.data.data);
         if (healthRes.status === 'rejected') setTab('advisory');
+      } else {
+        setAdvisory(null);
       }
       if (healthRes.status === 'rejected' && advisoryRes.status === 'rejected') {
         toast.error('Analysis failed — check the server logs');

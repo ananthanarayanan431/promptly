@@ -6,7 +6,12 @@ from typing import Any
 from sqlalchemy import select, update
 from sqlalchemy.orm import selectinload
 
-from app.domain_prompt.models import DomainDataset, DomainPrompt, DomainPromptStatus
+from app.domain_prompt.models import (
+    DomainDataset,
+    DomainOptimizationRun,
+    DomainPrompt,
+    DomainPromptStatus,
+)
 from app.repositories.base import BaseRepository
 
 
@@ -76,3 +81,52 @@ class DomainPromptRepository(BaseRepository[DomainPrompt]):
         await self.db.execute(
             update(DomainDataset).where(DomainDataset.id == dataset.id).values(**kwargs)
         )
+
+
+class DomainOptimizationRunRepository(BaseRepository[DomainOptimizationRun]):
+    model = DomainOptimizationRun
+
+    async def create_run(
+        self,
+        *,
+        domain_id: uuid.UUID,
+        domain_name: str,
+        prompt_input: str,
+        optimized_prompt: str | None = None,
+        score_before: float | None = None,
+        score_after: float | None = None,
+        win_rate: float | None = None,
+        candidates_tried: int | None = None,
+        rounds_run: int | None = None,
+        dataset_size: int | None = None,
+        status: str = "completed",
+        error_message: str | None = None,
+    ) -> DomainOptimizationRun:
+        run = DomainOptimizationRun(
+            domain_id=domain_id,
+            domain_name=domain_name,
+            prompt_input=prompt_input,
+            optimized_prompt=optimized_prompt,
+            score_before=score_before,
+            score_after=score_after,
+            win_rate=win_rate,
+            candidates_tried=candidates_tried,
+            rounds_run=rounds_run,
+            dataset_size=dataset_size,
+            status=status,
+            error_message=error_message,
+        )
+        self.db.add(run)
+        await self.db.flush()
+        return run
+
+    async def get_runs_by_domain(
+        self, domain_id: uuid.UUID, *, limit: int = 50
+    ) -> list[DomainOptimizationRun]:
+        result = await self.db.execute(
+            select(DomainOptimizationRun)
+            .where(DomainOptimizationRun.domain_id == domain_id)
+            .order_by(DomainOptimizationRun.created_at.desc())
+            .limit(limit)
+        )
+        return list(result.scalars().all())

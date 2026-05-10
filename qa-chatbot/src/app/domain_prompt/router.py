@@ -26,7 +26,7 @@ from app.domain_prompt.exceptions import (
     InvalidPDFException,
 )
 from app.domain_prompt.models import DomainPrompt, DomainPromptStatus
-from app.domain_prompt.repository import DomainPromptRepository
+from app.domain_prompt.repository import DomainOptimizationRunRepository, DomainPromptRepository
 from app.domain_prompt.schemas import (
     AugmentDatasetRequest,
     CreateDomainJobResponse,
@@ -35,8 +35,10 @@ from app.domain_prompt.schemas import (
     DomainJobPollResponse,
     DomainListResponse,
     DomainPromptResponse,
+    OptimizationRunResponse,
     OptimizeDomainRequest,
     QAPair,
+    RunListResponse,
     TournamentStateResponse,
     UpdateDatasetRequest,
 )
@@ -410,6 +412,29 @@ async def reoptimize_domain(
     )
 
     return SuccessResponse(data=CreateDomainJobResponse(job_id=job_id, domain_id=domain_id))
+
+
+@router.get(
+    "/{domain_id}/runs",
+    response_model=SuccessResponse[RunListResponse],
+    dependencies=[Depends(_read_limiter)],
+)
+async def list_domain_runs(
+    domain_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> SuccessResponse[RunListResponse]:
+    """Return optimization run history for a domain (newest first, max 50)."""
+    domain_repo = DomainPromptRepository(db)
+    domain = await domain_repo.get_by_id_and_user(domain_id, current_user.id)
+    if domain is None:
+        raise DomainNotFoundException()
+
+    run_repo = DomainOptimizationRunRepository(db)
+    runs = await run_repo.get_runs_by_domain(domain_id)
+    return SuccessResponse(
+        data=RunListResponse(runs=[OptimizationRunResponse.model_validate(r) for r in runs])
+    )
 
 
 @router.delete(
