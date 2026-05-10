@@ -88,9 +88,11 @@ function deriveInitials(name: string): string {
   return name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
 }
 
+const CREDITS_START = 100;
+
 function CreditsCard({ credits }: { credits: number }) {
   const optimizationsLeft = Math.floor(credits / 10);
-  const pct = Math.min(100, (credits / 200) * 100);
+  const pct = Math.min(100, (credits / CREDITS_START) * 100);
   return (
     <div className="ply-card" style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8, boxShadow: 'none' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>

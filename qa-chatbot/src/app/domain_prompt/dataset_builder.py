@@ -426,9 +426,15 @@ async def generate_qa_pairs(
         _log.warning("PDF produced %d chunks; processing first %d", len(chunks), max_chunks)
     selected = chunks[:max_chunks]
 
-    if base_prompt is None:
+    if not base_prompt:
         # Fallback path: no filtering
-        tasks = [_process_chunk_fallback(chunk, challenger_llm) for chunk in selected]
+        sem = asyncio.Semaphore(4)
+
+        async def _fallback_bounded(chunk: str) -> list[dict[str, str]]:
+            async with sem:
+                return await _process_chunk_fallback(chunk, challenger_llm)
+
+        tasks = [_fallback_bounded(chunk) for chunk in selected]
         batch_results: list[list[dict[str, str]]] = await asyncio.gather(*tasks)
         all_pairs: list[dict[str, str]] = []
         seen: set[str] = set()
@@ -469,19 +475,22 @@ async def generate_qa_pairs(
     # Strong solver: the user's actual base prompt (domain-guided)
     strong_system = base_prompt
 
-    chunk_tasks = [
-        _process_chunk_with_filtering(
-            chunk,
-            base_prompt,
-            challenger_llm,
-            weak_llm,
-            strong_llm,
-            judge_llm,
-            weak_system,
-            strong_system,
-        )
-        for chunk in selected
-    ]
+    chunk_sem = asyncio.Semaphore(4)
+
+    async def _filter_bounded(chunk: str) -> tuple[list[dict[str, str]], dict[str, int]]:
+        async with chunk_sem:
+            return await _process_chunk_with_filtering(
+                chunk,
+                base_prompt,
+                challenger_llm,
+                weak_llm,
+                strong_llm,
+                judge_llm,
+                weak_system,
+                strong_system,
+            )
+
+    chunk_tasks = [_filter_bounded(chunk) for chunk in selected]
     chunk_results = await asyncio.gather(*chunk_tasks)
 
     all_pairs = []

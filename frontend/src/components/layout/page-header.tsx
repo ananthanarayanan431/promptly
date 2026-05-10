@@ -13,11 +13,12 @@ interface PageHeaderProps {
 }
 
 function ThemeToggle() {
-  const { theme, toggle } = useTheme();
+  const { theme, toggle, mounted } = useTheme();
   return (
     <button
       onClick={toggle}
       title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+      aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
       style={{
         width: 32, height: 32, borderRadius: 8, border: '1px solid var(--border)',
         background: 'var(--surface)', cursor: 'pointer', display: 'flex',
@@ -26,7 +27,8 @@ function ThemeToggle() {
         flexShrink: 0,
       }}
     >
-      {theme === 'dark' ? (
+      {/* Render nothing until mounted to avoid server/client icon mismatch */}
+      {mounted && (theme === 'dark' ? (
         /* Sun icon */
         <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round">
           <circle cx="12" cy="12" r="4"/>
@@ -37,7 +39,7 @@ function ThemeToggle() {
         <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round">
           <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
         </svg>
-      )}
+      ))}
     </button>
   );
 }

@@ -287,7 +287,7 @@ export default function SettingsPage() {
           {/* Usage snippet */}
           <div className="ply-card" style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{ fontWeight: 500, color: 'var(--text)', fontSize: 13 }}>Using your key</div>
-            <pre className="ply-prompt-block" style={{ margin: 0, fontSize: 11.5 }}>{`curl https://api.promptly.ai/v1/chat/ \\
+            <pre className="ply-prompt-block" style={{ margin: 0, fontSize: 11.5 }}>{`curl https://api.promptly.ai/api/v1/chat/ \\
   -H "Authorization: Bearer qac_••••••••" \\
   -H "Content-Type: application/json" \\
   -d '{ "prompt": "..." }'`}</pre>

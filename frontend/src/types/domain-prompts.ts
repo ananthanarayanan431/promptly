@@ -61,7 +61,8 @@ export interface TournamentState {
   total_rounds: number;
   candidate_count: number;
   names: string[];
-  elos: number[];
+  copeland_scores: number[];
+  avg_win_rates: number[];
   W: number[][];
   duel_i: number;
   duel_j: number;

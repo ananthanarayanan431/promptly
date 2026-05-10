@@ -79,7 +79,7 @@ function LiveStatsBar({ domainId, datasetSize }: { domainId: string; datasetSize
   });
 
   const candidates = state?.candidate_count ?? '—';
-  const trials = state ? `${state.round}/40` : '—';
+  const trials = state ? `${state.round}/${state.total_rounds}` : '—';
 
   return (
     <div className="ply-card" style={{ padding: '14px 18px', display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 0 }}>
@@ -117,9 +117,9 @@ function TournamentRunningViz({ domainId, vizMode, onVizChange }: {
   });
 
   const n = state?.names.length ?? 0;
-  const maxElo = state ? Math.max(...state.elos) : 1500;
-  const minElo = state ? Math.min(...state.elos) : 1200;
-  const eloRange = Math.max(maxElo - minElo, 100);
+  const maxCopeland = state ? Math.max(...state.copeland_scores) : 1;
+  const minCopeland = state ? Math.min(...state.copeland_scores) : 0;
+  const copelandRange = Math.max(maxCopeland - minCopeland, 0.01);
 
   return (
     <div className="ply-card anim-fade" style={{ overflow: 'hidden' }}>
@@ -159,7 +159,7 @@ function TournamentRunningViz({ domainId, vizMode, onVizChange }: {
             color: vizMode === v ? 'var(--primary)' : 'var(--text-muted)',
             fontWeight: vizMode === v ? 600 : 400, fontSize: 12.5, marginBottom: -1,
           }}>
-            {v === 'matrix' ? `WIN MATRIX · W[I, J]` : 'ELO BARS'}
+            {v === 'matrix' ? `WIN MATRIX · W[I, J]` : 'COPELAND SCORES'}
           </button>
         ))}
       </div>
@@ -218,7 +218,7 @@ function TournamentRunningViz({ domainId, vizMode, onVizChange }: {
                         border: isDuelCell ? '1.5px solid var(--primary)' : '1.5px solid transparent',
                         transition: 'background .4s ease, color .4s ease',
                       }}>
-                        {isSelf ? '–' : wins}
+                        {isSelf ? '–' : wins.toFixed(1)}
                       </div>
                     );
                   })
@@ -230,9 +230,9 @@ function TournamentRunningViz({ domainId, vizMode, onVizChange }: {
           {state && vizMode === 'bracket' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {state.names.map((name, i) => {
-                const elo = state.elos[i];
-                const pct = ((elo - minElo) / eloRange) * 80 + 10;
-                const isLeading = elo === maxElo;
+                const score = state.copeland_scores[i];
+                const pct = ((score - minCopeland) / copelandRange) * 80 + 10;
+                const isLeading = score === maxCopeland;
                 return (
                   <div key={i} style={{ display: 'grid', gridTemplateColumns: '56px 1fr 64px', alignItems: 'center', gap: 10 }}>
                     <span className="mono" style={{ fontSize: 12, fontWeight: 700, color: C_COLORS[i % C_COLORS.length] }}>{name}</span>
@@ -245,7 +245,7 @@ function TournamentRunningViz({ domainId, vizMode, onVizChange }: {
                       }} />
                     </div>
                     <span className="mono" style={{ fontSize: 11.5, color: isLeading ? 'var(--primary)' : 'var(--text-muted)', textAlign: 'right', fontWeight: isLeading ? 700 : 400 }}>
-                      {Math.round(elo)}
+                      {(score * 100).toFixed(0)}%
                     </span>
                   </div>
                 );
@@ -264,10 +264,9 @@ function TournamentRunningViz({ domainId, vizMode, onVizChange }: {
               <div className="ply-card" style={{ padding: '10px 12px', borderColor: `${C_COLORS[state.duel_i % C_COLORS.length]}55` }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                   <span className="mono" style={{ fontSize: 11, color: C_COLORS[state.duel_i % C_COLORS.length], fontWeight: 700 }}>A · {state.names[state.duel_i]}</span>
-                  <span className="mono" style={{ fontSize: 11, color: 'var(--text-subtle)' }}>elo {Math.round(state.elos[state.duel_i])}</span>
-                </div>
-                <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginBottom: 8 }}>
-                  {['Expert persona', 'Step-by-step', 'Output format', 'Safety scope', 'Comprehensive', 'Mutation'][state.duel_i % 6]}
+                  <span className="mono" style={{ fontSize: 11, color: 'var(--text-subtle)' }}>
+                    copeland {(state.copeland_scores[state.duel_i] * 100).toFixed(0)}%
+                  </span>
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--text-subtle)', fontStyle: 'italic' }}>answering Q…</div>
                 <div style={{ marginTop: 6, height: 2, background: 'var(--surface-2)', borderRadius: 999, overflow: 'hidden' }}>
@@ -278,10 +277,9 @@ function TournamentRunningViz({ domainId, vizMode, onVizChange }: {
               <div className="ply-card" style={{ padding: '10px 12px', borderColor: `${C_COLORS[state.duel_j % C_COLORS.length]}55` }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                   <span className="mono" style={{ fontSize: 11, color: C_COLORS[state.duel_j % C_COLORS.length], fontWeight: 700 }}>B · {state.names[state.duel_j]}</span>
-                  <span className="mono" style={{ fontSize: 11, color: 'var(--text-subtle)' }}>elo {Math.round(state.elos[state.duel_j])}</span>
-                </div>
-                <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginBottom: 8 }}>
-                  {['Expert persona', 'Step-by-step', 'Output format', 'Safety scope', 'Comprehensive', 'Mutation'][state.duel_j % 6]}
+                  <span className="mono" style={{ fontSize: 11, color: 'var(--text-subtle)' }}>
+                    copeland {(state.copeland_scores[state.duel_j] * 100).toFixed(0)}%
+                  </span>
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--text-subtle)', fontStyle: 'italic' }}>answering Q…</div>
                 <div style={{ marginTop: 6, height: 2, background: 'var(--surface-2)', borderRadius: 999, overflow: 'hidden' }}>
@@ -335,7 +333,7 @@ function OptimizeTab({ domain, onReoptimize, reoptimizing, sessionResult, onClea
     },
   });
 
-  const latestRun = runsData?.runs?.[0] ?? null;
+  const latestRun = runsData?.runs?.find(r => r.status === 'completed') ?? null;
   const displayResult = sessionResult ?? (!runAgainMode && latestRun ? {
     optimized_prompt: latestRun.optimized_prompt,
     prompt_input: latestRun.prompt_input,
@@ -378,7 +376,7 @@ function OptimizeTab({ domain, onReoptimize, reoptimizing, sessionResult, onClea
         <div className="ply-card" style={{ padding: '14px 18px', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 0 }}>
           <Stat label="Win rate" value={displayResult?.win_rate != null ? `${Math.round(displayResult.win_rate * 100)}%` : '—'} hint="winner head-to-head" color="var(--success)" />
           <Stat label="Candidates" value={String(displayResult?.candidates_tried ?? '—')} hint="tested in tournament" />
-          <Stat label="Trials" value="40" hint="head-to-head" />
+          <Stat label="Trials" value={String(latestRun?.rounds_run ?? 30)} hint="head-to-head" />
           <Stat label="Knowledge" value={String(domain.dataset?.row_count ?? '—')} hint="Q&A pairs" />
         </div>
       )}
@@ -1021,6 +1019,7 @@ export function DomainWorkspace() {
   const [tab, setTab] = useState<'optimize' | 'dataset' | 'history'>('optimize');
   const [showNew, setShowNew] = useState(false);
   const [pollingJobId, setPollingJobId] = useState<string | null>(null);
+  const [pollingDomainId, setPollingDomainId] = useState<string | null>(null);
   const [reoptimizing, setReoptimizing] = useState(false);
   const [sessionResult, setSessionResult] = useState<{
     optimized_prompt: string;
@@ -1068,9 +1067,10 @@ export function DomainWorkspace() {
         const { status, result } = res.data.data;
         if (status === 'completed') {
           setPollingJobId(null);
+          setPollingDomainId(null);
           setReoptimizing(false);
           void qc.invalidateQueries({ queryKey: ['domain-prompts'] });
-          void qc.invalidateQueries({ queryKey: ['domain-runs', selectedId] });
+          void qc.invalidateQueries({ queryKey: ['domain-runs', pollingDomainId] });
           if (result) {
             setSessionResult({
               optimized_prompt: String(result.optimized_prompt ?? ''),
@@ -1081,22 +1081,25 @@ export function DomainWorkspace() {
           }
         } else if (status === 'failed') {
           setPollingJobId(null);
+          setPollingDomainId(null);
           setReoptimizing(false);
           void qc.invalidateQueries({ queryKey: ['domain-prompts'] });
         }
-      } catch { setPollingJobId(null); setReoptimizing(false); }
+      } catch { setPollingJobId(null); setPollingDomainId(null); setReoptimizing(false); }
     }, 3000);
     return () => clearInterval(iv);
-  }, [pollingJobId, qc, selectedId]);
+  }, [pollingJobId, pollingDomainId, qc]);
 
   const handleReoptimize = useCallback(async (prompt: string) => {
     if (!selected) return;
     pendingPromptRef.current = prompt;
     setReoptimizing(true);
+    const capturedDomainId = selected.id;
     try {
       const res = await api.post<{ data: { job_id: string; domain_id: string } }>(
-        `/api/v1/domain-prompts/${selected.id}/optimize`, { prompt }
+        `/api/v1/domain-prompts/${capturedDomainId}/optimize`, { prompt }
       );
+      setPollingDomainId(capturedDomainId);
       setPollingJobId(res.data.data.job_id);
     } catch { setReoptimizing(false); }
   }, [selected]);
