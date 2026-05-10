@@ -90,8 +90,9 @@ class TournamentStateResponse(BaseModel):
     total_rounds: int
     candidate_count: int
     names: list[str]
-    elos: list[float]
-    W: list[list[int]]
+    copeland_scores: list[float]
+    avg_win_rates: list[float]
+    W: list[list[float]]
     duel_i: int
     duel_j: int
     question: str

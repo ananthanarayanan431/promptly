@@ -7,7 +7,41 @@ import { formatApiErrorDetail } from '@/lib/api-errors';
 import type { ChatTurn, JobProgressEvent } from '@/types/api';
 import { JobProgress } from './job-progress';
 
+const USER_BUBBLE_COLLAPSE_CHARS = 280;
+
 function UserBubble({ text, isFeedback }: { text: string; isFeedback: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+  const isLong = !isFeedback && text.length > USER_BUBBLE_COLLAPSE_CHARS;
+
+  if (isLong && !expanded) {
+    const preview = text.slice(0, 160).trimEnd();
+    return (
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <button
+          onClick={() => setExpanded(true)}
+          style={{
+            maxWidth: 320, textAlign: 'left', cursor: 'pointer',
+            background: 'var(--surface)', border: '1px solid var(--border)',
+            borderRadius: 12, padding: '10px 13px', display: 'flex', flexDirection: 'column', gap: 7,
+          }}
+        >
+          <p style={{ margin: 0, fontSize: 11.5, lineHeight: 1.55, color: 'var(--text-muted)',
+            fontFamily: 'var(--font-geist-mono, monospace)', whiteSpace: 'pre-wrap',
+            overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 4,
+            WebkitBoxOrient: 'vertical' }}>
+            {preview}…
+          </p>
+          <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 9.5,
+            fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase',
+            color: 'var(--text-subtle)', background: 'var(--surface-2)',
+            border: '1px solid var(--border)', borderRadius: 4, padding: '2px 6px', alignSelf: 'flex-start' }}>
+            PASTED
+          </span>
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
       <div style={{ maxWidth: '75%', display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
