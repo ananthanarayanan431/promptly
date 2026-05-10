@@ -38,7 +38,6 @@ def prepare_domain_dataset(
         from uuid import UUID
 
         from app.config.env import get_minio_settings
-        from app.config.llm import get_llm_settings
         from app.db.redis import reset_connection_pool
         from app.db.session import AsyncSessionLocal, dispose_async_engine
         from app.domain_prompt.core.dataset_builder import (
@@ -50,6 +49,7 @@ def prepare_domain_dataset(
         from app.domain_prompt.data.repository import DomainPromptRepository
         from app.domain_prompt.infrastructure.cache import set_dp_job_result, set_dp_job_status
         from app.domain_prompt.infrastructure.storage import download_bytes, object_key, upload_text
+        from app.llm import get_llm_settings
 
         reset_connection_pool()
         await dispose_async_engine()
@@ -173,7 +173,6 @@ def run_domain_optimization(
         from uuid import UUID
 
         from app.config.env import get_minio_settings
-        from app.config.llm import get_llm_settings
         from app.db.redis import reset_connection_pool
         from app.db.session import AsyncSessionLocal, dispose_async_engine
         from app.domain_prompt.core.optimizer import optimize_domain_prompt
@@ -188,6 +187,7 @@ def run_domain_optimization(
             set_dp_job_status,
         )
         from app.domain_prompt.infrastructure.storage import download_text, object_key, upload_text
+        from app.llm import get_llm_settings
 
         reset_connection_pool()
         await dispose_async_engine()
@@ -329,7 +329,6 @@ def augment_domain_dataset(
         from uuid import UUID
 
         from app.config.env import get_minio_settings
-        from app.config.llm import get_llm_settings
         from app.db.redis import reset_connection_pool
         from app.db.session import AsyncSessionLocal, dispose_async_engine
         from app.domain_prompt.core.dataset_builder import generate_qa_pairs, pairs_to_jsonl
@@ -337,6 +336,7 @@ def augment_domain_dataset(
         from app.domain_prompt.data.repository import DomainPromptRepository
         from app.domain_prompt.infrastructure.cache import set_dp_job_result, set_dp_job_status
         from app.domain_prompt.infrastructure.storage import download_text, object_key, upload_text
+        from app.llm import get_llm_settings
 
         reset_connection_pool()
         await dispose_async_engine()

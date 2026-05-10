@@ -7,7 +7,6 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import StreamingResponse
-from langchain_openai import ChatOpenAI
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,7 +20,6 @@ from app.api.v1.exceptions.chat import (
     SessionNotFoundException,
     VersionedPromptNotFoundException,
 )
-from app.config.llm import get_llm_settings
 from app.core.cache import (
     get_job_owner,
     get_job_progress_from,
@@ -32,6 +30,7 @@ from app.core.cache import (
 )
 from app.core.rate_limit import RateLimiter
 from app.dependencies import get_current_user, get_db
+from app.llm.naming import build_naming_llm
 from app.models.message import Message
 from app.models.session import ChatSession
 from app.models.user import User
@@ -313,16 +312,7 @@ async def suggest_prompt_name(
     Used by the frontend versioning toggle in the chat input.
     """
 
-    llm_settings = get_llm_settings()
-    api_key = llm_settings.OPENROUTER_API_KEY.get_secret_value()
-
-    model = ChatOpenAI(
-        model="openai/gpt-4o-mini",
-        openai_api_base="https://openrouter.ai/api/v1",
-        openai_api_key=api_key,
-        max_tokens=15,
-        temperature=0,
-    )
+    model = build_naming_llm()
     try:
         response = await asyncio.wait_for(
             model.ainvoke(
@@ -363,16 +353,7 @@ async def save_version_from_response(
     optimized result is appended as v3, v4, …
     """
 
-    llm_settings = get_llm_settings()
-    api_key = llm_settings.OPENROUTER_API_KEY.get_secret_value()
-
-    model = ChatOpenAI(
-        model="openai/gpt-4o-mini",
-        openai_api_base="https://openrouter.ai/api/v1",
-        openai_api_key=api_key,
-        max_tokens=15,
-        temperature=0,
-    )
+    model = build_naming_llm()
     try:
         llm_response = await asyncio.wait_for(
             model.ainvoke(

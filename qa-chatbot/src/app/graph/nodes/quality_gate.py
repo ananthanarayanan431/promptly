@@ -18,11 +18,10 @@ import logging
 import time
 from typing import Any
 
-from langchain_openai import ChatOpenAI
-
-from app.config.llm import get_llm_settings
 from app.core.cache import push_job_progress
 from app.graph.state import GraphState
+from app.llm import LLMClient
+from app.llm.pipeline import build_gate
 
 logger = logging.getLogger(__name__)
 
@@ -98,23 +97,18 @@ Otherwise "fail".
 """
 
 _loop_id: int | None = None
-_gate_model: ChatOpenAI | None = None
+_gate_model: LLMClient | None = None
 
 
-def _get_gate_model() -> ChatOpenAI:
+def _get_gate_model() -> LLMClient:
     import asyncio
 
     global _loop_id, _gate_model
     loop = asyncio.get_running_loop()
     lid = id(loop)
     if _loop_id != lid or _gate_model is None:
-        llm_settings = get_llm_settings()
         _loop_id = lid
-        _gate_model = ChatOpenAI(
-            model="openai/gpt-4o-mini",  # fast, cheap — only scoring dimensions
-            openai_api_base="https://openrouter.ai/api/v1",
-            openai_api_key=llm_settings.OPENROUTER_API_KEY.get_secret_value(),
-        )
+        _gate_model = build_gate()
     return _gate_model
 
 

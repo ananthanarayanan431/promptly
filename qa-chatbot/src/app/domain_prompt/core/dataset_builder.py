@@ -37,7 +37,6 @@ import io
 import json
 import logging
 
-from langchain_openai import ChatOpenAI
 from pypdf import PdfReader
 
 from app.domain_prompt.constants.dataset_builder import (
@@ -49,6 +48,13 @@ from app.domain_prompt.prompts.dataset_builder import (
     CHALLENGER_SYSTEM,
     FALLBACK_CHALLENGER_SYSTEM,
     JUDGE_SYSTEM,
+)
+from app.llm import LLMClient
+from app.llm.dataset import (
+    build_challenger,
+    build_dataset_judge,
+    build_strong_solver,
+    build_weak_solver,
 )
 
 _log = logging.getLogger(__name__)
@@ -184,7 +190,7 @@ def _json_loads_tolerant(raw: str) -> object:
 # ── Solver & judge calls ──────────────────────────────────────────────────────
 
 
-async def _get_answer(llm: ChatOpenAI, system: str, question: str) -> str:
+async def _get_answer(llm: LLMClient, system: str, question: str) -> str:
     try:
         response = await llm.ainvoke(
             [
@@ -199,7 +205,7 @@ async def _get_answer(llm: ChatOpenAI, system: str, question: str) -> str:
 
 
 async def _judge_answer(
-    judge_llm: ChatOpenAI,
+    judge_llm: LLMClient,
     question: str,
     rubric: list[str],
     answer: str,
@@ -236,10 +242,10 @@ async def _judge_answer(
 async def _process_chunk_with_filtering(
     chunk: str,
     base_prompt: str,
-    challenger_llm: ChatOpenAI,
-    weak_llm: ChatOpenAI,
-    strong_llm: ChatOpenAI,
-    judge_llm: ChatOpenAI,
+    challenger_llm: LLMClient,
+    weak_llm: LLMClient,
+    strong_llm: LLMClient,
+    judge_llm: LLMClient,
     weak_system: str,
     strong_system: str,
 ) -> tuple[list[dict[str, str]], dict[str, int]]:
@@ -321,7 +327,7 @@ async def _process_chunk_with_filtering(
 
 async def _process_chunk_fallback(
     chunk: str,
-    challenger_llm: ChatOpenAI,
+    challenger_llm: LLMClient,
 ) -> list[dict[str, str]]:
     """Fallback for augment task (no base_prompt): generate without filtering."""
     try:
@@ -357,13 +363,7 @@ async def generate_qa_pairs(
     Without base_prompt (augment_domain_dataset task):
       Falls back to diversity-stratified generation without filtering.
     """
-    challenger_llm = ChatOpenAI(
-        model="openai/gpt-4o-mini",
-        base_url="https://openrouter.ai/api/v1",
-        openai_api_key=api_key,
-        temperature=0.6,
-        max_tokens=2048,
-    )
+    challenger_llm = build_challenger(api_key)
 
     chunks = _chunk_text(text, max_chars=3000)
     # With filtering: each chunk runs 5 candidates × 3 LLM calls (weak+strong+judge×2) = 15 calls
@@ -395,27 +395,9 @@ async def generate_qa_pairs(
         return all_pairs
 
     # Main path: AutoData weak-strong filtering
-    weak_llm = ChatOpenAI(
-        model="openai/gpt-4o-mini",
-        base_url="https://openrouter.ai/api/v1",
-        openai_api_key=api_key,
-        temperature=0.0,
-        max_tokens=512,
-    )
-    strong_llm = ChatOpenAI(
-        model="openai/gpt-4o-mini",
-        base_url="https://openrouter.ai/api/v1",
-        openai_api_key=api_key,
-        temperature=0.0,
-        max_tokens=512,
-    )
-    judge_llm = ChatOpenAI(
-        model="openai/gpt-4o",
-        base_url="https://openrouter.ai/api/v1",
-        openai_api_key=api_key,
-        temperature=0.0,
-        max_tokens=64,
-    )
+    weak_llm = build_weak_solver(api_key)
+    strong_llm = build_strong_solver(api_key)
+    judge_llm = build_dataset_judge(api_key)
 
     # Weak solver: no system prompt (plain model capability)
     weak_system = "You are a helpful assistant. Answer the question as best you can."

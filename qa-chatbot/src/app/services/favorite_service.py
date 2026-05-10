@@ -7,12 +7,11 @@ import re
 from typing import Any
 from uuid import UUID
 
-from langchain_openai import ChatOpenAI
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config.llm import get_llm_settings
 from app.graph.prompts import favorite_auto_tag_messages
+from app.llm.tagging import build_tagger
 from app.models.favorite_prompt import FavoritePrompt
 from app.models.prompt_version import PromptVersion
 from app.repositories.favorite_repo import FavoriteRepository
@@ -98,17 +97,7 @@ class FavoriteService:
         return True
 
     async def _generate_tags(self, content: str) -> tuple[set[str], str]:
-        llm_settings = get_llm_settings()
-        council = llm_settings.COUNCIL_MODELS
-        model_name = council[0] if council else llm_settings.DEFAULT_MODEL
-
-        model = ChatOpenAI(
-            model=model_name,
-            openai_api_base="https://openrouter.ai/api/v1",
-            openai_api_key=llm_settings.OPENROUTER_API_KEY.get_secret_value(),
-            max_tokens=150,
-            temperature=0,
-        )
+        model = build_tagger()
 
         response = await asyncio.wait_for(
             model.ainvoke(favorite_auto_tag_messages(content[:4000])),

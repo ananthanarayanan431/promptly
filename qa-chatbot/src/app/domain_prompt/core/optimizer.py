@@ -33,8 +33,6 @@ import random
 from dataclasses import dataclass, field
 from typing import Any
 
-from langchain_openai import ChatOpenAI
-
 from app.domain_prompt.constants.optimizer import (
     GAMMA_ANSWER,
     GAMMA_REASONING,
@@ -61,6 +59,8 @@ from app.domain_prompt.prompts.optimizer import (
     VARIANT_SYSTEM,
     VARIANT_TIPS,
 )
+from app.llm import LLMClient
+from app.llm.optimizer import build_duel_answerer, build_duel_judge, build_variant_generator
 
 _log = logging.getLogger(__name__)
 
@@ -235,7 +235,7 @@ async def _generate_one_variant(
     base_prompt: str,
     tip_name: str,
     tip_instructions: str,
-    gen_llm: ChatOpenAI,
+    gen_llm: LLMClient,
     domain_summary: str,
     sample_questions: str,
 ) -> str | None:
@@ -274,7 +274,7 @@ async def _generate_one_variant(
 async def _generate_variants(
     base_prompt: str,
     n: int,
-    gen_llm: ChatOpenAI,
+    gen_llm: LLMClient,
     domain_summary: str,
     sample_questions: str,
 ) -> list[str]:
@@ -299,7 +299,7 @@ async def _generate_one_mutation(
     source_prompt: str,
     tip_name: str,
     tip_instructions: str,
-    gen_llm: ChatOpenAI,
+    gen_llm: LLMClient,
     domain_summary: str,
 ) -> str | None:
     system = MUTATION_SYSTEM.format(
@@ -335,7 +335,7 @@ async def _generate_one_mutation(
 async def _generate_mutation_batch(
     top_sources: list[str],
     batch_size: int,
-    gen_llm: ChatOpenAI,
+    gen_llm: LLMClient,
     domain_summary: str,
     tip_idx_start: int,
 ) -> list[str]:
@@ -352,7 +352,7 @@ async def _generate_mutation_batch(
 
 
 # ── Answering ─────────────────────────────────────────────────────────────────
-async def _get_answer(prompt: str, question: str, llm: ChatOpenAI) -> str:
+async def _get_answer(prompt: str, question: str, llm: LLMClient) -> str:
     try:
         response = await llm.ainvoke(
             [
@@ -382,8 +382,8 @@ async def _duel(
     prompt_b: str,
     question: str,
     gold: str,
-    llm: ChatOpenAI,
-    judge_llm: ChatOpenAI,
+    llm: LLMClient,
+    judge_llm: LLMClient,
     rng: random.Random,
 ) -> tuple[int, float]:
     """Run one duel. Returns (winner_index, gamma).
@@ -446,8 +446,8 @@ async def _score_one(
     prompt: str,
     question: str,
     gold: str,
-    llm: ChatOpenAI,
-    judge_llm: ChatOpenAI,
+    llm: LLMClient,
+    judge_llm: LLMClient,
 ) -> float:
     predicted = await _get_answer(prompt, question, llm)
     try:
@@ -474,8 +474,8 @@ async def _score_one(
 async def _score_prompt(
     prompt: str,
     examples: list[dict[str, str]],
-    llm: ChatOpenAI,
-    judge_llm: ChatOpenAI,
+    llm: LLMClient,
+    judge_llm: LLMClient,
 ) -> float:
     if not examples:
         return 0.0
@@ -658,29 +658,9 @@ async def optimize_domain_prompt(
     duel_pool = shuffled[: n_total - n_val] or shuffled  # tiny dataset fallback
 
     # ── LLM clients ───────────────────────────────────────────────────────────
-    # Claude Haiku: fast + cheap for answering during duels
-    fast_llm = ChatOpenAI(
-        model="anthropic/claude-3.5-haiku",
-        openai_api_base="https://openrouter.ai/api/v1",
-        openai_api_key=api_key,
-        temperature=0.7,
-        max_tokens=512,
-    )
-    # GPT-4o: variant/mutation generation (long rewrites) + judging (cross-model avoids self-pref)
-    gen_llm = ChatOpenAI(
-        model="openai/gpt-4o",
-        openai_api_base="https://openrouter.ai/api/v1",
-        openai_api_key=api_key,
-        temperature=0.7,
-        max_tokens=VARIANT_MAX_TOKENS,
-    )
-    judge_llm = ChatOpenAI(
-        model="openai/gpt-4o",
-        openai_api_base="https://openrouter.ai/api/v1",
-        openai_api_key=api_key,
-        temperature=0.0,
-        max_tokens=JUDGE_MAX_TOKENS,
-    )
+    fast_llm = build_duel_answerer(api_key)
+    gen_llm = build_variant_generator(api_key)
+    judge_llm = build_duel_judge(api_key)
 
     domain_summary, sample_questions = _build_domain_summary(duel_pool)
 

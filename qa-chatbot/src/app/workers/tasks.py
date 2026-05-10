@@ -55,17 +55,11 @@ def process_chat_async(
             truncated = truncated[:last_space]
         return truncated + "..."
 
-    async def _generate_title(text: str, api_key: str) -> str:
+    async def _generate_title(text: str) -> str:
         """Ask a fast LLM to produce a short, meaningful session title (4-6 words)."""
-        from langchain_openai import ChatOpenAI
+        from app.llm.naming import build_naming_llm
 
-        model = ChatOpenAI(
-            model="openai/gpt-4o-mini",
-            openai_api_base="https://openrouter.ai/api/v1",
-            openai_api_key=api_key,
-            max_tokens=20,
-            temperature=0,
-        )
+        model = build_naming_llm()
         response = await model.ainvoke(
             [
                 {
@@ -86,10 +80,10 @@ def process_chat_async(
         import uuid as uuid_mod
         from uuid import UUID
 
-        from app.config.llm import get_llm_settings
         from app.core.cache import set_job_result, set_job_status
         from app.db.redis import reset_connection_pool
         from app.db.session import AsyncSessionLocal, dispose_async_engine
+        from app.llm import get_llm_settings
 
         # Redis + SQLAlchemy pools are bound to the previous event loop (closed by the
         # last asyncio.run()). Reset so fresh connections attach to this loop.
@@ -106,7 +100,6 @@ def process_chat_async(
         await set_job_status(job_id, "started")
 
         llm_settings = get_llm_settings()
-        api_key = llm_settings.OPENROUTER_API_KEY.get_secret_value()
         max_iterations = llm_settings.MAX_REFINEMENT_ITERATIONS
 
         try:
@@ -174,7 +167,7 @@ def process_chat_async(
 
                     # Run the optimization pipeline and the title LLM call concurrently.
                     # Title generation is fire-and-forget — any failure falls back gracefully.
-                    title_task = asyncio.create_task(_generate_title(raw_prompt, api_key))
+                    title_task = asyncio.create_task(_generate_title(raw_prompt))
 
                     result = await service.process(
                         user_id=user_id,
