@@ -170,6 +170,7 @@ def run_domain_optimization(
 ) -> None:
     async def _run() -> None:
         import json
+        from typing import Any, cast
         from uuid import UUID
 
         from app.config.env import get_minio_settings
@@ -207,11 +208,14 @@ def run_domain_optimization(
             dataset_key = object_key(user_id, domain_id, "dataset.jsonl")
             dataset_jsonl = download_text(bucket, dataset_key)
 
-            result = await optimize_domain_prompt(
-                base_prompt=prompt_to_optimize,
-                dataset_jsonl=dataset_jsonl,
-                api_key=api_key,
-                domain_id=domain_id,
+            result: dict[str, Any] = cast(
+                dict[str, Any],
+                await optimize_domain_prompt(
+                    base_prompt=prompt_to_optimize,
+                    dataset_jsonl=dataset_jsonl,
+                    api_key=api_key,
+                    domain_id=domain_id,
+                ),
             )
 
             result_key = object_key(user_id, domain_id, "result.json")
@@ -228,16 +232,22 @@ def run_domain_optimization(
                 dataset_size: int | None = None
                 if domain.dataset is not None:
                     dataset_size = domain.dataset.row_count
+                score_before: float = float(result.get("score_before", 0.0))
+                score_after: float = float(result.get("score_after", 0.0))
+                win_rate: float = float(result.get("win_rate", 0.0))
+                candidates_tried: int = int(result.get("candidates_tried", 1))
+                rounds_run: int = int(result.get("rounds_run", 40))
+                optimized_prompt: str = str(result.get("optimized_prompt", prompt_to_optimize))
                 await run_repo.create_run(
                     domain_id=domain.id,
                     domain_name=domain.name,
                     prompt_input=prompt_to_optimize,
-                    optimized_prompt=str(result.get("optimized_prompt", prompt_to_optimize)),
-                    score_before=float(result.get("score_before") or 0.0),
-                    score_after=float(result.get("score_after") or 0.0),
-                    win_rate=float(result.get("win_rate") or 0.0),
-                    candidates_tried=int(result.get("candidates_tried") or 1),
-                    rounds_run=int(result.get("rounds_run") or 40),
+                    optimized_prompt=optimized_prompt,
+                    score_before=score_before,
+                    score_after=score_after,
+                    win_rate=win_rate,
+                    candidates_tried=candidates_tried,
+                    rounds_run=rounds_run,
                     dataset_size=dataset_size,
                 )
                 await db.commit()
@@ -247,11 +257,11 @@ def run_domain_optimization(
                 job_id,
                 {
                     "domain_id": domain_id,
-                    "optimized_prompt": str(result.get("optimized_prompt", prompt_to_optimize)),
-                    "score_before": float(result.get("score_before") or 0.0),
-                    "score_after": float(result.get("score_after") or 0.0),
-                    "win_rate": float(result.get("win_rate") or 0.0),
-                    "candidates_tried": int(result.get("candidates_tried") or 1),
+                    "optimized_prompt": optimized_prompt,
+                    "score_before": score_before,
+                    "score_after": score_after,
+                    "win_rate": win_rate,
+                    "candidates_tried": candidates_tried,
                 },
             )
 

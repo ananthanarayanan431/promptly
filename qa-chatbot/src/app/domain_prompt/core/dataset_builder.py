@@ -11,7 +11,7 @@ Adapted for domain prompt optimization:
   - Weak solver:  GPT-4o-mini with NO system prompt (raw capability, no domain guidance)
   - Strong solver: GPT-4o-mini with the user's base prompt as system prompt
   - Judge: GPT-4o scores both answers against the gold answer
-  - Acceptance: strong score − weak score ≥ WEAK_STRONGGAP_THRESHOLD
+  - Acceptance: strong score − weak score ≥ GAP_THRESHOLD
 
   Questions where both solvers score equally don't test the value of the prompt — reject them.
   Questions the weak solver already answers correctly don't need prompt optimization — reject them.

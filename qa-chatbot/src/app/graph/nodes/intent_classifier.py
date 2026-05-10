@@ -35,14 +35,17 @@ _classifier: LLMClient | None = None
 
 
 def _get_classifier() -> LLMClient:
-    """ChatOpenAI binds httpx to the running loop; Celery uses a new loop per task."""
+    """LLMClient binds httpx to the running loop; Celery uses a new loop per task."""
     global _loop_id, _classifier
     loop = asyncio.get_running_loop()
     lid = id(loop)
     if _loop_id != lid or _classifier is None:
         _loop_id = lid
         _classifier = build_classifier()
-    return _classifier
+    model = _classifier
+    if model is None:
+        raise RuntimeError("classifier failed to initialise")
+    return model
 
 
 async def intent_classifier_node(state: GraphState) -> dict[str, Any]:

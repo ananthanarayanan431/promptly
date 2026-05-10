@@ -21,7 +21,7 @@ _synthesizer: LLMClient | None = None
 
 
 def _get_synthesizer() -> LLMClient:
-    """ChatOpenAI binds httpx to the running loop; Celery uses a new loop per task."""
+    """LLMClient binds httpx to the running loop; Celery uses a new loop per task."""
     global _loop_id, _synthesizer
     loop = asyncio.get_running_loop()
     lid = id(loop)

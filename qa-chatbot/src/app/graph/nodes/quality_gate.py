@@ -109,7 +109,10 @@ def _get_gate_model() -> LLMClient:
     if _loop_id != lid or _gate_model is None:
         _loop_id = lid
         _gate_model = build_gate()
-    return _gate_model
+    model = _gate_model
+    if model is None:
+        raise RuntimeError("gate model failed to initialise")
+    return model
 
 
 def _parse_gate_response(raw: str) -> dict[str, Any]:
