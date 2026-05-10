@@ -41,15 +41,15 @@ def prepare_domain_dataset(
         from app.config.llm import get_llm_settings
         from app.db.redis import reset_connection_pool
         from app.db.session import AsyncSessionLocal, dispose_async_engine
-        from app.domain_prompt.cache import set_dp_job_result, set_dp_job_status
-        from app.domain_prompt.dataset_builder import (
+        from app.domain_prompt.core.dataset_builder import (
             extract_text_from_pdf,
             generate_qa_pairs,
             pairs_to_jsonl,
         )
-        from app.domain_prompt.models import DomainPromptStatus
-        from app.domain_prompt.repository import DomainPromptRepository
-        from app.domain_prompt.storage import download_bytes, object_key, upload_text
+        from app.domain_prompt.data.models import DomainPromptStatus
+        from app.domain_prompt.data.repository import DomainPromptRepository
+        from app.domain_prompt.infrastructure.cache import set_dp_job_result, set_dp_job_status
+        from app.domain_prompt.infrastructure.storage import download_bytes, object_key, upload_text
 
         reset_connection_pool()
         await dispose_async_engine()
@@ -136,7 +136,6 @@ def prepare_domain_dataset(
             await set_dp_job_result(job_id, {"error": "Internal server error"})
 
             if is_terminal:
-                # Refund only on terminal failure — transient failures may succeed on retry
                 try:
                     from uuid import UUID as _UUID
 
@@ -177,15 +176,18 @@ def run_domain_optimization(
         from app.config.llm import get_llm_settings
         from app.db.redis import reset_connection_pool
         from app.db.session import AsyncSessionLocal, dispose_async_engine
-        from app.domain_prompt.cache import (
+        from app.domain_prompt.core.optimizer import optimize_domain_prompt
+        from app.domain_prompt.data.models import DomainPromptStatus
+        from app.domain_prompt.data.repository import (
+            DomainOptimizationRunRepository,
+            DomainPromptRepository,
+        )
+        from app.domain_prompt.infrastructure.cache import (
             clear_dp_tournament_state,
             set_dp_job_result,
             set_dp_job_status,
         )
-        from app.domain_prompt.models import DomainPromptStatus
-        from app.domain_prompt.optimizer import optimize_domain_prompt
-        from app.domain_prompt.repository import DomainPromptRepository
-        from app.domain_prompt.storage import download_text, object_key, upload_text
+        from app.domain_prompt.infrastructure.storage import download_text, object_key, upload_text
 
         reset_connection_pool()
         await dispose_async_engine()
@@ -202,7 +204,6 @@ def run_domain_optimization(
             # Clear any stale tournament state from a previous run before starting
             await clear_dp_tournament_state(domain_id)
 
-            # MinIO work outside the DB session to avoid greenlet conflict
             dataset_key = object_key(user_id, domain_id, "dataset.jsonl")
             dataset_jsonl = download_text(bucket, dataset_key)
 
@@ -222,8 +223,6 @@ def run_domain_optimization(
                 if domain is None:
                     raise ValueError(f"Domain {domain_id} not found")
                 await repo.set_status(domain, DomainPromptStatus.completed)
-
-                from app.domain_prompt.repository import DomainOptimizationRunRepository
 
                 run_repo = DomainOptimizationRunRepository(db)
                 dataset_size: int | None = None
@@ -270,8 +269,6 @@ def run_domain_optimization(
                         error_message=error_str,
                     )
                     # Always record the failed attempt in history regardless of retries
-                    from app.domain_prompt.repository import DomainOptimizationRunRepository
-
                     run_repo = DomainOptimizationRunRepository(db)
                     _dataset_size: int | None = None
                     if domain.dataset is not None:
@@ -290,7 +287,6 @@ def run_domain_optimization(
             await set_dp_job_result(job_id, {"error": "Internal server error"})
 
             if is_terminal:
-                # Refund only on terminal failure — transient failures may succeed on retry
                 try:
                     from uuid import UUID as _UUID
 
@@ -336,11 +332,11 @@ def augment_domain_dataset(
         from app.config.llm import get_llm_settings
         from app.db.redis import reset_connection_pool
         from app.db.session import AsyncSessionLocal, dispose_async_engine
-        from app.domain_prompt.cache import set_dp_job_result, set_dp_job_status
-        from app.domain_prompt.dataset_builder import generate_qa_pairs, pairs_to_jsonl
-        from app.domain_prompt.models import DomainPromptStatus
-        from app.domain_prompt.repository import DomainPromptRepository
-        from app.domain_prompt.storage import download_text, object_key, upload_text
+        from app.domain_prompt.core.dataset_builder import generate_qa_pairs, pairs_to_jsonl
+        from app.domain_prompt.data.models import DomainPromptStatus
+        from app.domain_prompt.data.repository import DomainPromptRepository
+        from app.domain_prompt.infrastructure.cache import set_dp_job_result, set_dp_job_status
+        from app.domain_prompt.infrastructure.storage import download_text, object_key, upload_text
 
         reset_connection_pool()
         await dispose_async_engine()

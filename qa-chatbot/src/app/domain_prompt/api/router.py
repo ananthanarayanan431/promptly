@@ -3,21 +3,14 @@ from __future__ import annotations
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.types.response import SuccessResponse
 from app.config.env import get_minio_settings
 from app.core.rate_limit import RateLimiter
 from app.dependencies import get_current_user, get_db
-from app.domain_prompt.cache import (
-    get_dp_job_owner,
-    get_dp_job_result,
-    get_dp_job_status,
-    set_dp_job_owner,
-    set_dp_job_status,
-)
-from app.domain_prompt.exceptions import (
+from app.domain_prompt.api.exceptions import (
     DomainAlreadyRunningException,
     DomainInsufficientCreditsException,
     DomainJobNotFoundException,
@@ -25,9 +18,7 @@ from app.domain_prompt.exceptions import (
     DomainNotReadyException,
     InvalidPDFException,
 )
-from app.domain_prompt.models import DomainPrompt, DomainPromptStatus
-from app.domain_prompt.repository import DomainOptimizationRunRepository, DomainPromptRepository
-from app.domain_prompt.schemas import (
+from app.domain_prompt.api.schemas import (
     AugmentDatasetRequest,
     CreateDomainJobResponse,
     DatasetRowsResponse,
@@ -42,8 +33,31 @@ from app.domain_prompt.schemas import (
     TournamentStateResponse,
     UpdateDatasetRequest,
 )
-from app.domain_prompt.storage import object_key, upload_bytes
-from app.domain_prompt.tasks import augment_domain_dataset, prepare_domain_dataset
+from app.domain_prompt.data.models import DomainPrompt, DomainPromptStatus
+from app.domain_prompt.data.repository import (
+    DomainOptimizationRunRepository,
+    DomainPromptRepository,
+)
+from app.domain_prompt.infrastructure.cache import (
+    get_dp_job_owner,
+    get_dp_job_result,
+    get_dp_job_status,
+    get_dp_tournament_state,
+    set_dp_job_owner,
+    set_dp_job_status,
+)
+from app.domain_prompt.infrastructure.storage import (
+    delete_objects_with_prefix,
+    download_text,
+    object_key,
+    upload_bytes,
+    upload_text,
+)
+from app.domain_prompt.workers.tasks import (
+    augment_domain_dataset,
+    prepare_domain_dataset,
+    run_domain_optimization,
+)
 from app.models.user import User
 from app.repositories.user_repo import UserRepository
 
@@ -100,7 +114,6 @@ async def create_domain(
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise InvalidPDFException()
 
-    # Enforce 100 MB upload limit
     _max_pdf_bytes = 100 * 1024 * 1024
     pdf_bytes = await file.read()
     if len(pdf_bytes) > _max_pdf_bytes:
@@ -233,8 +246,6 @@ async def get_dataset_rows(
         return SuccessResponse(data=DatasetRowsResponse(rows=[], row_count=0))
 
     minio_cfg = get_minio_settings()
-    from app.domain_prompt.storage import download_text
-
     try:
         raw = download_text(minio_cfg.MINIO_BUCKET_NAME, domain.dataset.dataset_key)
     except Exception:  # noqa: BLE001
@@ -274,14 +285,11 @@ async def update_dataset_rows(
         raise DomainNotFoundException()
 
     minio_cfg = get_minio_settings()
-    from app.domain_prompt.storage import object_key as _okey
-    from app.domain_prompt.storage import upload_text
-
     jsonl = "\n".join(
         json.dumps({"question": r.question, "answer": r.answer}, ensure_ascii=False)
         for r in body.rows
     )
-    dataset_key = domain.dataset.dataset_key or _okey(
+    dataset_key = domain.dataset.dataset_key or object_key(
         str(current_user.id), str(domain_id), "dataset.jsonl"
     )
     upload_text(minio_cfg.MINIO_BUCKET_NAME, dataset_key, jsonl)
@@ -338,9 +346,6 @@ async def get_tournament_state(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> SuccessResponse[TournamentStateResponse]:
     """Return live tournament state written by the optimizer during a running PDO job."""
-    from app.domain_prompt.cache import get_dp_tournament_state
-    from app.domain_prompt.exceptions import DomainNotFoundException
-
     repo = DomainPromptRepository(db)
     domain = await repo.get_by_id_and_user(domain_id, current_user.id)
     if domain is None:
@@ -348,8 +353,6 @@ async def get_tournament_state(
 
     state = await get_dp_tournament_state(str(domain_id))
     if state is None:
-        from fastapi import HTTPException
-
         raise HTTPException(status_code=404, detail="No tournament state available yet.")
 
     return SuccessResponse(data=TournamentStateResponse(**state))
@@ -400,8 +403,6 @@ async def reoptimize_domain(
     await set_dp_job_status(job_id, "queued")
     await set_dp_job_owner(job_id, str(current_user.id))
 
-    from app.domain_prompt.tasks import run_domain_optimization
-
     run_domain_optimization.apply_async(
         kwargs={
             "job_id": job_id,
@@ -449,8 +450,6 @@ async def delete_domain(
 ) -> SuccessResponse[DeleteDomainResponse]:
     """Delete a domain and its associated dataset records."""
     import anyio
-
-    from app.domain_prompt.storage import delete_objects_with_prefix
 
     repo = DomainPromptRepository(db)
     domain = await repo.get_by_id_and_user(domain_id, current_user.id)
