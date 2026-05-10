@@ -16,18 +16,19 @@ function DiffView({ diff }: { diff: PromptDiffResponse }) {
     <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 13, lineHeight: 1.8 }}>
       {/* Stats bar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16,
-        padding: '8px 12px', borderRadius: 8, background: '#131316', border: '1px solid #1f1f23',
+        padding: '8px 12px', borderRadius: 8,
+        background: 'var(--surface)', border: '1px solid var(--border)',
         fontSize: 11.5 }}>
-        <span style={{ color: '#5a5a60' }}>v{diff.from_version} → v{diff.to_version}</span>
-        <span style={{ color: '#22c55e' }}>+{diff.stats.added} added</span>
-        <span style={{ color: '#ff6b7a' }}>−{diff.stats.removed} removed</span>
-        <span style={{ color: '#5a5a60' }}>{diff.stats.equal} unchanged</span>
+        <span style={{ color: 'var(--text-subtle)' }}>v{diff.from_version} → v{diff.to_version}</span>
+        <span style={{ color: 'var(--success, #22c55e)' }}>+{diff.stats.added} added</span>
+        <span style={{ color: 'var(--danger)' }}>−{diff.stats.removed} removed</span>
+        <span style={{ color: 'var(--text-subtle)' }}>{diff.stats.equal} unchanged</span>
       </div>
       {/* Inline diff */}
       <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.9 }}>
         {diff.hunks.map((hunk, i) => {
           if (hunk.type === 'equal') {
-            return <span key={i} style={{ color: '#8a8a90' }}>{hunk.text}</span>;
+            return <span key={i} style={{ color: 'var(--text-muted)' }}>{hunk.text}</span>;
           }
           if (hunk.type === 'insert') {
             return (
@@ -40,7 +41,7 @@ function DiffView({ diff }: { diff: PromptDiffResponse }) {
           if (hunk.type === 'delete') {
             return (
               <span key={i} style={{ background: 'rgba(255,107,122,0.15)',
-                color: '#ff6b7a', textDecoration: 'line-through', borderRadius: 2, padding: '0 1px' }}>
+                color: 'var(--danger)', textDecoration: 'line-through', borderRadius: 2, padding: '0 1px' }}>
                 {hunk.text}
               </span>
             );
@@ -48,7 +49,7 @@ function DiffView({ diff }: { diff: PromptDiffResponse }) {
           // replace: show old (red strikethrough) then new (green)
           return (
             <span key={i}>
-              <span style={{ background: 'rgba(255,107,122,0.15)', color: '#ff6b7a',
+              <span style={{ background: 'rgba(255,107,122,0.15)', color: 'var(--danger)',
                 textDecoration: 'line-through', borderRadius: 2, padding: '0 1px' }}>
                 {hunk.from_text}
               </span>
@@ -81,9 +82,9 @@ export default function VersionHistoryPage({ params }: { params: { id: string } 
   const sortedVersions = family ? [...family.versions].sort((a, b) => b.version - a.version) : [];
 
   function versionRole(v: number): { label: string; color: string } {
-    if (v === 1) return { label: 'Original', color: '#5a5a60' };
-    if (v === 2) return { label: 'Optimized', color: '#7c5cff' };
-    return { label: `Feedback #${v - 2}`, color: '#f59e0b' };
+    if (v === 1) return { label: 'Original', color: 'var(--text-subtle)' };
+    if (v === 2) return { label: 'Optimized', color: 'var(--primary)' };
+    return { label: `Feedback #${v - 2}`, color: 'var(--warning)' };
   }
 
   const activeVersion = selectedVersion ?? sortedVersions[0] ?? null;
@@ -126,7 +127,7 @@ export default function VersionHistoryPage({ params }: { params: { id: string } 
   if (isLoading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center',
-        height: '100%', color: '#8a8a90', gap: 8 }}>
+        height: '100%', color: 'var(--text-muted)', gap: 8 }}>
         <Loader2 style={{ width: 16, height: 16, animation: 'spin 1s linear infinite' }} />
         <span style={{ fontSize: 13, fontFamily: 'var(--font-geist, ui-sans-serif)' }}>Loading…</span>
       </div>
@@ -136,7 +137,7 @@ export default function VersionHistoryPage({ params }: { params: { id: string } 
   if (!family) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center',
-        height: '100%', color: '#8a8a90', fontSize: 13,
+        height: '100%', color: 'var(--text-muted)', fontSize: 13,
         fontFamily: 'var(--font-geist, ui-sans-serif)' }}>
         Prompt family not found.
       </div>
@@ -149,12 +150,13 @@ export default function VersionHistoryPage({ params }: { params: { id: string } 
 
       {/* Header */}
       <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 12,
-        padding: '0 24px', height: 52, borderBottom: '1px solid #1f1f23' }}>
-        <Link href="/versions" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center',
-          width: 28, height: 28, borderRadius: 6, border: '1px solid #2a2a2e',
-          background: 'transparent', textDecoration: 'none', color: '#8a8a90',
-          transition: 'background 120ms' }}
-          onMouseEnter={e => (e.currentTarget.style.background = '#222226')}
+        padding: '0 24px', height: 52, borderBottom: '1px solid var(--border)' }}>
+        <Link href="/versions"
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center',
+            width: 28, height: 28, borderRadius: 6, border: '1px solid var(--border)',
+            background: 'transparent', textDecoration: 'none', color: 'var(--text-muted)',
+            transition: 'background 120ms' }}
+          onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-2)')}
           onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
             stroke="currentColor" strokeWidth="1.6"><path d="M15 6l-6 6 6 6"/></svg>
@@ -163,15 +165,16 @@ export default function VersionHistoryPage({ params }: { params: { id: string } 
         {/* Family name */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-            stroke="#7c5cff" strokeWidth="1.6" style={{ flexShrink: 0 }}>
+            stroke="var(--primary)" strokeWidth="1.6" style={{ flexShrink: 0 }}>
             <path d="M6 3v12M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 9v3a3 3 0 0 1-3 3H9"/>
           </svg>
-          <span style={{ fontSize: 15, fontWeight: 500, color: '#ededed',
+          <span style={{ fontSize: 15, fontWeight: 500, color: 'var(--text)',
             letterSpacing: '-0.005em', overflow: 'hidden', textOverflow: 'ellipsis',
             whiteSpace: 'nowrap' }}>{family.name}</span>
           <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5,
-            padding: '2px 7px', borderRadius: 999, background: '#222226',
-            border: '1px solid #2a2a2e', color: '#7c5cff', flexShrink: 0 }}>
+            padding: '2px 7px', borderRadius: 999,
+            background: 'var(--surface-2)', border: '1px solid var(--border)',
+            color: 'var(--primary)', flexShrink: 0 }}>
             {family.versions.length} version{family.versions.length !== 1 ? 's' : ''}
           </span>
         </div>
@@ -181,35 +184,38 @@ export default function VersionHistoryPage({ params }: { params: { id: string } 
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
 
         {/* Left: version list */}
-        <div style={{ width: 200, flexShrink: 0, borderRight: '1px solid #1f1f23',
+        <div style={{ width: 200, flexShrink: 0, borderRight: '1px solid var(--border)',
           overflowY: 'auto', padding: 8, display: 'flex', flexDirection: 'column', gap: 2 }}>
           {sortedVersions.map((v) => {
             const isActive = activeVersion?.version === v.version;
             const isLatest = v.version === sortedVersions[0]?.version;
             const role = versionRole(v.version);
             return (
-              <button key={v.version} type="button" onClick={() => { setSelectedVersion(v); setDiffFrom(null); }}
+              <button key={v.version} type="button"
+                onClick={() => { setSelectedVersion(v); setDiffFrom(null); }}
                 style={{ width: '100%', textAlign: 'left', padding: '10px 12px',
-                  borderRadius: 8, border: isActive ? '1px solid rgba(124,92,255,0.35)' : '1px solid transparent',
+                  borderRadius: 8,
+                  border: isActive ? '1px solid rgba(124,92,255,0.35)' : '1px solid transparent',
                   background: isActive ? 'rgba(124,92,255,0.08)' : 'transparent',
                   cursor: 'pointer', transition: 'background 120ms, border-color 120ms' }}
-                onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; }}
+                onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = 'var(--surface-2)'; }}
                 onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  marginBottom: 4 }}>
+                <div style={{ display: 'flex', alignItems: 'center',
+                  justifyContent: 'space-between', marginBottom: 4 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 13,
-                      fontWeight: 600, color: isActive ? '#7c5cff' : '#ededed' }}>v{v.version}</span>
+                      fontWeight: 600, color: isActive ? 'var(--primary)' : 'var(--text)' }}>
+                      v{v.version}
+                    </span>
                     {v.is_favorited && (
-                      <Heart
-                        style={{ width: 10, height: 10, color: '#f43f5e', fill: '#f43f5e', flexShrink: 0 }}
-                      />
+                      <Heart style={{ width: 10, height: 10,
+                        color: 'var(--danger)', fill: 'var(--danger)', flexShrink: 0 }} />
                     )}
                   </div>
                   {isLatest && (
                     <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 9.5,
-                      color: '#7c5cff', background: 'rgba(124,92,255,0.12)', padding: '1px 5px',
-                      borderRadius: 3 }}>latest</span>
+                      color: 'var(--primary)', background: 'var(--primary-soft)',
+                      padding: '1px 5px', borderRadius: 3 }}>latest</span>
                   )}
                 </div>
                 <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5,
@@ -217,7 +223,7 @@ export default function VersionHistoryPage({ params }: { params: { id: string } 
                   {role.label}
                 </div>
                 <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5,
-                  color: '#5a5a60' }}>
+                  color: 'var(--text-subtle)' }}>
                   {formatDistanceToNow(new Date(v.created_at), { addSuffix: true })}
                 </div>
               </button>
@@ -231,11 +237,11 @@ export default function VersionHistoryPage({ params }: { params: { id: string } 
             {/* Panel header */}
             <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center',
               justifyContent: 'space-between', padding: '0 16px 0 24px', height: 44,
-              borderBottom: '1px solid #1f1f23', background: 'rgba(255,255,255,0.01)',
+              borderBottom: '1px solid var(--border)', background: 'var(--surface)',
               gap: 12 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
                 <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 12,
-                  fontWeight: 600, color: '#ededed' }}>v{activeVersion.version}</span>
+                  fontWeight: 600, color: 'var(--text)' }}>v{activeVersion.version}</span>
                 <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5,
                   padding: '1px 7px', borderRadius: 4,
                   background: `${versionRole(activeVersion.version).color}18`,
@@ -244,7 +250,7 @@ export default function VersionHistoryPage({ params }: { params: { id: string } 
                   {versionRole(activeVersion.version).label}
                 </span>
                 <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 11,
-                  color: '#5a5a60' }}>
+                  color: 'var(--text-subtle)' }}>
                   · {formatDistanceToNow(new Date(activeVersion.created_at), { addSuffix: true })}
                 </span>
               </div>
@@ -258,6 +264,7 @@ export default function VersionHistoryPage({ params }: { params: { id: string } 
                     size="sm"
                   />
                 )}
+
                 {/* Diff selector */}
                 {sortedVersions.length > 1 && (
                   <>
@@ -268,8 +275,9 @@ export default function VersionHistoryPage({ params }: { params: { id: string } 
                         setDiffFrom(isNaN(v) ? null : v);
                       }}
                       style={{ height: 28, padding: '0 8px', borderRadius: 6, fontSize: 11.5,
-                        border: '1px solid #2a2a2e', background: '#1a1a1a', color: '#b5b5ba',
-                        cursor: 'pointer', fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                        border: '1px solid var(--border)', background: 'var(--surface-2)',
+                        color: 'var(--text-muted)', cursor: 'pointer',
+                        fontFamily: 'var(--font-geist-mono, monospace)' }}>
                       <option value="">Diff from…</option>
                       {sortedVersions
                         .filter(v => v.version !== activeVersion.version)
@@ -280,8 +288,8 @@ export default function VersionHistoryPage({ params }: { params: { id: string } 
                     {diffFrom !== null && (
                       <button type="button" onClick={() => setDiffFrom(null)}
                         style={{ height: 28, padding: '0 10px', borderRadius: 6, fontSize: 11.5,
-                          border: '1px solid rgba(255,107,122,0.3)', background: 'transparent',
-                          color: '#ff6b7a', cursor: 'pointer',
+                          border: '1px solid var(--danger-soft)', background: 'transparent',
+                          color: 'var(--danger)', cursor: 'pointer',
                           fontFamily: 'var(--font-geist, ui-sans-serif)' }}>
                         Clear
                       </button>
@@ -291,11 +299,10 @@ export default function VersionHistoryPage({ params }: { params: { id: string } 
 
                 <button type="button" onClick={handleCopy}
                   style={{ height: 28, padding: '0 10px', borderRadius: 6,
-                    border: '1px solid #2a2a2e', background: 'transparent', fontSize: 12,
-                    color: copied ? '#5cffb1' : '#b5b5ba', cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', gap: 6,
-                    fontFamily: 'var(--font-geist, ui-sans-serif)',
-                    transition: 'color 120ms' }}>
+                    border: '1px solid var(--border)', background: 'transparent', fontSize: 12,
+                    color: copied ? 'var(--accent)' : 'var(--text-muted)',
+                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
+                    fontFamily: 'var(--font-geist, ui-sans-serif)', transition: 'color 120ms' }}>
                   {copied ? (
                     <>
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
@@ -313,11 +320,12 @@ export default function VersionHistoryPage({ params }: { params: { id: string } 
                     </>
                   )}
                 </button>
+
                 <button type="button" onClick={handleOptimize}
                   style={{ height: 28, padding: '0 12px', borderRadius: 6,
-                    background: '#7c5cff', border: '1px solid #7c5cff', fontSize: 12,
-                    color: '#fff', cursor: 'pointer', display: 'flex',
-                    alignItems: 'center', gap: 6,
+                    background: 'var(--primary)', border: '1px solid var(--primary)',
+                    fontSize: 12, color: '#fff', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: 6,
                     fontFamily: 'var(--font-geist, ui-sans-serif)' }}>
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
                     stroke="currentColor" strokeWidth="1.6">
@@ -334,10 +342,10 @@ export default function VersionHistoryPage({ params }: { params: { id: string } 
                 <DiffView diff={diffData} />
               ) : diffFrom !== null && diffLoading ? (
                 <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 12,
-                  color: '#5a5a60' }}>Computing diff…</div>
+                  color: 'var(--text-subtle)' }}>Computing diff…</div>
               ) : (
                 <pre style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 13,
-                  lineHeight: 1.8, color: '#ededed', whiteSpace: 'pre-wrap',
+                  lineHeight: 1.8, color: 'var(--text)', whiteSpace: 'pre-wrap',
                   wordBreak: 'break-word', margin: 0 }}>
                   {activeVersion.content}
                 </pre>
@@ -346,7 +354,7 @@ export default function VersionHistoryPage({ params }: { params: { id: string } 
           </div>
         ) : (
           <div style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'center',
-            color: '#8a8a90', fontSize: 13 }}>
+            color: 'var(--text-muted)', fontSize: 13 }}>
             Select a version to view its content.
           </div>
         )}

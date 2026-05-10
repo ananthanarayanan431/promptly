@@ -303,45 +303,81 @@ function TournamentRunningViz({ domainId, vizMode, onVizChange }: {
 
 /* ── Optimize tab ────────────────────────────────────────────────── */
 
-function OptimizeTab({ domain, onReoptimize, reoptimizing, sessionResult }: {
+function OptimizeTab({ domain, onReoptimize, reoptimizing, sessionResult, onClearResult }: {
   domain: DomainPrompt;
   onReoptimize: (prompt: string) => void;
   reoptimizing: boolean;
-  sessionResult: { optimized_prompt: string; win_rate: number | null; candidates_tried: number | null; } | null;
+  sessionResult: { optimized_prompt: string; prompt_input: string; win_rate: number | null; candidates_tried: number | null; } | null;
+  onClearResult: () => void;
 }) {
   const [draft, setDraft] = useState('');
   const [copied, setCopied] = useState(false);
   const [vizMode, setVizMode] = useState<VizMode>('matrix');
-  const submittedPromptRef = useRef('');
+  const [runAgainMode, setRunAgainMode] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Reset local state whenever the domain itself changes
+  useEffect(() => {
+    setRunAgainMode(false);
+    setDraft('');
+    setCopied(false);
+  }, [domain.id]);
+
+  useEffect(() => {
+    if (sessionResult) setRunAgainMode(false);
+  }, [sessionResult]);
+
+  const { data: runsData } = useQuery<RunListResponse>({
+    queryKey: ['domain-runs', domain.id],
+    queryFn: async () => {
+      const res = await api.get<{ data: RunListResponse }>(`/api/v1/domain-prompts/${domain.id}/runs`);
+      return res.data.data;
+    },
+  });
+
+  const latestRun = runsData?.runs?.[0] ?? null;
+  const displayResult = sessionResult ?? (!runAgainMode && latestRun ? {
+    optimized_prompt: latestRun.optimized_prompt,
+    prompt_input: latestRun.prompt_input,
+    win_rate: latestRun.win_rate,
+    candidates_tried: latestRun.candidates_tried,
+  } : null);
 
   const isRunning = ['pending', 'preparing_dataset', 'optimizing'].includes(domain.status);
   const busy = isRunning || reoptimizing;
   const datasetReady = !!domain.dataset?.dataset_key;
-  const hasResult = !!sessionResult;
+  const hasResult = !!displayResult && !busy;
   const canSubmit = datasetReady && !busy && draft.trim().length >= 10;
 
   function copyResult() {
-    if (!sessionResult?.optimized_prompt) return;
-    navigator.clipboard.writeText(sessionResult?.optimized_prompt ?? '').then(() => {
+    if (!displayResult?.optimized_prompt) return;
+    navigator.clipboard.writeText(displayResult.optimized_prompt).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }).catch(() => undefined);
   }
 
+  function runAgain() {
+    onClearResult();
+    setRunAgainMode(true);
+    textareaRef.current?.focus();
+  }
+
   function submit() {
     if (!canSubmit) return;
     const t = draft.trim();
-    submittedPromptRef.current = t;
     setDraft('');
+    setRunAgainMode(true);
+    onClearResult();
     onReoptimize(t);
   }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, flex: 1, minHeight: 0 }}>
-      {hasResult && !busy && (
+      {hasResult && (
         <div className="ply-card" style={{ padding: '14px 18px', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 0 }}>
-          <Stat label="Win rate" value={sessionResult?.win_rate != null ? `${Math.round(sessionResult.win_rate * 100)}%` : '—'} hint="winner head-to-head" color="var(--success)" />
-          <Stat label="Candidates" value={String(sessionResult?.candidates_tried ?? '—')} hint="tested in tournament" />
+          <Stat label="Win rate" value={displayResult?.win_rate != null ? `${Math.round(displayResult.win_rate * 100)}%` : '—'} hint="winner head-to-head" color="var(--success)" />
+          <Stat label="Candidates" value={String(displayResult?.candidates_tried ?? '—')} hint="tested in tournament" />
           <Stat label="Trials" value="40" hint="head-to-head" />
           <Stat label="Knowledge" value={String(domain.dataset?.row_count ?? '—')} hint="Q&A pairs" />
         </div>
@@ -368,7 +404,7 @@ function OptimizeTab({ domain, onReoptimize, reoptimizing, sessionResult }: {
         <TournamentRunningViz domainId={domain.id} vizMode={vizMode} onVizChange={setVizMode} />
       )}
 
-      {hasResult && !busy && (
+      {hasResult && (
         <div className="ply-card anim-fade" style={{ padding: 0, overflow: 'hidden' }}>
           <div style={{
             padding: '14px 18px', borderBottom: '1px solid var(--border)',
@@ -381,12 +417,15 @@ function OptimizeTab({ domain, onReoptimize, reoptimizing, sessionResult }: {
                 <div style={{ fontWeight: 600, fontSize: 14 }}>PDO winner · empirically tested</div>
                 <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
                   Tournament win rate: <span className="mono" style={{ color: 'var(--success)', fontWeight: 600 }}>
-                    {sessionResult?.win_rate != null ? `${Math.round(sessionResult.win_rate * 100)}%` : '—'}
+                    {displayResult?.win_rate != null ? `${Math.round(displayResult.win_rate * 100)}%` : '—'}
                   </span>
                 </div>
               </div>
             </div>
             <div style={{ display: 'flex', gap: 6 }}>
+              <button className="ply-btn ply-btn-sm" onClick={runAgain}>
+                <Icon name="sparkles" size={12} /> Run again
+              </button>
               <button className="ply-btn ply-btn-sm" onClick={copyResult}>
                 <Icon name={copied ? 'check' : 'copy'} size={12} />
                 {copied ? 'Copied' : 'Copy'}
@@ -397,12 +436,12 @@ function OptimizeTab({ domain, onReoptimize, reoptimizing, sessionResult }: {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1px 1fr', minHeight: 280 }}>
             <div style={{ padding: '16px 20px' }}>
               <div style={{ fontSize: 11, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 600, marginBottom: 8 }}>Input prompt</div>
-              <pre className="ply-prompt-block" style={{ margin: 0, color: 'var(--text-muted)' }}>{submittedPromptRef.current}</pre>
+              <pre className="ply-prompt-block" style={{ margin: 0, color: 'var(--text-muted)' }}>{displayResult?.prompt_input}</pre>
             </div>
             <div style={{ background: 'var(--border)' }} />
             <div style={{ padding: '16px 20px' }}>
               <div style={{ fontSize: 11, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 600, marginBottom: 8 }}>PDO optimized</div>
-              <pre className="ply-prompt-block" style={{ margin: 0 }}>{sessionResult?.optimized_prompt}</pre>
+              <pre className="ply-prompt-block" style={{ margin: 0 }}>{displayResult?.optimized_prompt}</pre>
             </div>
           </div>
         </div>
@@ -429,10 +468,11 @@ function OptimizeTab({ domain, onReoptimize, reoptimizing, sessionResult }: {
       {datasetReady && (
         <div className="ply-card" style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
           <textarea
+            ref={textareaRef}
             value={draft}
             onChange={e => setDraft(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(); } }}
-            placeholder="Paste your system prompt here to optimize against this domain… (⌘↵ to run)"
+            placeholder={hasResult ? 'Paste a new prompt to run another tournament… (⌘↵ to run)' : 'Paste your system prompt here to optimize against this domain… (⌘↵ to run)'}
             disabled={busy}
             rows={3}
             style={{
@@ -454,7 +494,7 @@ function OptimizeTab({ domain, onReoptimize, reoptimizing, sessionResult }: {
               style={{ opacity: !canSubmit ? 0.5 : 1, cursor: !canSubmit ? 'not-allowed' : 'pointer' }}
             >
               <Icon name="trophy" size={14} />
-              {busy ? 'Running PDO…' : 'Run PDO'}
+              {busy ? 'Running PDO…' : hasResult ? 'Run again' : 'Run PDO'}
               <span className="mono" style={{ marginLeft: 6, fontSize: 11, opacity: .75, paddingLeft: 8, borderLeft: '1px solid rgba(255,255,255,.25)' }}>−10 cr</span>
             </button>
           </div>
@@ -797,53 +837,73 @@ function HistoryTab({ domain }: { domain: DomainPrompt }) {
           {runs.length} run{runs.length !== 1 ? 's' : ''}
         </span>
       </div>
-      {runs.slice(0, 5).map((run: OptimizationRun) => (
-        <div key={run.id}>
-          <div
-            onClick={() => setExpandedId(expandedId === run.id ? null : run.id)}
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '160px 1fr 100px 100px 1fr',
-              gap: 10, alignItems: 'center',
-              padding: '12px 16px', fontSize: 12.5,
-              borderBottom: '1px solid var(--border)',
-              cursor: 'pointer',
-              background: expandedId === run.id ? 'var(--surface-2)' : undefined,
-            }}
-          >
-            <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--mono)', fontSize: 11.5 }}>
-              {new Date(run.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-            </span>
-            <span style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Icon name="trophy" size={12} />
-              {run.domain_name}
-            </span>
-            <span className="mono">{run.win_rate != null ? `${Math.round(run.win_rate * 100)}% wr` : '—'}</span>
-            <span className="mono" style={{ color: 'var(--text-muted)' }}>{run.rounds_run ?? 40} rounds</span>
-            <span style={{ color: expandedId === run.id ? 'var(--primary)' : 'var(--text-subtle)', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
-              {expandedId === run.id ? '▲ hide' : '▼ view prompt'}
-            </span>
-          </div>
-          {expandedId === run.id && (
-            <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', background: 'var(--surface-2)', display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div>
-                <div style={{ fontSize: 11, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 600, marginBottom: 6 }}>Input prompt</div>
-                <pre className="ply-prompt-block" style={{ margin: 0, fontSize: 12, maxHeight: 120, overflowY: 'auto' }}>{run.prompt_input}</pre>
-              </div>
-              <div>
-                <div style={{ fontSize: 11, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 600, marginBottom: 6 }}>PDO optimized</div>
-                <pre className="ply-prompt-block" style={{ margin: 0, fontSize: 12, maxHeight: 180, overflowY: 'auto' }}>{run.optimized_prompt}</pre>
-              </div>
-              <div style={{ display: 'flex', gap: 16, fontSize: 12 }}>
-                {run.score_before != null && <span>Score before: <strong>{run.score_before.toFixed(3)}</strong></span>}
-                {run.score_after != null && <span>Score after: <strong>{run.score_after.toFixed(3)}</strong></span>}
-                {run.candidates_tried != null && <span>Candidates: <strong>{run.candidates_tried}</strong></span>}
-                {run.dataset_size != null && <span>Dataset: <strong>{run.dataset_size} Q&A</strong></span>}
-              </div>
+      {runs.slice(0, 5).map((run: OptimizationRun) => {
+        const isFailed = run.status === 'failed';
+        return (
+          <div key={run.id}>
+            <div
+              onClick={() => setExpandedId(expandedId === run.id ? null : run.id)}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '160px 1fr 100px 100px 1fr',
+                gap: 10, alignItems: 'center',
+                padding: '12px 16px', fontSize: 12.5,
+                borderBottom: '1px solid var(--border)',
+                cursor: 'pointer',
+                background: expandedId === run.id ? 'var(--surface-2)' : undefined,
+                opacity: isFailed ? 0.8 : 1,
+              }}
+            >
+              <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--mono)', fontSize: 11.5 }}>
+                {new Date(run.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+              </span>
+              <span style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
+                {isFailed
+                  ? <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: 'var(--danger-soft, rgba(239,68,68,0.12))', color: 'var(--danger)', letterSpacing: '.04em' }}>FAILED</span>
+                  : <Icon name="trophy" size={12} />
+                }
+                {run.domain_name}
+              </span>
+              <span className="mono" style={{ color: isFailed ? 'var(--text-subtle)' : undefined }}>
+                {isFailed ? '—' : (run.win_rate != null ? `${Math.round(run.win_rate * 100)}% wr` : '—')}
+              </span>
+              <span className="mono" style={{ color: 'var(--text-muted)' }}>
+                {isFailed ? '—' : `${run.rounds_run ?? 40} rounds`}
+              </span>
+              <span style={{ color: expandedId === run.id ? 'var(--primary)' : 'var(--text-subtle)', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
+                {expandedId === run.id ? '▲ hide' : (isFailed ? '▼ view error' : '▼ view prompt')}
+              </span>
             </div>
-          )}
-        </div>
-      ))}
+            {expandedId === run.id && (
+              <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', background: 'var(--surface-2)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div>
+                  <div style={{ fontSize: 11, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 600, marginBottom: 6 }}>Input prompt</div>
+                  <pre className="ply-prompt-block" style={{ margin: 0, fontSize: 12, maxHeight: 120, overflowY: 'auto' }}>{run.prompt_input}</pre>
+                </div>
+                {isFailed ? (
+                  <div>
+                    <div style={{ fontSize: 11, color: 'var(--danger)', textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 600, marginBottom: 6 }}>Error</div>
+                    <pre className="ply-prompt-block" style={{ margin: 0, fontSize: 12, color: 'var(--danger)', maxHeight: 120, overflowY: 'auto' }}>{run.error_message ?? 'Unknown error'}</pre>
+                  </div>
+                ) : (
+                  <>
+                    <div>
+                      <div style={{ fontSize: 11, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 600, marginBottom: 6 }}>PDO optimized</div>
+                      <pre className="ply-prompt-block" style={{ margin: 0, fontSize: 12, maxHeight: 180, overflowY: 'auto' }}>{run.optimized_prompt}</pre>
+                    </div>
+                    <div style={{ display: 'flex', gap: 16, fontSize: 12 }}>
+                      {run.score_before != null && <span>Score before: <strong>{run.score_before.toFixed(3)}</strong></span>}
+                      {run.score_after != null && <span>Score after: <strong>{run.score_after.toFixed(3)}</strong></span>}
+                      {run.candidates_tried != null && <span>Candidates: <strong>{run.candidates_tried}</strong></span>}
+                      {run.dataset_size != null && <span>Dataset: <strong>{run.dataset_size} Q&A</strong></span>}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
       {runs.length > 5 && (
         <div style={{ padding: '10px 16px', fontSize: 12, color: 'var(--text-subtle)', textAlign: 'center' }}>
           Showing 5 of {runs.length} runs
@@ -954,9 +1014,11 @@ export function DomainWorkspace() {
   const [reoptimizing, setReoptimizing] = useState(false);
   const [sessionResult, setSessionResult] = useState<{
     optimized_prompt: string;
+    prompt_input: string;
     win_rate: number | null;
     candidates_tried: number | null;
   } | null>(null);
+  const pendingPromptRef = useRef('');
 
   const { data, isLoading } = useQuery<DomainListResponse>({
     queryKey: ['domain-prompts'],
@@ -964,11 +1026,21 @@ export function DomainWorkspace() {
       const res = await api.get<{ data: DomainListResponse }>('/api/v1/domain-prompts/');
       return res.data.data;
     },
-    refetchInterval: pollingJobId ? 3000 : false,
+    refetchInterval: (query) => {
+      if (pollingJobId) return 3000;
+      const domains = (query.state.data as DomainListResponse | undefined)?.domains ?? [];
+      const hasActive = domains.some(d => ['pending', 'preparing_dataset', 'optimizing'].includes(d.status));
+      return hasActive ? 3000 : false;
+    },
   });
 
   const domains = data?.domains ?? [];
-  const selected = domains.find(d => d.id === selectedId) ?? domains[0] ?? null;
+  // Only fall back to domains[0] when selectedId is null (nothing explicitly chosen).
+  // If selectedId is set but not found yet (new domain still loading), keep selected=null
+  // so the tab body shows a loading state instead of the previous domain's content.
+  const selected = selectedId
+    ? (domains.find(d => d.id === selectedId) ?? null)
+    : (domains[0] ?? null);
 
   useEffect(() => {
     if (!selectedId && domains.length > 0) setSelectedId(domains[0].id);
@@ -992,6 +1064,7 @@ export function DomainWorkspace() {
           if (result) {
             setSessionResult({
               optimized_prompt: String(result.optimized_prompt ?? ''),
+              prompt_input: pendingPromptRef.current,
               win_rate: result.win_rate != null ? Number(result.win_rate) : null,
               candidates_tried: result.candidates_tried != null ? Number(result.candidates_tried) : null,
             });
@@ -1008,6 +1081,7 @@ export function DomainWorkspace() {
 
   const handleReoptimize = useCallback(async (prompt: string) => {
     if (!selected) return;
+    pendingPromptRef.current = prompt;
     setReoptimizing(true);
     try {
       const res = await api.post<{ data: { job_id: string; domain_id: string } }>(
@@ -1127,7 +1201,7 @@ export function DomainWorkspace() {
 
         {selected && tab === 'optimize' && (
           <div style={{ padding: '18px 24px 24px', display: 'flex', flexDirection: 'column', gap: 14, minHeight: '100%' }}>
-            <OptimizeTab domain={selected} onReoptimize={handleReoptimize} reoptimizing={reoptimizing} sessionResult={sessionResult} />
+            <OptimizeTab domain={selected} onReoptimize={handleReoptimize} reoptimizing={reoptimizing} sessionResult={sessionResult} onClearResult={() => setSessionResult(null)} />
           </div>
         )}
         {selected && tab === 'dataset' && <DatasetTab domain={selected} />}
@@ -1141,9 +1215,10 @@ export function DomainWorkspace() {
       {showNew && (
         <NewDomainModal
           onClose={() => setShowNew(false)}
-          onJobStarted={(jobId) => {
+          onJobStarted={(jobId, domainId) => {
             setPollingJobId(jobId);
             setShowNew(false);
+            if (domainId) setSelectedId(domainId);
             void qc.invalidateQueries({ queryKey: ['domain-prompts'] });
           }}
         />

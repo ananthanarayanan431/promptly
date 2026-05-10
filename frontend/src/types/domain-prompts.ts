@@ -73,13 +73,15 @@ export interface OptimizationRun {
   domain_id: string;
   domain_name: string;
   prompt_input: string;
-  optimized_prompt: string;
+  optimized_prompt: string | null;
   score_before: number | null;
   score_after: number | null;
   win_rate: number | null;
   candidates_tried: number | null;
   rounds_run: number | null;
   dataset_size: number | null;
+  status: string;
+  error_message: string | null;
   created_at: string;
 }
 

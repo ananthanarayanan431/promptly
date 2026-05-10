@@ -34,14 +34,14 @@ export default function PromptsMediaPage() {
         <h1 style={{
           fontFamily: 'var(--font-instrument-serif, Georgia, serif)', fontWeight: 400,
           fontSize: 38, letterSpacing: '-0.02em', lineHeight: 1.12, margin: '0 0 16px',
-          color: '#ededed',
+          color: 'var(--text)',
         }}>
           A library of<br />
           <em style={{ color: '#7c5cff', fontStyle: 'italic' }}>ready-to-use</em> prompts.
         </h1>
 
         {/* Description */}
-        <p style={{ fontSize: 14, color: '#8a8a90', lineHeight: 1.7, margin: '0 0 32px' }}>
+        <p style={{ fontSize: 14, color: 'var(--text-muted)', lineHeight: 1.7, margin: '0 0 32px' }}>
           Browse, copy, and instantly optimize a curated collection of prompts across
           categories — writing, coding, research, analysis, and more.
         </p>
@@ -76,11 +76,11 @@ export default function PromptsMediaPage() {
           ].map(f => (
             <div key={f.label} style={{
               padding: '14px 12px', borderRadius: 8,
-              background: '#1a1a1a', border: '1px solid #1f1f23', textAlign: 'left',
+              background: 'var(--surface)', border: '1px solid var(--border)', textAlign: 'left',
             }}>
               <div style={{ fontSize: 18, marginBottom: 8 }}>{f.icon}</div>
-              <div style={{ fontSize: 12.5, fontWeight: 500, color: '#ededed', marginBottom: 4 }}>{f.label}</div>
-              <div style={{ fontSize: 11.5, color: '#5a5a60', lineHeight: 1.4 }}>{f.desc}</div>
+              <div style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--text)', marginBottom: 4 }}>{f.label}</div>
+              <div style={{ fontSize: 11.5, color: 'var(--text-subtle)', lineHeight: 1.4 }}>{f.desc}</div>
             </div>
           ))}
         </div>
