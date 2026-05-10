@@ -17,7 +17,7 @@ import asyncio
 import json
 import time
 from collections import Counter
-from typing import Any, cast
+from typing import Any
 
 from app.core.cache import push_job_progress
 from app.graph.prompts import critic_messages
@@ -37,7 +37,10 @@ def _get_critic_models() -> list[LLMClient]:
     if _critic_loop_id != lid or _critic_models is None:
         _critic_loop_id = lid
         _critic_models = build_critic_models()
-    return cast(list[LLMClient], _critic_models)
+    models = _critic_models
+    if models is None:
+        raise RuntimeError("critic models failed to initialise")
+    return models
 
 
 def _parse_critique(raw: str) -> dict[str, Any]:

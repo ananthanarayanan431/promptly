@@ -31,5 +31,6 @@ repos:
           - pydantic
           - sqlalchemy
           - types-redis
+          - langchain-openai
         args: ["--ignore-missing-imports"]
         exclude: "^docs/pitch-deck/"

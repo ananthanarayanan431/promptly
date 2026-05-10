@@ -14,7 +14,7 @@ On refinement iterations (iteration_count > 0) additionally receives:
 import asyncio
 import logging
 import time
-from typing import Any, cast
+from typing import Any
 
 from app.core.cache import push_job_progress
 from app.graph.prompts import category_guidance_block, council_optimizer_messages
@@ -36,7 +36,10 @@ def _get_council_models() -> list[LLMClient]:
     if _council_loop_id != lid or _council_models is None:
         _council_loop_id = lid
         _council_models = build_council_models()
-    return cast(list[LLMClient], _council_models)
+    models = _council_models
+    if models is None:
+        raise RuntimeError("council models failed to initialise")
+    return models
 
 
 def _extract_quality_gaps(state: GraphState) -> list[str]:
