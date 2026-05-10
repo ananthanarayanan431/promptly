@@ -92,13 +92,15 @@ class DomainOptimizationRunRepository(BaseRepository[DomainOptimizationRun]):
         domain_id: uuid.UUID,
         domain_name: str,
         prompt_input: str,
-        optimized_prompt: str,
+        optimized_prompt: str | None = None,
         score_before: float | None = None,
         score_after: float | None = None,
         win_rate: float | None = None,
         candidates_tried: int | None = None,
         rounds_run: int | None = None,
         dataset_size: int | None = None,
+        status: str = "completed",
+        error_message: str | None = None,
     ) -> DomainOptimizationRun:
         run = DomainOptimizationRun(
             domain_id=domain_id,
@@ -111,6 +113,8 @@ class DomainOptimizationRunRepository(BaseRepository[DomainOptimizationRun]):
             candidates_tried=candidates_tried,
             rounds_run=rounds_run,
             dataset_size=dataset_size,
+            status=status,
+            error_message=error_message,
         )
         self.db.add(run)
         await self.db.flush()

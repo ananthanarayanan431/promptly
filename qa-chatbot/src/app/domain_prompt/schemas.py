@@ -15,7 +15,7 @@ class CreateDomainRequest(BaseModel):
 
 
 class OptimizeDomainRequest(BaseModel):
-    prompt: str = Field(min_length=10, max_length=10000)
+    prompt: str = Field(min_length=10, max_length=50000)
 
 
 class DatasetInfo(BaseModel):
@@ -102,13 +102,15 @@ class OptimizationRunResponse(BaseModel):
     domain_id: uuid.UUID
     domain_name: str
     prompt_input: str
-    optimized_prompt: str
+    optimized_prompt: str | None
     score_before: float | None
     score_after: float | None
     win_rate: float | None
     candidates_tried: int | None
     rounds_run: int | None
     dataset_size: int | None
+    status: str
+    error_message: str | None
     created_at: datetime
 
     model_config = {"from_attributes": True}

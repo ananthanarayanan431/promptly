@@ -75,7 +75,15 @@ def prepare_domain_dataset(
             pdf_key = object_key(user_id, domain_id, "source.pdf")
             pdf_bytes = download_bytes(bucket, pdf_key)
             text = extract_text_from_pdf(pdf_bytes)
-            pairs = await generate_qa_pairs(text, api_key)
+
+            # Pass base_prompt so AutoData filtering can test weak vs strong solver
+            async with AsyncSessionLocal() as db:
+                repo = DomainPromptRepository(db)
+                domain_for_prompt = await repo.get_by_id(UUID(domain_id))
+                base_prompt_for_dataset = (
+                    domain_for_prompt.base_prompt if domain_for_prompt is not None else None
+                )
+            pairs = await generate_qa_pairs(text, api_key, base_prompt=base_prompt_for_dataset)
 
             if not pairs:
                 raise ValueError("No Q&A pairs could be extracted from the PDF")
@@ -218,12 +226,12 @@ def run_domain_optimization(
                     domain_id=domain.id,
                     domain_name=domain.name,
                     prompt_input=prompt_to_optimize,
-                    optimized_prompt=str(result["optimized_prompt"]),
-                    score_before=float(result["score_before"]),  # type: ignore[arg-type]
-                    score_after=float(result["score_after"]),  # type: ignore[arg-type]
-                    win_rate=float(result["win_rate"]),  # type: ignore[arg-type]
-                    candidates_tried=int(str(result["candidates_tried"])),
-                    rounds_run=int(str(result.get("rounds_run", 40))),
+                    optimized_prompt=str(result.get("optimized_prompt", prompt_to_optimize)),
+                    score_before=float(result.get("score_before") or 0.0),
+                    score_after=float(result.get("score_after") or 0.0),
+                    win_rate=float(result.get("win_rate") or 0.0),
+                    candidates_tried=int(result.get("candidates_tried") or 1),
+                    rounds_run=int(result.get("rounds_run") or 40),
                     dataset_size=dataset_size,
                 )
                 await db.commit()
@@ -233,16 +241,17 @@ def run_domain_optimization(
                 job_id,
                 {
                     "domain_id": domain_id,
-                    "optimized_prompt": str(result["optimized_prompt"]),
-                    "score_before": float(result["score_before"]),  # type: ignore[arg-type]
-                    "score_after": float(result["score_after"]),  # type: ignore[arg-type]
-                    "win_rate": float(result["win_rate"]),  # type: ignore[arg-type]
-                    "candidates_tried": int(str(result["candidates_tried"])),
+                    "optimized_prompt": str(result.get("optimized_prompt", prompt_to_optimize)),
+                    "score_before": float(result.get("score_before") or 0.0),
+                    "score_after": float(result.get("score_after") or 0.0),
+                    "win_rate": float(result.get("win_rate") or 0.0),
+                    "candidates_tried": int(result.get("candidates_tried") or 1),
                 },
             )
 
         except Exception as exc:
             is_terminal = isinstance(exc, ValueError)
+            error_str = str(exc)[:500]
 
             async with AsyncSessionLocal() as db:
                 repo = DomainPromptRepository(db)
@@ -251,7 +260,22 @@ def run_domain_optimization(
                     await repo.set_status(
                         domain,
                         DomainPromptStatus.failed,
-                        error_message=str(exc)[:500],
+                        error_message=error_str,
+                    )
+                    # Always record the failed attempt in history regardless of retries
+                    from app.domain_prompt.repository import DomainOptimizationRunRepository
+
+                    run_repo = DomainOptimizationRunRepository(db)
+                    _dataset_size: int | None = None
+                    if domain.dataset is not None:
+                        _dataset_size = domain.dataset.row_count
+                    await run_repo.create_run(
+                        domain_id=domain.id,
+                        domain_name=domain.name,
+                        prompt_input=prompt_to_optimize,
+                        status="failed",
+                        error_message=error_str,
+                        dataset_size=_dataset_size,
                     )
                     await db.commit()
 
@@ -331,12 +355,20 @@ def augment_domain_dataset(
                 except Exception:  # noqa: BLE001, S112
                     continue
 
+            # Fetch the domain's base prompt to pass as strong_system for filtering
+            async with AsyncSessionLocal() as db:
+                repo = DomainPromptRepository(db)
+                domain_obj = await repo.get_by_id(UUID(domain_id))
+                base_prompt_for_aug = domain_obj.base_prompt if domain_obj is not None else None
+
             # Use existing Q&A as context to generate topically consistent new pairs
             context_text = "\n".join(
                 f"Q: {p['question']}\nA: {p['answer']}" for p in existing_pairs[:20]
             )
             new_pairs = await generate_qa_pairs(
-                context_text or "Generate general domain Q&A.", api_key
+                context_text or "Generate general domain Q&A.",
+                api_key,
+                base_prompt=base_prompt_for_aug,
             )
 
             existing_qs = {p["question"].strip().lower() for p in existing_pairs}

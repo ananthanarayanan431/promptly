@@ -49,100 +49,162 @@ _ELO_K = 32.0  # Elo K-factor
 _MAX_VAL_EXAMPLES = 20  # cap validation set used for final scoring
 _MAX_SCORE_EXAMPLES = 15  # cap per-prompt eval examples during tournament
 
-# Token budgets — variants need room for 5 full rewrites; scoring/judging only needs short JSON
-_VARIANT_MAX_TOKENS = 4096
-_MUTATION_MAX_TOKENS = 2048
+# Token budgets — variants/mutations need room to rewrite prompts that may be 3k+ tokens long.
+# Scoring and judging only emit short JSON so they stay cheap.
+_VARIANT_MAX_TOKENS = 8192  # a 3k-token base prompt needs ~6k tokens room for a full rewrite
+_MUTATION_MAX_TOKENS = 8192  # same reasoning — mutations must also be complete rewrites
 _JUDGE_MAX_TOKENS = 128  # {"winner": "A"} or {"winner": "B"} + reasoning
 _SCORE_MAX_TOKENS = 64  # {"score": 0.87}
 
 # ── LLM system prompts ────────────────────────────────────────────────────────
+#
+# System prompt design principles applied here (from SPRIG, MPO, APO research):
+#   - Effective system prompts have 5–6 discrete modular sections: role, behavioral rules,
+#     domain knowledge, conditional use-case instructions, output format, fallback behavior.
+#   - Peak performance is at 400–800 tokens. Concise, precise instructions beat verbose prose.
+#   - Conditional rules ("if user asks X, do Y") outperform examples for discrete decision cases.
+#   - Examples in system prompts are appropriate ONLY for output format anchoring — not for
+#     teaching domain knowledge or demonstrating reasoning. We exclude them here because
+#     domain prompt users are optimizing system prompts that will be deployed as behavioral
+#     frameworks, not as in-context learners.
+#   - Positive instructions ("always state sources") outperform negative ones ("don't hallucinate").
+#   - Each variant is a complete, standalone rewrite through one optimization lens.
 
-# Receives: {n}, {domain_summary}, {sample_questions}
 _VARIANT_SYSTEM = textwrap.dedent("""
-    You are a world-class prompt engineer. Your job is to take a short, vague base prompt and
-    transform it into {n} richly detailed, high-performance system prompt variants that will
-    dramatically improve an AI assistant's answers on a specific domain.
+    You are a world-class prompt engineer specializing in system prompt optimization.
+    You will receive an existing system prompt and must produce ONE complete, improved
+    rewrite of it using the optimization strategy described below.
 
-    Domain context (inferred from the knowledge base):
+    Domain context (what this assistant must be expert at):
     {domain_summary}
 
-    Sample questions this assistant must answer well:
+    Sample questions this assistant must handle well:
     {sample_questions}
 
-    Each variant MUST:
-    - Be substantially longer and more detailed than the base prompt (aim for 150–400 words)
-    - Embed concrete domain knowledge, terminology, and best practices drawn from the
-      sample questions
-    - Give the model clear behavioural rules it can follow when answering those specific questions
-    - Be a complete, production-ready system prompt that stands alone
+    Optimization strategy: {strategy_name}
+    {strategy_instructions}
 
-    Use a different enhancement strategy per variant — do NOT just rephrase:
-      * Variant 1 — Expert persona + knowledge depth: Assign a highly specific expert identity
-        (e.g. "You are a senior financial advisor with 20 years of experience…"). Add domain
-        knowledge the model should draw on, and specify how to reason through complex questions.
-      * Variant 2 — Structured reasoning protocol: Define an explicit step-by-step process the
-        model must follow for every answer (e.g. clarify → analyse → recommend → caveat).
-        Include decision rules for edge cases specific to the domain.
-      * Variant 3 — Output format + evidence standards: Specify exactly how answers should be
-        structured (sections, bullet points, tables where useful). Require the model to cite
-        reasoning, quantify where possible, and flag uncertainty explicitly.
-      * Variant 4 — Safety + scope boundaries: Define what the assistant will and won't do,
-        common misconceptions to correct, when to recommend professional consultation, and how
-        to handle questions outside its competence — grounded in the domain context.
-      * Variant 5 — Comprehensive enhancement: Combine the best elements of the above — strong
-        persona, domain-specific knowledge rules, structured output, and safety guardrails —
-        into a single highly polished prompt.
-
-    Output ONLY a valid JSON array of exactly {n} strings.
-    No markdown fences, no preamble, no explanation — just the raw JSON array.
+    ABSOLUTE RULES:
+    - Output a COMPLETE system prompt — not a diff, not an extension, not a summary.
+    - The output must stand alone as a fully functional system prompt.
+    - Preserve the core role and intent of the original — do not change what the assistant IS.
+    - You may restructure, reword, expand, tighten, or reorganize any part of the original.
+    - Do NOT include Q&A examples or worked demonstrations in the output — these belong in
+      the conversation, not the system prompt. Use explicit conditional rules instead.
+    - Do NOT use placeholders like "[same as original]" or "[previous content]".
+    - Output ONLY the system prompt text. No explanation, no preamble, no quotes.
 """).strip()
 
-# Receives: {tip}, {domain_summary}
+# Four variant strategies — each produces a complete rewrite through a distinct lens.
+# Research basis: MPO (modular section optimization), SPRIG (edit-based genetic), APO (gradients).
+# No "few-shot examples" strategy — conditional rules are strictly preferred for system prompts.
+_VARIANT_STRATEGIES: list[tuple[str, str]] = [
+    (
+        "ROLE PRECISION & BEHAVIORAL RULES",
+        "Rewrite the prompt with a sharp, specific role definition followed by clear behavioral "
+        "rules stated as positive obligations ('always do X', 'base every claim on Y'). "
+        "Replace any vague or hedged language ('try to', 'consider', 'generally') with concrete "
+        "directives. Keep the role section to 2–3 sentences; enumerate 5–8 behavioral rules as "
+        "a bullet list. Research shows enumerated constraints are processed more reliably than "
+        "prose — make every rule a discrete, checkable statement.",
+    ),
+    (
+        "DOMAIN KNOWLEDGE & CONDITIONAL USE-CASES",
+        "Rewrite the prompt to embed the domain's core principles, frameworks, and decision "
+        "logic directly into the instructions. Study the sample questions to identify the "
+        "specific situations this assistant will face, then add conditional use-case rules: "
+        "'When the user asks about X, apply Y framework and consider Z.' "
+        "'If the question involves [situation], prioritize [approach] over [alternative].' "
+        "These conditional rules encode the domain expert's judgment as explicit branching "
+        "logic — not examples, but IF/WHEN/IF-NOT rules the model can apply deterministically.",
+    ),
+    (
+        "STRUCTURED REASONING PROTOCOL",
+        "Rewrite the prompt to define a mandatory reasoning protocol the model must follow "
+        "for every response. Based on the sample questions, identify what type of reasoning "
+        "this domain requires (analytical, comparative, procedural, diagnostic, etc.), then "
+        "embed a numbered step protocol: step 1 identify the question type, step 2 recall the "
+        "most relevant domain principle, step 3 reason through it explicitly, step 4 state the "
+        "answer with appropriate precision, step 5 flag uncertainty or edge cases. "
+        "This protocol should be domain-specific — not a generic 'think step by step' instruction.",
+    ),
+    (
+        "OUTPUT FORMAT & FALLBACK BEHAVIOR",
+        "Rewrite the prompt to specify exactly how outputs should be structured and what to do "
+        "in every edge case. Define: when to use bullet points vs prose vs tables; expected "
+        "answer length for different question types; how to express uncertainty (e.g. 'Based on "
+        "available information...' rather than making up facts); what to say verbatim when a "
+        "question is out of scope or unanswerable from available knowledge; and how to handle "
+        "contradictory or incomplete information. Every edge case must have a scripted behavior "
+        "— the model must never improvise in ambiguous situations.",
+    ),
+]
+
 _MUTATION_SYSTEM = textwrap.dedent("""
     You are a world-class prompt engineer. You are given the current best-performing system
-    prompt for an AI assistant operating in a specific domain. Your task is to produce ONE
-    meaningfully improved mutation that makes the assistant smarter and more useful.
+    prompt and must produce ONE improved rewrite following the mutation strategy below.
 
     Domain context: {domain_summary}
 
-    Improvement strategy to apply: {tip}
+    Mutation strategy: {strategy_name}
+    {strategy_instructions}
 
-    Rules:
-    - The mutation must be LONGER and MORE DETAILED than the original — add depth, not remove it
-    - Inject domain-specific knowledge, terminology, and reasoning guidelines the original lacks
-    - The result must still serve the same core purpose but perform better on domain questions
-    - Do not summarise or compress the original — expand and enhance it
-    - The result must be a complete, production-ready system prompt
+    ABSOLUTE RULES:
+    - Output the COMPLETE rewritten prompt — not a diff, not a patch, not an extension.
+    - The result must be a fully self-contained, functional system prompt.
+    - Preserve the core role and identity of the assistant — do not change what it IS.
+    - You may restructure, tighten, expand, or reorganize any part.
+    - Do NOT include Q&A examples or worked demonstrations — use explicit conditional rules instead.
+    - NEVER use placeholders like "[ALL PREVIOUS CONTENT REMAINS IDENTICAL]", "[same as above]",
+      "[unchanged]", or any shorthand. Write the full text every time.
 
-    Output ONLY the mutated prompt text. No preamble, no explanation, no quotes.
+    Output ONLY the rewritten prompt text. No preamble, no explanation, no quotes.
 """).strip()
 
-_MUTATION_TIPS = [
+# Five mutation strategies cycling through different improvement axes.
+# All produce conditional/rule-based improvements — no example injection.
+_MUTATION_STRATEGIES: list[tuple[str, str]] = [
     (
-        "Add a detailed step-by-step reasoning protocol the model must follow before answering: "
-        "e.g. (1) identify what is being asked, (2) recall relevant domain principles, "
-        "(3) apply them to the specific case, (4) state the answer with supporting reasoning, "
-        "(5) add any important caveats or limitations."
+        "INSTRUCTION SHARPENING",
+        "Audit every sentence in the current prompt for vagueness. Rewrite the entire prompt "
+        "replacing hedged or weak instructions with concrete, positive obligations. "
+        "Every 'try to', 'consider', 'generally', 'if possible' becomes a hard rule. "
+        "Every prohibition ('don't do X') becomes a positive directive ('instead do Y'). "
+        "The result should have zero ambiguous instructions.",
     ),
     (
-        "Deepen the expert persona: give the assistant a highly specific professional identity "
-        "with years of experience, named areas of expertise drawn from the domain context, "
-        "and explicit guidance on how that expertise shapes the answers it gives."
+        "CONDITIONAL USE-CASE RULES",
+        "Study the domain context and identify 3–5 specific situations or question types this "
+        "assistant will regularly face. Rewrite the prompt to add explicit conditional rules "
+        "for each: 'When the user asks about [situation], apply [specific approach].' "
+        "'If the question involves [condition], prioritize [action] over [alternative].' "
+        "'If information is missing or ambiguous, [specific scripted response].' "
+        "These rules replace any generic instructions with domain-specific branching logic.",
     ),
     (
-        "Add a comprehensive output format specification: define when to use bullet points, "
-        "numbered steps, tables, or prose; require quantification where possible; "
-        "specify answer length norms; and mandate explicit uncertainty flags when confidence is low."  # noqa: E501
+        "DOMAIN PRINCIPLES SECTION",
+        "Rewrite the prompt to add a clearly delineated 'Domain Knowledge' or 'Core Principles' "
+        "section containing 4–6 domain-specific rules-of-thumb, decision frameworks, or "
+        "factual anchors the model must apply. These must be specific to this domain — not "
+        "generic reasoning advice. Each principle should be 1–2 sentences, stated as a rule "
+        "the model actively applies, not background information.",
     ),
     (
-        "Add domain-specific safety and scope rules: define the exact boundaries of what the "
-        "assistant will and won't answer, common misconceptions it must proactively correct, "
-        "and clear triggers for recommending professional consultation."
+        "RESPONSE FORMAT PRECISION",
+        "Rewrite the prompt to specify output format with surgical precision. Define: the exact "
+        "structure for different answer types (factual vs analytical vs procedural questions); "
+        "when to use numbered lists, bullets, or prose; target length ranges; how to express "
+        "confidence levels; mandatory epistemic qualifiers for uncertain claims. Format rules "
+        "should be stated as 'always', 'never', and 'when X use Y' — not vague preferences.",
     ),
     (
-        "Inject domain knowledge directly into the prompt: add 3–5 key principles, frameworks, "
-        "or rules-of-thumb from the domain that the model should always apply when reasoning, "
-        "so it behaves like a knowledgeable practitioner rather than a generic assistant."
+        "FALLBACK & EDGE-CASE HARDENING",
+        "Identify the gaps in the current prompt — situations where the model would have to "
+        "improvise because no rule covers them. Rewrite the prompt to add explicit fallback "
+        "behaviors: what to say when a question is out of scope; how to handle contradictory "
+        "information; what to do when the user asks for something the assistant cannot verify; "
+        "how to escalate or redirect when needed. Every gap must have a scripted rule, "
+        "not left to the model's discretion.",
     ),
 ]
 
@@ -210,6 +272,33 @@ class _WinMatrix:
 
 
 # ── LLM helpers ───────────────────────────────────────────────────────────────
+_PLACEHOLDER_MARKERS = (
+    "[all previous content remains identical]",
+    "[same as above]",
+    "[unchanged]",
+    "[rest of prompt]",
+    "[previous content]",
+    "[content remains the same]",
+    "[existing content]",
+    "[original content]",
+    "remains identical]",
+    "remains unchanged]",
+)
+
+
+def _is_placeholder_variant(text: str, base_prompt: str) -> bool:
+    """Return True if the variant contains shorthand placeholders rather than real content."""
+    lower = text.lower()
+    if any(marker in lower for marker in _PLACEHOLDER_MARKERS):
+        return True
+    # Reject suspiciously short outputs — likely a truncated or failed response.
+    # Full rewrites can be shorter than the original (e.g. CLARITY strategy trims bloat),
+    # so we only reject if the output is under 30% of the base — clearly incomplete.
+    if len(text) < len(base_prompt) * 0.3:
+        return True
+    return False
+
+
 def _strip_fences(text: str) -> str:
     if text.startswith("```"):
         parts = text.split("```")
@@ -217,6 +306,49 @@ def _strip_fences(text: str) -> str:
         if text.startswith("json"):
             text = text[4:]
     return text.strip()
+
+
+def _json_loads_tolerant(raw: str) -> Any:
+    """Parse JSON that may contain unescaped control characters inside string values.
+
+    LLMs sometimes emit literal newlines/tabs inside JSON strings rather than \\n/\\t.
+    We try strict parse first; on failure, sanitize control chars inside quoted regions only.
+    """
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        # Replace control characters that appear inside JSON string literals.
+        # We scan character-by-character tracking whether we're inside a quoted string.
+        result_chars: list[str] = []
+        in_string = False
+        i = 0
+        while i < len(raw):
+            ch = raw[i]
+            if in_string:
+                if ch == "\\":
+                    # Pass through escape sequence unchanged
+                    result_chars.append(ch)
+                    if i + 1 < len(raw):
+                        i += 1
+                        result_chars.append(raw[i])
+                elif ch == '"':
+                    in_string = False
+                    result_chars.append(ch)
+                elif ch == "\n":
+                    result_chars.append("\\n")
+                elif ch == "\r":
+                    result_chars.append("\\r")
+                elif ch == "\t":
+                    result_chars.append("\\t")
+                else:
+                    result_chars.append(ch)
+            else:
+                if ch == '"':
+                    in_string = True
+                result_chars.append(ch)
+            i += 1
+
+        return json.loads("".join(result_chars))
 
 
 def _build_domain_summary(pairs: list[dict[str, str]], max_samples: int = 5) -> tuple[str, str]:
@@ -229,64 +361,100 @@ def _build_domain_summary(pairs: list[dict[str, str]], max_samples: int = 5) -> 
     return domain_summary, questions_block
 
 
-async def _generate_variants(
+async def _generate_one_variant(
     base_prompt: str,
-    n: int,
-    llm: ChatOpenAI,
+    strategy_name: str,
+    strategy_instructions: str,
+    gen_llm: ChatOpenAI,
     domain_summary: str,
     sample_questions: str,
-) -> list[str]:
+) -> str | None:
+    """Generate one full prompt rewrite using a single strategy. Returns None on failure."""
     system = _VARIANT_SYSTEM.format(
-        n=n,
+        strategy_name=strategy_name,
+        strategy_instructions=strategy_instructions,
         domain_summary=domain_summary,
         sample_questions=sample_questions,
     )
     try:
-        # Use a separate client with a higher token budget for variant generation
-        gen_llm = llm.model_copy(update={"max_tokens": _VARIANT_MAX_TOKENS})
+        gen_llm = gen_llm.model_copy(update={"max_tokens": _VARIANT_MAX_TOKENS})
         response = await gen_llm.ainvoke(
             [
                 {"role": "system", "content": system},
-                {"role": "user", "content": f"Base prompt to improve:\n\n{base_prompt}"},
+                {"role": "user", "content": f"Original system prompt to rewrite:\n\n{base_prompt}"},
             ]
         )
-        raw = _strip_fences(str(response.content).strip())
-        # Tolerate truncated JSON by finding the last complete string entry
-        variants: Any = json.loads(raw)
-        if isinstance(variants, list):
-            result = [v for v in variants[:n] if isinstance(v, str) and v.strip()]
-            if result:
-                _log.info("Generated %d variants", len(result))
-                return result
+        variant = _strip_fences(str(response.content).strip())
+        if not variant:
+            return None
+        if _is_placeholder_variant(variant, base_prompt):
+            _log.warning("Variant '%s' contained placeholder text — discarding", strategy_name)
+            return None
+        _log.debug("Generated variant '%s' (%d chars)", strategy_name, len(variant))
+        return variant
     except Exception as exc:  # noqa: BLE001
-        _log.warning("Variant generation failed (%s), retrying with smaller n=3", exc)
-        # Retry with fewer variants to reduce token pressure
-        if n > 3:
-            return await _generate_variants(base_prompt, 3, llm, domain_summary, sample_questions)
-    _log.error("Variant generation failed entirely — falling back to base prompt only")
+        _log.warning("Variant generation failed for strategy '%s': %s", strategy_name, exc)
+        return None
+
+
+async def _generate_variants(
+    base_prompt: str,
+    n: int,
+    gen_llm: ChatOpenAI,
+    domain_summary: str,
+    sample_questions: str,
+) -> list[str]:
+    # One parallel LLM call per strategy — each produces a complete rewrite.
+    # This avoids the JSON-array-of-long-strings encoding problem and gives each
+    # strategy its full token budget. We take the first n successful results.
+    strategies = _VARIANT_STRATEGIES[:n]
+    tasks = [
+        _generate_one_variant(
+            base_prompt, name, instructions, gen_llm, domain_summary, sample_questions
+        )
+        for name, instructions in strategies
+    ]
+    results = await asyncio.gather(*tasks)
+    variants = [v for v in results if v is not None and v != base_prompt]
+
+    if variants:
+        _log.info("Generated %d/%d variants successfully", len(variants), len(strategies))
+        return variants
+
+    _log.error("All variant generation calls failed — falling back to base prompt only")
     return [base_prompt]
 
 
 async def _mutate_prompt(
     prompt: str,
-    llm: ChatOpenAI,
+    gen_llm: ChatOpenAI,
     domain_summary: str,
-    tip: str,
+    strategy_idx: int,
 ) -> str:
-    system = _MUTATION_SYSTEM.format(domain_summary=domain_summary, tip=tip)
+    strategy_name, strategy_instructions = _MUTATION_STRATEGIES[
+        strategy_idx % len(_MUTATION_STRATEGIES)
+    ]
+    system = _MUTATION_SYSTEM.format(
+        strategy_name=strategy_name,
+        strategy_instructions=strategy_instructions,
+        domain_summary=domain_summary,
+    )
     try:
-        mut_llm = llm.model_copy(update={"max_tokens": _MUTATION_MAX_TOKENS})
+        mut_llm = gen_llm.model_copy(update={"max_tokens": _MUTATION_MAX_TOKENS})
         response = await mut_llm.ainvoke(
             [
                 {"role": "system", "content": system},
-                {"role": "user", "content": f"Current best prompt:\n\n{prompt}"},
+                {"role": "user", "content": f"Current best-performing prompt:\n\n{prompt}"},
             ]
         )
-        mutated = str(response.content).strip()
-        if mutated and mutated != prompt:
+        mutated = _strip_fences(str(response.content).strip())
+        if mutated and mutated != prompt and not _is_placeholder_variant(mutated, prompt):
+            _log.debug("Mutation '%s' succeeded (%d chars)", strategy_name, len(mutated))
             return mutated
+        if mutated and _is_placeholder_variant(mutated, prompt):
+            _log.warning("Mutation '%s' contained placeholder text — discarding", strategy_name)
     except Exception as exc:  # noqa: BLE001
-        _log.warning("Mutation failed: %s", exc)
+        _log.warning("Mutation '%s' failed: %s", strategy_name, exc)
     return prompt
 
 
@@ -622,8 +790,7 @@ async def optimize_domain_prompt(
         duel_pool = shuffled  # tiny dataset fallback
 
     # ── LLM clients ───────────────────────────────────────────────────────────
-    # Claude Haiku: fast + cheap for answering during duels
-    # max_tokens=512 is fine here — answers to individual questions are short
+    # Claude Haiku: fast + cheap for answering during duels (answers are short)
     fast_llm = ChatOpenAI(
         model="anthropic/claude-3.5-haiku",
         openai_api_base="https://openrouter.ai/api/v1",
@@ -631,8 +798,16 @@ async def optimize_domain_prompt(
         temperature=0.7,
         max_tokens=512,
     )
-    # GPT-4o: cross-model judge — different architecture avoids self-preference bias
-    # Variant generation and mutations use fast_llm with _VARIANT_MAX_TOKENS override
+    # GPT-4o: used for variant/mutation generation — long prompts need a capable model
+    # that can produce 8k-token full rewrites reliably. Also used as judge (cross-model
+    # to avoid self-preference bias).
+    gen_llm = ChatOpenAI(
+        model="openai/gpt-4o",
+        openai_api_base="https://openrouter.ai/api/v1",
+        openai_api_key=api_key,
+        temperature=0.7,
+        max_tokens=_VARIANT_MAX_TOKENS,
+    )
     judge_llm = ChatOpenAI(
         model="openai/gpt-4o",
         openai_api_base="https://openrouter.ai/api/v1",
@@ -650,16 +825,18 @@ async def optimize_domain_prompt(
     )
 
     # ── Generate initial candidates ───────────────────────────────────────────
+    # Generate num_candidates-1 variants so the base prompt always has a guaranteed slot.
+    # The paper (Appendix C.2) keeps the original prompt in the pool and competes it directly.
+    n_variants = max(1, num_candidates - 1)
     variant_texts = await _generate_variants(
-        base_prompt, num_candidates, fast_llm, domain_summary, sample_questions
+        base_prompt, n_variants, gen_llm, domain_summary, sample_questions
     )
-    # Always include the original baseline so it competes in the tournament
-    if base_prompt not in variant_texts:
-        variant_texts.insert(0, base_prompt)
+    # Base prompt is always first — never capped out
+    all_texts = [base_prompt] + [v for v in variant_texts if v != base_prompt]
     # Deduplicate while preserving order
     seen: set[str] = set()
     unique_variants: list[str] = []
-    for v in variant_texts:
+    for v in all_texts:
         if v not in seen:
             seen.add(v)
             unique_variants.append(v)
@@ -685,7 +862,7 @@ async def optimize_domain_prompt(
     _log.info("Starting PDO tournament with %d candidates", len(candidates))
 
     # ── PDO tournament (Double Thompson Sampling) ─────────────────────────────
-    mutation_tip_idx = 0
+    mutation_strategy_idx = 0
     for round_idx in range(_TOURNAMENT_ROUNDS):
         i, j = _select_duel_pair(wm, rng)
         ex = rng.choice(duel_pool)
@@ -707,11 +884,10 @@ async def optimize_domain_prompt(
         # Top-performer guided mutation every M rounds
         if (round_idx + 1) % _MUTATION_INTERVAL == 0:
             best_now = _fuse_rankings(wm, candidates, rng)
-            tip = _MUTATION_TIPS[mutation_tip_idx % len(_MUTATION_TIPS)]
-            mutation_tip_idx += 1
             mutated_text = await _mutate_prompt(
-                candidates[best_now].text, fast_llm, domain_summary, tip
+                candidates[best_now].text, gen_llm, domain_summary, mutation_strategy_idx
             )
+            mutation_strategy_idx += 1
             if mutated_text not in {c.text for c in candidates}:
                 candidates.append(_Candidate(text=mutated_text, elo=candidates[best_now].elo))
                 wm.add_candidate()
