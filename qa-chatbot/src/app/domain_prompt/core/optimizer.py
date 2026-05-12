@@ -30,238 +30,39 @@ import json
 import logging
 import math
 import random
-import textwrap
 from dataclasses import dataclass, field
 from typing import Any
 
-from langchain_openai import ChatOpenAI
+from app.domain_prompt.constants.optimizer import (
+    GAMMA_ANSWER,
+    GAMMA_REASONING,
+    JUDGE_MAX_TOKENS,
+    MAX_SCORE_EXAMPLES,
+    MAX_VAL_EXAMPLES,
+    MUTATION_BATCH,
+    MUTATION_INTERVAL,
+    MUTATION_MAX_TOKENS,
+    MUTATION_SOURCES,
+    NUM_CANDIDATES,
+    PRUNE_COUNT,
+    SCORE_MAX_TOKENS,
+    TOURNAMENT_ROUNDS,
+    UCB_ALPHA,
+    VARIANT_MAX_TOKENS,
+)
+from app.domain_prompt.prompts.optimizer import (
+    ANSWER_JUDGE_SYSTEM,
+    MUTATION_SYSTEM,
+    MUTATION_TIPS,
+    REASONING_JUDGE_SYSTEM,
+    SCORE_SYSTEM,
+    VARIANT_SYSTEM,
+    VARIANT_TIPS,
+)
+from app.llm import LLMClient
+from app.llm.optimizer import build_duel_answerer, build_duel_judge, build_variant_generator
 
 _log = logging.getLogger(__name__)
-
-# ── Tuning constants (paper §4 / Appendix E) ─────────────────────────────────
-_NUM_CANDIDATES = 10  # initial pool size (paper: 20–50; 10 balances cost/quality)
-_TOURNAMENT_ROUNDS = 30  # total D-TS rounds (matches paper)
-_MUTATION_INTERVAL = 10  # mutation at rounds 10 and 20 (paper: same)
-_MUTATION_SOURCES = 3  # top-K prompts used as mutation seeds (paper: top-3)
-_MUTATION_BATCH = 3  # new candidates generated per mutation event (paper: 10; cost cap)
-_PRUNE_COUNT = 3  # prompts pruned per mutation event (paper: 10; cost cap)
-_UCB_ALPHA = 1.2  # D-TS confidence-bound parameter (paper §4.1, fixed at 1.2)
-_MAX_VAL_EXAMPLES = 20  # held-out examples for final scoring
-_MAX_SCORE_EXAMPLES = 15  # examples used during per-prompt tournament eval
-
-# Weighted preference update parameters (paper Appendix E.2)
-# Win contribution per duel sums to 1.0 (W_ij + W_ji = 1).
-# Answer-based judgments are high-confidence → γ=0.5 (winner gets full 1.0, loser 0.0).
-# Reasoning-based judgments are noisier   → γ=0.2 (winner gets 0.7, loser 0.3).
-_GAMMA_ANSWER = 0.5
-_GAMMA_REASONING = 0.2
-
-# Token budgets
-_VARIANT_MAX_TOKENS = 8192  # full prompt rewrites on long prompts
-_MUTATION_MAX_TOKENS = 8192
-_JUDGE_MAX_TOKENS = 256  # dual judge emits answer + reasoning label + winner
-_SCORE_MAX_TOKENS = 64  # {"score": 0.87}
-
-# ── LLM system prompts ────────────────────────────────────────────────────────
-
-# Candidate generation: MiPROv2-style tip-based generation (paper §3.1).
-# Each tip produces a stylistically distinct initial candidate.
-_VARIANT_SYSTEM = textwrap.dedent("""
-    You are a world-class prompt engineer specializing in system prompt optimization.
-    You will receive an existing system prompt and must produce an improved version
-    using the generation tip described below.
-
-    Domain context (what this assistant must be expert at):
-    {domain_summary}
-
-    Sample questions this assistant must handle well:
-    {sample_questions}
-
-    Generation tip: {tip_name}
-    {tip_instructions}
-
-    HOW TO APPLY THE TIP:
-    - Copy the entire original prompt verbatim as your starting point.
-    - Apply the tip's guidance to improve specific aspects of the prompt.
-    - Leave unchanged any sections the tip does not target — copy them verbatim.
-    - The output is the full improved prompt with your changes merged in.
-    - Do NOT summarize, abbreviate, or reference any part of the original — write it all out.
-    - Do NOT include Q&A examples or worked demonstrations — use conditional rules instead.
-    - Output ONLY the final prompt text. No explanation, no preamble, no quotes.
-""").strip()
-
-# Six MiPROv2 generation tips (paper §3.1 / Appendix C).
-_VARIANT_TIPS: list[tuple[str, str]] = [
-    (
-        "FRAMING",
-        "Frame the assistant's role as a concrete, vivid scenario: a recognized expert in a "
-        "specific setting (e.g., 'senior analyst at a consulting firm', 'chief domain officer'). "
-        "Rewrite the role definition and opening instructions to make the frame specific and "
-        "motivating. Leave all other sections verbatim.",
-    ),
-    (
-        "SIMPLE",
-        "Make the instructions clearer and more concise. Identify any long, complex sentences "
-        "or redundant phrases and simplify them without losing meaning. Every instruction should "
-        "be a single, direct directive. Leave structure and content intact — only simplify "
-        "wording.",
-    ),
-    (
-        "DESCRIPTION",
-        "Make the prompt more informative and descriptive. Expand thin sections with precise "
-        "domain-specific detail: what the assistant knows, what sources it draws from, what "
-        "standards it applies. Each claim about behavior should be concrete and verifiable. "
-        "Leave format and structure sections verbatim.",
-    ),
-    (
-        "PERSONA",
-        "Give the assistant a creative, domain-relevant persona with a distinct voice and "
-        "perspective. The persona should inform HOW it reasons and communicates — not just what "
-        "it is called. Rewrite the role section to embed the persona's reasoning style. "
-        "Leave all other sections verbatim.",
-    ),
-    (
-        "EDGE CASES",
-        "Identify 3–5 tricky or unusual situations this assistant will face based on the sample "
-        "questions. For each, add an explicit scripted rule into the most relevant existing "
-        "section: 'When [situation], do [action] rather than [alternative].' "
-        "Weave the rules in — do not append a separate block. Leave unaffected sections verbatim.",
-    ),
-    (
-        "ASSUMPTIONS",
-        "Identify 3–4 implicit assumptions the assistant should make explicit before answering. "
-        "Insert a reasoning step in the most relevant existing section instructing the model to "
-        "state its key assumptions upfront when answering complex or ambiguous questions. "
-        "Leave all other sections verbatim.",
-    ),
-    (
-        "SHARPEN ROLE & BEHAVIORAL RULES",
-        "Target the opening role definition and any top-level behavioral instructions. "
-        "Convert vague or hedged language ('try to', 'consider', 'generally') into concrete "
-        "positive obligations ('always do X', 'base every claim on Y'). Convert prose rules "
-        "into a numbered list of discrete, checkable directives. Leave other sections verbatim.",
-    ),
-    (
-        "ADD CONDITIONAL USE-CASE RULES",
-        "Study the sample questions to identify 3–5 recurring situations. For each, insert an "
-        "explicit IF/WHEN conditional rule into the relevant section: 'When the user asks about "
-        "X, apply Y and prioritize Z.' Weave rules into the existing structure, not as a new "
-        "appended block. Leave unaffected sections verbatim.",
-    ),
-    (
-        "EMBED DOMAIN REASONING PROTOCOL",
-        "Identify the reasoning pattern this domain requires (analytical, comparative, "
-        "procedural, diagnostic, etc.) from the sample questions. Write a numbered step-by-step "
-        "protocol specific to this domain — not generic 'think step by step' — and place it in "
-        "the most appropriate existing section. Leave all other sections verbatim.",
-    ),
-    (
-        "TIGHTEN OUTPUT FORMAT & FALLBACK RULES",
-        "Target sections describing output format, response structure, or edge-case behavior. "
-        "Specify when to use bullets vs prose vs tables, define expected length for different "
-        "question types, and add scripted fallback behavior for out-of-scope or unanswerable "
-        "questions. Every edge case must have a scripted rule. Leave other sections verbatim.",
-    ),
-]
-
-# Mutation system — top-performer guided mutation (paper §3.2).
-# Four mutation strategies match the paper's tip types.
-_MUTATION_SYSTEM = textwrap.dedent("""
-    You are a world-class prompt engineer. You are given the current best-performing system
-    prompt and must produce an improved version by applying the mutation tip below.
-
-    Domain context: {domain_summary}
-
-    Mutation tip: {tip_name}
-    {tip_instructions}
-
-    HOW TO APPLY THE MUTATION:
-    - Copy the entire current prompt verbatim as your starting point.
-    - Apply the tip ONLY to the specific aspects it targets.
-    - Leave every other section word-for-word exactly as it appears in the current prompt.
-    - The output is the full prompt with your targeted improvement merged in.
-    - Do NOT summarize, abbreviate, or reference any section — write everything out in full.
-    - Do NOT include Q&A examples or worked demonstrations — use conditional rules instead.
-    - Output ONLY the final prompt text. No preamble, no explanation, no quotes.
-""").strip()
-
-# Four mutation tips from the paper (§3.2 / Appendix C)
-_MUTATION_TIPS: list[tuple[str, str]] = [
-    (
-        "EXPANSION",
-        "Keep the original structure. Add additional guidance or clarification to any section "
-        "that is vague, underspecified, or missing coverage of situations the assistant will face. "
-        "Focus on filling gaps — do not remove or rewrite existing content, only add to it.",
-    ),
-    (
-        "MINIMAL",
-        "Make minimal changes: a few targeted word-level edits, same overall length, same core "
-        "meaning. Improve precision and remove any ambiguous phrasing. Alter as few words as "
-        "possible while making each change meaningful.",
-    ),
-    (
-        "FEW-SHOT STYLE",
-        "Add 1–3 concrete conditional rules that demonstrate the expected reasoning process for "
-        "specific question types (do NOT add literal Q&A examples — use IF/WHEN rules instead). "
-        "Insert them into the most relevant existing section. Leave all other text verbatim.",
-    ),
-    (
-        "EMPHASIS",
-        "Adjust tone, emphasis, or directional focus to create a different reasoning pattern. "
-        "Identify the most important 2–3 behavioral priorities in the prompt and make them more "
-        "prominent: move them earlier, make language more assertive, or add emphasis markers. "
-        "Leave structure and other content verbatim.",
-    ),
-]
-
-# ── Dual judge prompts (paper §2 / Appendix E) ───────────────────────────────
-# The paper uses two judge types:
-#   1. Answer-based: when the two responses give different answers → high confidence (γ=0.5)
-#   2. Reasoning-based: when answers match → compare reasoning quality → lower confidence (γ=0.2)
-
-_ANSWER_JUDGE_SYSTEM = textwrap.dedent("""
-    You are an impartial evaluation judge.
-    Two AI assistants (A and B) answered the same question using different system prompts.
-    Their answers differ. Decide which answer is more correct given the gold-standard answer.
-
-    Criteria (in order of importance):
-    1. Accuracy — alignment with the gold answer
-    2. Completeness — coverage of key points
-    3. Clarity — structure and ease of understanding
-
-    Output ONLY valid JSON with exactly these keys:
-    {"judgment": "answer", "winner": "A"}  or  {"judgment": "answer", "winner": "B"}
-    No explanation. No other keys. No markdown.
-""").strip()
-
-_REASONING_JUDGE_SYSTEM = textwrap.dedent("""
-    You are an impartial evaluation judge.
-    Two AI assistants (A and B) answered the same question using different system prompts.
-    Their answers are equivalent. Compare the quality of their reasoning chains.
-
-    Criteria:
-    1. Logical coherence — is the reasoning step-by-step valid?
-    2. Completeness — does it cover all necessary reasoning steps?
-    3. Clarity — is the reasoning easy to follow?
-    4. Accuracy — does the reasoning correctly apply domain knowledge?
-
-    Output ONLY valid JSON with exactly these keys:
-    {"judgment": "reasoning", "winner": "A"}  or  {"judgment": "reasoning", "winner": "B"}
-    No explanation. No other keys. No markdown.
-""").strip()
-
-_SCORE_SYSTEM = textwrap.dedent("""
-    You are an evaluation judge.
-    Rate how well a model's answer matches the gold-standard answer.
-
-    Scale:
-    0.0 = completely wrong or irrelevant
-    0.5 = partially correct — captures some key points but misses others
-    1.0 = fully correct and equivalent to the gold answer
-
-    Output ONLY valid JSON: {"score": <float between 0.0 and 1.0>}
-    No explanation. No other keys. No markdown.
-""").strip()
 
 
 # ── Data structures ───────────────────────────────────────────────────────────
@@ -326,7 +127,7 @@ class _WinMatrix:
         if n_ij == 0:
             return 1.0  # optimistic: unplayed matchup assumed won
         mu = self.W[i][j] / n_ij
-        return min(1.0, mu + math.sqrt(_UCB_ALPHA * math.log(max(t, 1)) / n_ij))
+        return min(1.0, mu + math.sqrt(UCB_ALPHA * math.log(max(t, 1)) / n_ij))
 
     def lcb(self, i: int, j: int, t: int) -> float:
         """Lower confidence bound for p(i beats j) — paper §4.1."""
@@ -334,7 +135,7 @@ class _WinMatrix:
         if n_ij == 0:
             return 0.0
         mu = self.W[i][j] / n_ij
-        return max(0.0, mu - math.sqrt(_UCB_ALPHA * math.log(max(t, 1)) / n_ij))
+        return max(0.0, mu - math.sqrt(UCB_ALPHA * math.log(max(t, 1)) / n_ij))
 
 
 # ── LLM helpers ───────────────────────────────────────────────────────────────
@@ -434,18 +235,18 @@ async def _generate_one_variant(
     base_prompt: str,
     tip_name: str,
     tip_instructions: str,
-    gen_llm: ChatOpenAI,
+    gen_llm: LLMClient,
     domain_summary: str,
     sample_questions: str,
 ) -> str | None:
-    system = _VARIANT_SYSTEM.format(
+    system = VARIANT_SYSTEM.format(
         tip_name=tip_name,
         tip_instructions=tip_instructions,
         domain_summary=domain_summary,
         sample_questions=sample_questions,
     )
     try:
-        llm = gen_llm.model_copy(update={"max_tokens": _VARIANT_MAX_TOKENS})
+        llm = gen_llm.model_copy(update={"max_tokens": VARIANT_MAX_TOKENS})
         response = await llm.ainvoke(
             [
                 {"role": "system", "content": system},
@@ -473,11 +274,11 @@ async def _generate_one_variant(
 async def _generate_variants(
     base_prompt: str,
     n: int,
-    gen_llm: ChatOpenAI,
+    gen_llm: LLMClient,
     domain_summary: str,
     sample_questions: str,
 ) -> list[str]:
-    tips = _VARIANT_TIPS[:n]
+    tips = VARIANT_TIPS[:n]
     tasks = [
         _generate_one_variant(
             base_prompt, name, instructions, gen_llm, domain_summary, sample_questions
@@ -498,16 +299,16 @@ async def _generate_one_mutation(
     source_prompt: str,
     tip_name: str,
     tip_instructions: str,
-    gen_llm: ChatOpenAI,
+    gen_llm: LLMClient,
     domain_summary: str,
 ) -> str | None:
-    system = _MUTATION_SYSTEM.format(
+    system = MUTATION_SYSTEM.format(
         tip_name=tip_name,
         tip_instructions=tip_instructions,
         domain_summary=domain_summary,
     )
     try:
-        llm = gen_llm.model_copy(update={"max_tokens": _MUTATION_MAX_TOKENS})
+        llm = gen_llm.model_copy(update={"max_tokens": MUTATION_MAX_TOKENS})
         response = await llm.ainvoke(
             [
                 {"role": "system", "content": system},
@@ -534,7 +335,7 @@ async def _generate_one_mutation(
 async def _generate_mutation_batch(
     top_sources: list[str],
     batch_size: int,
-    gen_llm: ChatOpenAI,
+    gen_llm: LLMClient,
     domain_summary: str,
     tip_idx_start: int,
 ) -> list[str]:
@@ -542,7 +343,7 @@ async def _generate_mutation_batch(
     tasks = []
     for k in range(batch_size):
         source = top_sources[k % len(top_sources)]
-        tip_name, tip_instructions = _MUTATION_TIPS[(tip_idx_start + k) % len(_MUTATION_TIPS)]
+        tip_name, tip_instructions = MUTATION_TIPS[(tip_idx_start + k) % len(MUTATION_TIPS)]
         tasks.append(
             _generate_one_mutation(source, tip_name, tip_instructions, gen_llm, domain_summary)
         )
@@ -551,7 +352,7 @@ async def _generate_mutation_batch(
 
 
 # ── Answering ─────────────────────────────────────────────────────────────────
-async def _get_answer(prompt: str, question: str, llm: ChatOpenAI) -> str:
+async def _get_answer(prompt: str, question: str, llm: LLMClient) -> str:
     try:
         response = await llm.ainvoke(
             [
@@ -581,8 +382,8 @@ async def _duel(
     prompt_b: str,
     question: str,
     gold: str,
-    llm: ChatOpenAI,
-    judge_llm: ChatOpenAI,
+    llm: LLMClient,
+    judge_llm: LLMClient,
     rng: random.Random,
 ) -> tuple[int, float]:
     """Run one duel. Returns (winner_index, gamma).
@@ -604,11 +405,11 @@ async def _duel(
 
     # Select judge type based on whether answers diverge (paper §2)
     answers_differ = _answers_differ(ans_first, ans_second)
-    judge_system = _ANSWER_JUDGE_SYSTEM if answers_differ else _REASONING_JUDGE_SYSTEM
-    gamma = _GAMMA_ANSWER if answers_differ else _GAMMA_REASONING
+    judge_system = ANSWER_JUDGE_SYSTEM if answers_differ else REASONING_JUDGE_SYSTEM
+    gamma = GAMMA_ANSWER if answers_differ else GAMMA_REASONING
 
     try:
-        j_llm = judge_llm.model_copy(update={"max_tokens": _JUDGE_MAX_TOKENS})
+        j_llm = judge_llm.model_copy(update={"max_tokens": JUDGE_MAX_TOKENS})
         response = await j_llm.ainvoke(
             [
                 {"role": "system", "content": judge_system},
@@ -637,7 +438,7 @@ async def _duel(
         return winner_original, gamma
     except Exception as exc:  # noqa: BLE001
         _log.warning("Duel judge failed: %s — random tiebreak", exc)
-        return rng.randint(0, 1), _GAMMA_REASONING  # noqa: S311
+        return rng.randint(0, 1), GAMMA_REASONING  # noqa: S311
 
 
 # ── Scoring (held-out evaluation) ─────────────────────────────────────────────
@@ -645,15 +446,15 @@ async def _score_one(
     prompt: str,
     question: str,
     gold: str,
-    llm: ChatOpenAI,
-    judge_llm: ChatOpenAI,
+    llm: LLMClient,
+    judge_llm: LLMClient,
 ) -> float:
     predicted = await _get_answer(prompt, question, llm)
     try:
-        sc_llm = judge_llm.model_copy(update={"max_tokens": _SCORE_MAX_TOKENS})
+        sc_llm = judge_llm.model_copy(update={"max_tokens": SCORE_MAX_TOKENS})
         response = await sc_llm.ainvoke(
             [
-                {"role": "system", "content": _SCORE_SYSTEM},
+                {"role": "system", "content": SCORE_SYSTEM},
                 {
                     "role": "user",
                     "content": (
@@ -673,12 +474,12 @@ async def _score_one(
 async def _score_prompt(
     prompt: str,
     examples: list[dict[str, str]],
-    llm: ChatOpenAI,
-    judge_llm: ChatOpenAI,
+    llm: LLMClient,
+    judge_llm: LLMClient,
 ) -> float:
     if not examples:
         return 0.0
-    batch = examples[:_MAX_SCORE_EXAMPLES]
+    batch = examples[:MAX_SCORE_EXAMPLES]
     scores = await asyncio.gather(
         *[_score_one(prompt, ex["question"], ex["answer"], llm, judge_llm) for ex in batch]
     )
@@ -795,7 +596,8 @@ async def _emit_tournament_state(
     if domain_id is None:
         return
     try:
-        from app.domain_prompt.cache import set_dp_tournament_state  # local import avoids circular
+        # local import avoids circular dependency between core and infrastructure
+        from app.domain_prompt.infrastructure.cache import set_dp_tournament_state
 
         cop_scores = _copeland_scores(wm, t)
         state: dict[str, object] = {
@@ -820,7 +622,7 @@ async def optimize_domain_prompt(
     base_prompt: str,
     dataset_jsonl: str,
     api_key: str,
-    num_candidates: int = _NUM_CANDIDATES,
+    num_candidates: int = NUM_CANDIDATES,
     domain_id: str | None = None,
 ) -> dict[str, object]:
     """
@@ -856,35 +658,15 @@ async def optimize_domain_prompt(
     duel_pool = shuffled[: n_total - n_val] or shuffled  # tiny dataset fallback
 
     # ── LLM clients ───────────────────────────────────────────────────────────
-    # Claude Haiku: fast + cheap for answering during duels
-    fast_llm = ChatOpenAI(
-        model="anthropic/claude-3.5-haiku",
-        openai_api_base="https://openrouter.ai/api/v1",
-        openai_api_key=api_key,
-        temperature=0.7,
-        max_tokens=512,
-    )
-    # GPT-4o: variant/mutation generation (long rewrites) + judging (cross-model avoids self-pref)
-    gen_llm = ChatOpenAI(
-        model="openai/gpt-4o",
-        openai_api_base="https://openrouter.ai/api/v1",
-        openai_api_key=api_key,
-        temperature=0.7,
-        max_tokens=_VARIANT_MAX_TOKENS,
-    )
-    judge_llm = ChatOpenAI(
-        model="openai/gpt-4o",
-        openai_api_base="https://openrouter.ai/api/v1",
-        openai_api_key=api_key,
-        temperature=0.0,
-        max_tokens=_JUDGE_MAX_TOKENS,
-    )
+    fast_llm = build_duel_answerer(api_key)
+    gen_llm = build_variant_generator(api_key)
+    judge_llm = build_duel_judge(api_key)
 
     domain_summary, sample_questions = _build_domain_summary(duel_pool)
 
     # ── Baseline score ────────────────────────────────────────────────────────
     score_before = await _score_prompt(
-        base_prompt, val_split[:_MAX_VAL_EXAMPLES], fast_llm, judge_llm
+        base_prompt, val_split[:MAX_VAL_EXAMPLES], fast_llm, judge_llm
     )
 
     # ── Generate initial candidate pool ──────────────────────────────────────
@@ -908,7 +690,7 @@ async def optimize_domain_prompt(
     if len(candidates) < 2:
         _log.error("Only 1 candidate generated — returning base prompt unchanged.")
         score_after = await _score_prompt(
-            base_prompt, val_split[:_MAX_VAL_EXAMPLES], fast_llm, judge_llm
+            base_prompt, val_split[:MAX_VAL_EXAMPLES], fast_llm, judge_llm
         )
         return {
             "optimized_prompt": base_prompt,
@@ -917,12 +699,12 @@ async def optimize_domain_prompt(
         }
 
     _log.info(
-        "Starting PDO tournament with %d candidates, %d rounds", len(candidates), _TOURNAMENT_ROUNDS
+        "Starting PDO tournament with %d candidates, %d rounds", len(candidates), TOURNAMENT_ROUNDS
     )
 
     # ── PDO tournament (D-TS) ─────────────────────────────────────────────────
     mutation_tip_idx = 0
-    for round_idx in range(_TOURNAMENT_ROUNDS):
+    for round_idx in range(TOURNAMENT_ROUNDS):
         t = round_idx + 1  # 1-indexed round count (used in UCB/LCB log term)
 
         i, j = _select_duel_pair(wm, rng, t)
@@ -930,7 +712,7 @@ async def optimize_domain_prompt(
         question, gold = ex["question"], ex["answer"]
 
         await _emit_tournament_state(
-            domain_id, round_idx, _TOURNAMENT_ROUNDS, candidates, wm, i, j, question, t
+            domain_id, round_idx, TOURNAMENT_ROUNDS, candidates, wm, i, j, question, t
         )
 
         duel_result, gamma = await _duel(
@@ -940,11 +722,11 @@ async def optimize_domain_prompt(
         wm.record_win(winner_idx, loser_idx, gamma)
 
         # Top-performer guided mutation + pruning every M rounds (paper §3.2)
-        if t % _MUTATION_INTERVAL == 0:
+        if t % MUTATION_INTERVAL == 0:
             ranking = _copeland_ranking(wm, t)
 
             # Prune bottom _PRUNE_COUNT candidates (paper: remove 10 lowest Copeland)
-            to_prune = ranking[len(ranking) - _PRUNE_COUNT :]  # lowest Copeland indices
+            to_prune = ranking[len(ranking) - PRUNE_COUNT :]  # lowest Copeland indices
             # Remove in reverse index order so earlier removals don't shift later indices
             for idx in sorted(to_prune, reverse=True):
                 candidates.pop(idx)
@@ -953,14 +735,14 @@ async def optimize_domain_prompt(
 
             # Re-rank after pruning
             ranking = _copeland_ranking(wm, t)
-            top_k = min(_MUTATION_SOURCES, len(ranking))
+            top_k = min(MUTATION_SOURCES, len(ranking))
             top_sources = [candidates[ranking[k]].text for k in range(top_k)]
 
             # Generate _MUTATION_BATCH new candidates from top sources
             new_texts = await _generate_mutation_batch(
-                top_sources, _MUTATION_BATCH, gen_llm, domain_summary, mutation_tip_idx
+                top_sources, MUTATION_BATCH, gen_llm, domain_summary, mutation_tip_idx
             )
-            mutation_tip_idx += _MUTATION_BATCH
+            mutation_tip_idx += MUTATION_BATCH
             existing_texts = {c.text for c in candidates}
             added = 0
             for text in new_texts:
@@ -972,19 +754,19 @@ async def optimize_domain_prompt(
             _log.info(
                 "Round %d: pruned %d, added %d mutations (pool=%d)",
                 t,
-                min(_PRUNE_COUNT, len(to_prune)),
+                min(PRUNE_COUNT, len(to_prune)),
                 added,
                 len(candidates),
             )
 
     # ── Copeland winner (paper §2) ────────────────────────────────────────────
-    final_t = _TOURNAMENT_ROUNDS
+    final_t = TOURNAMENT_ROUNDS
     winner_idx = _copeland_winner(wm, final_t)
     best_prompt = candidates[winner_idx].text
 
     # ── Final score on held-out val split ─────────────────────────────────────
     score_after = await _score_prompt(
-        best_prompt, val_split[:_MAX_VAL_EXAMPLES], fast_llm, judge_llm
+        best_prompt, val_split[:MAX_VAL_EXAMPLES], fast_llm, judge_llm
     )
 
     # ── Stats ─────────────────────────────────────────────────────────────────
@@ -995,7 +777,7 @@ async def optimize_domain_prompt(
     _log.info(
         "PDO complete: %d candidates, %d rounds, win_rate=%.2f, score %.3f → %.3f",
         len(candidates),
-        _TOURNAMENT_ROUNDS,
+        TOURNAMENT_ROUNDS,
         win_rate,
         score_before,
         score_after,
@@ -1007,6 +789,6 @@ async def optimize_domain_prompt(
         "score_after": round(score_after, 4),
         "win_rate": win_rate,
         "candidates_tried": len(candidates),
-        "rounds_run": _TOURNAMENT_ROUNDS,
+        "rounds_run": TOURNAMENT_ROUNDS,
         "dataset_size": len(pairs),
     }

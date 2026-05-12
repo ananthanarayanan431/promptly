@@ -20,12 +20,11 @@ import logging
 import time
 from typing import Any
 
-from langchain_openai import ChatOpenAI
-
-from app.config.llm import get_llm_settings
 from app.core.cache import push_job_progress
 from app.graph.prompts import performance_gate_messages
 from app.graph.state import GraphState
+from app.llm import LLMClient
+from app.llm.pipeline import build_gate
 
 logger = logging.getLogger(__name__)
 
@@ -41,23 +40,21 @@ _DIMENSIONS = (
 )
 
 _loop_id: int | None = None
-_gate_model: ChatOpenAI | None = None
+_gate_model: LLMClient | None = None
 
 
-def _get_gate_model() -> ChatOpenAI:
-    """ChatOpenAI binds httpx to the running loop; Celery uses a new loop per task."""
+def _get_gate_model() -> LLMClient:
+    """LLMClient binds httpx to the running loop; Celery uses a new loop per task."""
     global _loop_id, _gate_model
     loop = asyncio.get_running_loop()
     lid = id(loop)
     if _loop_id != lid or _gate_model is None:
-        llm_settings = get_llm_settings()
         _loop_id = lid
-        _gate_model = ChatOpenAI(
-            model="openai/gpt-4o-mini",
-            openai_api_base="https://openrouter.ai/api/v1",
-            openai_api_key=llm_settings.OPENROUTER_API_KEY.get_secret_value(),
-        )
-    return _gate_model
+        _gate_model = build_gate()
+    model = _gate_model
+    if model is None:
+        raise RuntimeError("gate model failed to initialise")
+    return model
 
 
 _VALID_LABELS: frozenset[str] = frozenset({"strong", "weak", "missing"})

@@ -22,7 +22,6 @@ from typing import Any
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.graph import END, StateGraph
 
-from app.config.llm import get_llm_settings
 from app.graph.nodes.council_vote import council_vote_node
 from app.graph.nodes.critic import critic_node
 from app.graph.nodes.intent_classifier import intent_classifier_node
@@ -30,6 +29,7 @@ from app.graph.nodes.performance_gate import performance_gate_node
 from app.graph.nodes.quality_gate import quality_gate_node
 from app.graph.nodes.synthesize import synthesize_node
 from app.graph.state import GraphState
+from app.llm import get_llm_settings
 
 
 def _route_intent(state: GraphState) -> str:

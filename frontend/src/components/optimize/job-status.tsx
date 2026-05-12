@@ -35,14 +35,14 @@ export function JobStatus({ status }: { status: JobStatusResponse['status'] }) {
   const isActive = status === 'started';
 
   return (
-    <div style={{ background: '#1a1a1a', border: '1px solid rgba(124,92,255,0.25)', borderRadius: 12,
+    <div style={{ background: 'var(--surface)', border: '1px solid rgba(124,92,255,0.25)', borderRadius: 12,
       padding: '20px 20px 18px', fontFamily: 'var(--font-geist, ui-sans-serif)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7c5cff" strokeWidth="1.8"
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="1.8"
           style={{ animation: 'spin 1s linear infinite' }}>
           <path d="M21 12a9 9 0 11-6.219-8.56"/>
         </svg>
-        <span style={{ fontSize: 13.5, fontWeight: 500, color: '#ededed' }}>
+        <span style={{ fontSize: 13.5, fontWeight: 500, color: 'var(--text)' }}>
           {status === 'queued' ? 'Queued — waiting for a worker…' : 'Optimizing your prompt…'}
         </span>
       </div>
@@ -51,20 +51,20 @@ export function JobStatus({ status }: { status: JobStatusResponse['status'] }) {
         {ROUNDS.map((round, idx) => (
           <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
             <div style={{ flex: 1, padding: '12px 10px', borderRadius: 8, textAlign: 'center',
-              border: `1px solid ${isActive ? 'rgba(124,92,255,0.3)' : '#1f1f23'}`,
-              background: isActive ? 'rgba(124,92,255,0.06)' : 'rgba(255,255,255,0.02)',
-              color: isActive ? '#7c5cff' : '#5a5a60',
+              border: `1px solid ${isActive ? 'rgba(124,92,255,0.3)' : 'var(--border)'}`,
+              background: isActive ? 'var(--primary-soft)' : 'var(--surface-2)',
+              color: isActive ? 'var(--primary)' : 'var(--text-subtle)',
               display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
               {round.icon}
-              <div style={{ fontSize: 11.5, fontWeight: 600, color: isActive ? '#ededed' : '#5a5a60' }}>
+              <div style={{ fontSize: 11.5, fontWeight: 600, color: isActive ? 'var(--text)' : 'var(--text-subtle)' }}>
                 {round.label}
               </div>
-              <div style={{ fontSize: 10.5, color: '#5a5a60', lineHeight: 1.4, fontFamily: 'var(--font-geist-mono, monospace)' }}>
+              <div style={{ fontSize: 10.5, color: 'var(--text-subtle)', lineHeight: 1.4, fontFamily: 'var(--font-geist-mono, monospace)' }}>
                 {round.desc}
               </div>
             </div>
             {idx < ROUNDS.length - 1 && (
-              <div style={{ width: 12, height: 1, background: '#1f1f23', flexShrink: 0 }} />
+              <div style={{ width: 12, height: 1, background: 'var(--border)', flexShrink: 0 }} />
             )}
           </div>
         ))}
@@ -72,14 +72,14 @@ export function JobStatus({ status }: { status: JobStatusResponse['status'] }) {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {[1, 0.85, 0.7].map((w, i) => (
-          <div key={i} style={{ height: 10, borderRadius: 4, background: '#222226',
+          <div key={i} style={{ height: 10, borderRadius: 4, background: 'var(--surface-3)',
             width: `${w * 100}%`, animation: 'pulse 2s ease-in-out infinite' }} />
         ))}
-        <div style={{ height: 32, borderRadius: 6, background: '#222226', marginTop: 6,
+        <div style={{ height: 32, borderRadius: 6, background: 'var(--surface-3)', marginTop: 6,
           animation: 'pulse 2s ease-in-out infinite' }} />
       </div>
 
-      <p style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 11, color: '#5a5a60',
+      <p style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 11, color: 'var(--text-subtle)',
         textAlign: 'center', marginTop: 14 }}>
         Usually takes 20–40 seconds · Stay on this page or check back with your job ID
       </p>

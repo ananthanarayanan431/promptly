@@ -8,34 +8,29 @@ import uuid
 from typing import Any
 from uuid import UUID
 
-from langchain_openai import ChatOpenAI
 from openai import APIStatusError as OpenAIAPIError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config.llm import get_llm_settings
 from app.core.exceptions import GuardrailException, LLMException, NotFoundException
 from app.graph.nodes.guardrails import guardrails_node
 from app.graph.prompts import prompt_advisory_messages, prompt_health_score_messages
 from app.graph.state import GraphState
+from app.llm import LLMClient
+from app.llm.analysis import build_analyser
 from app.models.favorite_prompt import FavoritePrompt
 from app.models.prompt_version import PromptVersion
 from app.repositories.prompt_version_repo import PromptVersionRepository
 
 logger = logging.getLogger(__name__)
 
-_analyser: ChatOpenAI | None = None
+_analyser: LLMClient | None = None
 
 
-def _get_analyser() -> ChatOpenAI:
+def _get_analyser() -> LLMClient:
     global _analyser
     if _analyser is None:
-        llm_settings = get_llm_settings()
-        _analyser = ChatOpenAI(
-            model=llm_settings.DEFAULT_MODEL,
-            openai_api_base="https://openrouter.ai/api/v1",
-            openai_api_key=llm_settings.OPENROUTER_API_KEY.get_secret_value(),
-        )
+        _analyser = build_analyser()
     return _analyser
 
 

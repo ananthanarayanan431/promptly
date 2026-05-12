@@ -6,7 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from app.domain_prompt.models import DomainPromptStatus
+from app.domain_prompt.data.models import DomainPromptStatus
 
 
 class CreateDomainRequest(BaseModel):

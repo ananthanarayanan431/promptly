@@ -11,7 +11,7 @@ Adapted for domain prompt optimization:
   - Weak solver:  GPT-4o-mini with NO system prompt (raw capability, no domain guidance)
   - Strong solver: GPT-4o-mini with the user's base prompt as system prompt
   - Judge: GPT-4o scores both answers against the gold answer
-  - Acceptance: strong score − weak score ≥ WEAK_STRONG_GAP_THRESHOLD
+  - Acceptance: strong score − weak score ≥ GAP_THRESHOLD
 
   Questions where both solvers score equally don't test the value of the prompt — reject them.
   Questions the weak solver already answers correctly don't need prompt optimization — reject them.
@@ -36,75 +36,28 @@ import asyncio
 import io
 import json
 import logging
-import textwrap
 
-from langchain_openai import ChatOpenAI
 from pypdf import PdfReader
 
+from app.domain_prompt.constants.dataset_builder import (
+    GAP_THRESHOLD,
+    STRONG_MIN_SCORE,
+    WEAK_MAX_SCORE,
+)
+from app.domain_prompt.prompts.dataset_builder import (
+    CHALLENGER_SYSTEM,
+    FALLBACK_CHALLENGER_SYSTEM,
+    JUDGE_SYSTEM,
+)
+from app.llm import LLMClient
+from app.llm.dataset import (
+    build_challenger,
+    build_dataset_judge,
+    build_strong_solver,
+    build_weak_solver,
+)
+
 _log = logging.getLogger(__name__)
-
-# ── Acceptance thresholds (adapted from AutoData) ─────────────────────────────
-# AutoData uses: weak_avg ≤ 65%, strong_avg − weak_avg ≥ 20%
-# We use a stricter gap (30%) because our "weak" and "strong" differ only by system prompt,
-# not by model size — smaller gap would let trivially easy questions through.
-_WEAK_MAX_SCORE = 0.65  # weak solver must score AT or BELOW this
-_STRONG_MIN_SCORE = 0.5  # strong solver must score AT or ABOVE this
-_GAP_THRESHOLD = 0.30  # strong − weak gap must be at least this
-
-# ── LLM prompts ───────────────────────────────────────────────────────────────
-
-_CHALLENGER_SYSTEM = textwrap.dedent("""
-    You are a dataset generation expert. Your task: read the passage below and generate
-    5 high-quality question-answer pairs that test DEEP UNDERSTANDING of the content.
-
-    Mix question types across the 5 pairs:
-    - At least 1 FACTUAL: a specific fact, number, definition, or name from the passage
-    - At least 1 INFERENTIAL: requires combining multiple facts; answer not stated verbatim
-    - At least 1 APPLIED: "Given [situation from this domain], what should happen?"
-    - At least 1 that CHALLENGES a common misconception or tests an edge case
-
-    For each pair, also write a grading rubric: a list of 2–4 key points the ideal answer
-    must contain. The rubric is used by the judge to score answers WITHOUT seeing the gold answer.
-
-    Self-check before outputting:
-    - Could someone answer this question correctly without reading the passage?
-      If yes, make it more specific to the passage content.
-    - Is the answer unambiguously derivable from the passage? If not, drop it.
-
-    Output ONLY a valid JSON array of objects with keys:
-      "question" (string), "answer" (string), "rubric" (array of strings)
-    No preamble, no explanation, no markdown fences.
-""").strip()
-
-_JUDGE_SYSTEM = textwrap.dedent("""
-    You are an impartial evaluation judge. Score how well a model answer satisfies
-    the provided rubric for the question.
-
-    Scale:
-      0.0 = answer is wrong, irrelevant, or missing most rubric points
-      0.5 = answer is partially correct — covers some rubric points but misses key ones
-      1.0 = answer is fully correct and covers all rubric points
-
-    Output ONLY valid JSON: {"score": <0.0, 0.5, or 1.0>}
-    No explanation, no other keys, no markdown.
-""").strip()
-
-_FALLBACK_CHALLENGER_SYSTEM = textwrap.dedent("""
-    You are a dataset generation expert. Your task: read the passage below and generate
-    8 question-answer pairs that test understanding of the content.
-
-    Mix question types:
-    - 2 FACTUAL: specific facts, numbers, or definitions stated in the passage
-    - 2 INFERENTIAL: require reasoning across multiple facts; answer not stated verbatim
-    - 2 APPLIED: "Given [scenario], what should happen?" based on principles in the passage
-    - 2 ADVERSARIAL: test edge cases, negations, or common misconceptions about the content
-
-    Rules:
-    - Every question must be answerable from the passage alone.
-    - Answers should be concise (1–3 sentences).
-    - Output ONLY a valid JSON array of objects with keys "question" and "answer".
-    - No preamble, no explanation, no markdown fences.
-""").strip()
 
 
 # ── Text processing ───────────────────────────────────────────────────────────
@@ -237,7 +190,7 @@ def _json_loads_tolerant(raw: str) -> object:
 # ── Solver & judge calls ──────────────────────────────────────────────────────
 
 
-async def _get_answer(llm: ChatOpenAI, system: str, question: str) -> str:
+async def _get_answer(llm: LLMClient, system: str, question: str) -> str:
     try:
         response = await llm.ainvoke(
             [
@@ -252,7 +205,7 @@ async def _get_answer(llm: ChatOpenAI, system: str, question: str) -> str:
 
 
 async def _judge_answer(
-    judge_llm: ChatOpenAI,
+    judge_llm: LLMClient,
     question: str,
     rubric: list[str],
     answer: str,
@@ -263,7 +216,7 @@ async def _judge_answer(
     try:
         response = await judge_llm.ainvoke(
             [
-                {"role": "system", "content": _JUDGE_SYSTEM},
+                {"role": "system", "content": JUDGE_SYSTEM},
                 {
                     "role": "user",
                     "content": (
@@ -289,10 +242,10 @@ async def _judge_answer(
 async def _process_chunk_with_filtering(
     chunk: str,
     base_prompt: str,
-    challenger_llm: ChatOpenAI,
-    weak_llm: ChatOpenAI,
-    strong_llm: ChatOpenAI,
-    judge_llm: ChatOpenAI,
+    challenger_llm: LLMClient,
+    weak_llm: LLMClient,
+    strong_llm: LLMClient,
+    judge_llm: LLMClient,
     weak_system: str,
     strong_system: str,
 ) -> tuple[list[dict[str, str]], dict[str, int]]:
@@ -306,7 +259,7 @@ async def _process_chunk_with_filtering(
     try:
         response = await challenger_llm.ainvoke(
             [
-                {"role": "system", "content": _CHALLENGER_SYSTEM},
+                {"role": "system", "content": CHALLENGER_SYSTEM},
                 {"role": "user", "content": f"Passage:\n\n{chunk}"},
             ]
         )
@@ -351,15 +304,15 @@ async def _process_chunk_with_filtering(
         )
 
         # AutoData acceptance criteria (adapted)
-        if weak_score > _WEAK_MAX_SCORE:
+        if weak_score > WEAK_MAX_SCORE:
             stats["too_easy"] += 1
             _log.debug("Rejected (too easy — weak scored %.2f)", weak_score)
             return None
-        if strong_score < _STRONG_MIN_SCORE:
+        if strong_score < STRONG_MIN_SCORE:
             stats["too_hard"] += 1
             _log.debug("Rejected (too hard — strong scored %.2f)", strong_score)
             return None
-        if gap < _GAP_THRESHOLD:
+        if gap < GAP_THRESHOLD:
             stats["quality_fail"] += 1
             _log.debug("Rejected (gap too small — %.2f)", gap)
             return None
@@ -374,13 +327,13 @@ async def _process_chunk_with_filtering(
 
 async def _process_chunk_fallback(
     chunk: str,
-    challenger_llm: ChatOpenAI,
+    challenger_llm: LLMClient,
 ) -> list[dict[str, str]]:
     """Fallback for augment task (no base_prompt): generate without filtering."""
     try:
         response = await challenger_llm.ainvoke(
             [
-                {"role": "system", "content": _FALLBACK_CHALLENGER_SYSTEM},
+                {"role": "system", "content": FALLBACK_CHALLENGER_SYSTEM},
                 {"role": "user", "content": f"Passage:\n\n{chunk}"},
             ]
         )
@@ -410,13 +363,7 @@ async def generate_qa_pairs(
     Without base_prompt (augment_domain_dataset task):
       Falls back to diversity-stratified generation without filtering.
     """
-    challenger_llm = ChatOpenAI(
-        model="openai/gpt-4o-mini",
-        base_url="https://openrouter.ai/api/v1",
-        openai_api_key=api_key,
-        temperature=0.6,
-        max_tokens=2048,
-    )
+    challenger_llm = build_challenger(api_key)
 
     chunks = _chunk_text(text, max_chars=3000)
     # With filtering: each chunk runs 5 candidates × 3 LLM calls (weak+strong+judge×2) = 15 calls
@@ -448,27 +395,9 @@ async def generate_qa_pairs(
         return all_pairs
 
     # Main path: AutoData weak-strong filtering
-    weak_llm = ChatOpenAI(
-        model="openai/gpt-4o-mini",
-        base_url="https://openrouter.ai/api/v1",
-        openai_api_key=api_key,
-        temperature=0.0,
-        max_tokens=512,
-    )
-    strong_llm = ChatOpenAI(
-        model="openai/gpt-4o-mini",
-        base_url="https://openrouter.ai/api/v1",
-        openai_api_key=api_key,
-        temperature=0.0,
-        max_tokens=512,
-    )
-    judge_llm = ChatOpenAI(
-        model="openai/gpt-4o",
-        base_url="https://openrouter.ai/api/v1",
-        openai_api_key=api_key,
-        temperature=0.0,
-        max_tokens=64,
-    )
+    weak_llm = build_weak_solver(api_key)
+    strong_llm = build_strong_solver(api_key)
+    judge_llm = build_dataset_judge(api_key)
 
     # Weak solver: no system prompt (plain model capability)
     weak_system = "You are a helpful assistant. Answer the question as best you can."

@@ -6,7 +6,7 @@ from typing import Any
 from sqlalchemy import select, update
 from sqlalchemy.orm import selectinload
 
-from app.domain_prompt.models import (
+from app.domain_prompt.data.models import (
     DomainDataset,
     DomainOptimizationRun,
     DomainPrompt,

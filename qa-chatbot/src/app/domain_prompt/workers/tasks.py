@@ -38,18 +38,18 @@ def prepare_domain_dataset(
         from uuid import UUID
 
         from app.config.env import get_minio_settings
-        from app.config.llm import get_llm_settings
         from app.db.redis import reset_connection_pool
         from app.db.session import AsyncSessionLocal, dispose_async_engine
-        from app.domain_prompt.cache import set_dp_job_result, set_dp_job_status
-        from app.domain_prompt.dataset_builder import (
+        from app.domain_prompt.core.dataset_builder import (
             extract_text_from_pdf,
             generate_qa_pairs,
             pairs_to_jsonl,
         )
-        from app.domain_prompt.models import DomainPromptStatus
-        from app.domain_prompt.repository import DomainPromptRepository
-        from app.domain_prompt.storage import download_bytes, object_key, upload_text
+        from app.domain_prompt.data.models import DomainPromptStatus
+        from app.domain_prompt.data.repository import DomainPromptRepository
+        from app.domain_prompt.infrastructure.cache import set_dp_job_result, set_dp_job_status
+        from app.domain_prompt.infrastructure.storage import download_bytes, object_key, upload_text
+        from app.llm import get_llm_settings
 
         reset_connection_pool()
         await dispose_async_engine()
@@ -136,7 +136,6 @@ def prepare_domain_dataset(
             await set_dp_job_result(job_id, {"error": "Internal server error"})
 
             if is_terminal:
-                # Refund only on terminal failure — transient failures may succeed on retry
                 try:
                     from uuid import UUID as _UUID
 
@@ -171,21 +170,25 @@ def run_domain_optimization(
 ) -> None:
     async def _run() -> None:
         import json
+        from typing import Any, cast
         from uuid import UUID
 
         from app.config.env import get_minio_settings
-        from app.config.llm import get_llm_settings
         from app.db.redis import reset_connection_pool
         from app.db.session import AsyncSessionLocal, dispose_async_engine
-        from app.domain_prompt.cache import (
+        from app.domain_prompt.core.optimizer import optimize_domain_prompt
+        from app.domain_prompt.data.models import DomainPromptStatus
+        from app.domain_prompt.data.repository import (
+            DomainOptimizationRunRepository,
+            DomainPromptRepository,
+        )
+        from app.domain_prompt.infrastructure.cache import (
             clear_dp_tournament_state,
             set_dp_job_result,
             set_dp_job_status,
         )
-        from app.domain_prompt.models import DomainPromptStatus
-        from app.domain_prompt.optimizer import optimize_domain_prompt
-        from app.domain_prompt.repository import DomainPromptRepository
-        from app.domain_prompt.storage import download_text, object_key, upload_text
+        from app.domain_prompt.infrastructure.storage import download_text, object_key, upload_text
+        from app.llm import get_llm_settings
 
         reset_connection_pool()
         await dispose_async_engine()
@@ -202,15 +205,17 @@ def run_domain_optimization(
             # Clear any stale tournament state from a previous run before starting
             await clear_dp_tournament_state(domain_id)
 
-            # MinIO work outside the DB session to avoid greenlet conflict
             dataset_key = object_key(user_id, domain_id, "dataset.jsonl")
             dataset_jsonl = download_text(bucket, dataset_key)
 
-            result = await optimize_domain_prompt(
-                base_prompt=prompt_to_optimize,
-                dataset_jsonl=dataset_jsonl,
-                api_key=api_key,
-                domain_id=domain_id,
+            result: dict[str, Any] = cast(
+                dict[str, Any],
+                await optimize_domain_prompt(
+                    base_prompt=prompt_to_optimize,
+                    dataset_jsonl=dataset_jsonl,
+                    api_key=api_key,
+                    domain_id=domain_id,
+                ),
             )
 
             result_key = object_key(user_id, domain_id, "result.json")
@@ -223,22 +228,26 @@ def run_domain_optimization(
                     raise ValueError(f"Domain {domain_id} not found")
                 await repo.set_status(domain, DomainPromptStatus.completed)
 
-                from app.domain_prompt.repository import DomainOptimizationRunRepository
-
                 run_repo = DomainOptimizationRunRepository(db)
                 dataset_size: int | None = None
                 if domain.dataset is not None:
                     dataset_size = domain.dataset.row_count
+                score_before: float = float(result.get("score_before", 0.0))
+                score_after: float = float(result.get("score_after", 0.0))
+                win_rate: float = float(result.get("win_rate", 0.0))
+                candidates_tried: int = int(result.get("candidates_tried", 1))
+                rounds_run: int = int(result.get("rounds_run", 40))
+                optimized_prompt: str = str(result.get("optimized_prompt", prompt_to_optimize))
                 await run_repo.create_run(
                     domain_id=domain.id,
                     domain_name=domain.name,
                     prompt_input=prompt_to_optimize,
-                    optimized_prompt=str(result.get("optimized_prompt", prompt_to_optimize)),
-                    score_before=float(result.get("score_before") or 0.0),
-                    score_after=float(result.get("score_after") or 0.0),
-                    win_rate=float(result.get("win_rate") or 0.0),
-                    candidates_tried=int(result.get("candidates_tried") or 1),
-                    rounds_run=int(result.get("rounds_run") or 40),
+                    optimized_prompt=optimized_prompt,
+                    score_before=score_before,
+                    score_after=score_after,
+                    win_rate=win_rate,
+                    candidates_tried=candidates_tried,
+                    rounds_run=rounds_run,
                     dataset_size=dataset_size,
                 )
                 await db.commit()
@@ -248,11 +257,11 @@ def run_domain_optimization(
                 job_id,
                 {
                     "domain_id": domain_id,
-                    "optimized_prompt": str(result.get("optimized_prompt", prompt_to_optimize)),
-                    "score_before": float(result.get("score_before") or 0.0),
-                    "score_after": float(result.get("score_after") or 0.0),
-                    "win_rate": float(result.get("win_rate") or 0.0),
-                    "candidates_tried": int(result.get("candidates_tried") or 1),
+                    "optimized_prompt": optimized_prompt,
+                    "score_before": score_before,
+                    "score_after": score_after,
+                    "win_rate": win_rate,
+                    "candidates_tried": candidates_tried,
                 },
             )
 
@@ -270,8 +279,6 @@ def run_domain_optimization(
                         error_message=error_str,
                     )
                     # Always record the failed attempt in history regardless of retries
-                    from app.domain_prompt.repository import DomainOptimizationRunRepository
-
                     run_repo = DomainOptimizationRunRepository(db)
                     _dataset_size: int | None = None
                     if domain.dataset is not None:
@@ -290,7 +297,6 @@ def run_domain_optimization(
             await set_dp_job_result(job_id, {"error": "Internal server error"})
 
             if is_terminal:
-                # Refund only on terminal failure — transient failures may succeed on retry
                 try:
                     from uuid import UUID as _UUID
 
@@ -333,14 +339,14 @@ def augment_domain_dataset(
         from uuid import UUID
 
         from app.config.env import get_minio_settings
-        from app.config.llm import get_llm_settings
         from app.db.redis import reset_connection_pool
         from app.db.session import AsyncSessionLocal, dispose_async_engine
-        from app.domain_prompt.cache import set_dp_job_result, set_dp_job_status
-        from app.domain_prompt.dataset_builder import generate_qa_pairs, pairs_to_jsonl
-        from app.domain_prompt.models import DomainPromptStatus
-        from app.domain_prompt.repository import DomainPromptRepository
-        from app.domain_prompt.storage import download_text, object_key, upload_text
+        from app.domain_prompt.core.dataset_builder import generate_qa_pairs, pairs_to_jsonl
+        from app.domain_prompt.data.models import DomainPromptStatus
+        from app.domain_prompt.data.repository import DomainPromptRepository
+        from app.domain_prompt.infrastructure.cache import set_dp_job_result, set_dp_job_status
+        from app.domain_prompt.infrastructure.storage import download_text, object_key, upload_text
+        from app.llm import get_llm_settings
 
         reset_connection_pool()
         await dispose_async_engine()

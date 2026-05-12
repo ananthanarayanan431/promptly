@@ -19,38 +19,28 @@ import time
 from collections import Counter
 from typing import Any
 
-from langchain_openai import ChatOpenAI
-
-from app.config.llm import get_llm_settings
 from app.core.cache import push_job_progress
 from app.graph.prompts import critic_messages
 from app.graph.state import GraphState
+from app.llm import LLMClient
+from app.llm.pipeline import build_critic_models
 
 _critic_loop_id: int | None = None
-_critic_models: list[ChatOpenAI] | None = None
+_critic_models: list[LLMClient] | None = None
 
 
-def _build_critic_models() -> list[ChatOpenAI]:
-    llm_settings = get_llm_settings()
-    return [
-        ChatOpenAI(
-            model=m,
-            openai_api_base="https://openrouter.ai/api/v1",
-            openai_api_key=llm_settings.OPENROUTER_API_KEY.get_secret_value(),
-        )
-        for m in llm_settings.COUNCIL_MODELS
-    ]
-
-
-def _get_critic_models() -> list[ChatOpenAI]:
+def _get_critic_models() -> list[LLMClient]:
     """Models bind httpx to the running loop; Celery uses a new loop per task."""
     global _critic_loop_id, _critic_models
     loop = asyncio.get_running_loop()
     lid = id(loop)
     if _critic_loop_id != lid or _critic_models is None:
         _critic_loop_id = lid
-        _critic_models = _build_critic_models()
-    return _critic_models
+        _critic_models = build_critic_models()
+    models = _critic_models
+    if models is None:
+        raise RuntimeError("critic models failed to initialise")
+    return models
 
 
 def _parse_critique(raw: str) -> dict[str, Any]:
@@ -106,7 +96,7 @@ async def critic_node(state: GraphState) -> dict[str, Any]:
 
     all_labels = ["A", "B", "C", "D"][: len(proposals)]
 
-    async def critique(model: ChatOpenAI, reviewer_idx: int) -> dict[str, Any]:
+    async def critique(model: LLMClient, reviewer_idx: int) -> dict[str, Any]:
         # Build (label, text) pairs for every proposal EXCEPT the reviewer's own.
         # Labels stay consistent with the full set so the synthesizer can cross-reference.
         others = [

@@ -15,12 +15,11 @@ import asyncio
 import time
 from typing import Any
 
-from langchain_openai import ChatOpenAI
-
-from app.config.llm import get_llm_settings
 from app.core.cache import push_job_progress
 from app.graph.prompts import intent_classifier_messages
 from app.graph.state import GraphState
+from app.llm import LLMClient
+from app.llm.pipeline import build_classifier
 
 _REJECTION_IRRELEVANT = (
     "Your input doesn't look like an existing prompt to optimize.\n\n"
@@ -32,25 +31,21 @@ _REJECTION_IRRELEVANT = (
 )
 
 _loop_id: int | None = None
-_classifier: ChatOpenAI | None = None
+_classifier: LLMClient | None = None
 
 
-def _get_classifier() -> ChatOpenAI:
-    """ChatOpenAI binds httpx to the running loop; Celery uses a new loop per task."""
+def _get_classifier() -> LLMClient:
+    """LLMClient binds httpx to the running loop; Celery uses a new loop per task."""
     global _loop_id, _classifier
     loop = asyncio.get_running_loop()
     lid = id(loop)
     if _loop_id != lid or _classifier is None:
-        llm_settings = get_llm_settings()
         _loop_id = lid
-        _classifier = ChatOpenAI(
-            model=llm_settings.DEFAULT_MODEL,
-            openai_api_base="https://openrouter.ai/api/v1",
-            openai_api_key=llm_settings.OPENROUTER_API_KEY.get_secret_value(),
-            max_tokens=5,
-            temperature=0,
-        )
-    return _classifier
+        _classifier = build_classifier()
+    model = _classifier
+    if model is None:
+        raise RuntimeError("classifier failed to initialise")
+    return model
 
 
 async def intent_classifier_node(state: GraphState) -> dict[str, Any]:

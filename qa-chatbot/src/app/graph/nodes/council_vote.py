@@ -16,40 +16,30 @@ import logging
 import time
 from typing import Any
 
-from langchain_openai import ChatOpenAI
-
-from app.config.llm import get_llm_settings
 from app.core.cache import push_job_progress
 from app.graph.prompts import category_guidance_block, council_optimizer_messages
 from app.graph.state import GraphState
+from app.llm import LLMClient
+from app.llm.pipeline import build_council_models
 
 logger = logging.getLogger(__name__)
 
 _council_loop_id: int | None = None
-_council_models: list[ChatOpenAI] | None = None
+_council_models: list[LLMClient] | None = None
 
 
-def _build_models() -> list[ChatOpenAI]:
-    llm_settings = get_llm_settings()
-    return [
-        ChatOpenAI(
-            model=m,
-            openai_api_base="https://openrouter.ai/api/v1",
-            openai_api_key=llm_settings.OPENROUTER_API_KEY.get_secret_value(),
-        )
-        for m in llm_settings.COUNCIL_MODELS
-    ]
-
-
-def _get_council_models() -> list[ChatOpenAI]:
+def _get_council_models() -> list[LLMClient]:
     """Models bind httpx to the running loop; Celery uses a new loop per task."""
     global _council_loop_id, _council_models
     loop = asyncio.get_running_loop()
     lid = id(loop)
     if _council_loop_id != lid or _council_models is None:
         _council_loop_id = lid
-        _council_models = _build_models()
-    return _council_models
+        _council_models = build_council_models()
+    models = _council_models
+    if models is None:
+        raise RuntimeError("council models failed to initialise")
+    return models
 
 
 def _extract_quality_gaps(state: GraphState) -> list[str]:
@@ -105,7 +95,7 @@ async def council_vote_node(state: GraphState) -> dict[str, Any]:
     done_count = [0]
     lock = asyncio.Lock()
 
-    async def optimize(model: ChatOpenAI) -> dict[str, Any]:
+    async def optimize(model: LLMClient) -> dict[str, Any]:
         messages = council_optimizer_messages(
             raw_prompt=raw_prompt,
             feedback=feedback,
