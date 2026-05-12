@@ -11,6 +11,7 @@ from app.config.database import get_database_settings
 # Import all models so they are registered with Base.metadata before autogenerate
 from app.domain_prompt.data.models import DomainDataset, DomainPrompt  # noqa: F401
 from app.models.base import Base
+from app.prompt_bridge.data.models import PromptMapping, PromptPair, TransferJob  # noqa: F401
 
 # this is the Alembic Config object
 config = context.config
