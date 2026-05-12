@@ -14,6 +14,7 @@ class AppSettings(BaseSettings):
     APP_NAME: str = "qa-chatbot"
     ENVIRONMENT: str = "development"
     DEBUG: bool = False
+    PRODUCTION_APPLICATION: bool = False
     API_V1_PREFIX: str = "/api/v1"
     CORS_ORIGIN: list[str] = ["http://localhost:3000", "*"]
     MAX_REQUEST_BODY_BYTES: int = 100 * 1024 * 1024  # 100 MB (PDF uploads)
