@@ -127,19 +127,54 @@ function ModelPicker({ value, onChange, side, excludeId, models }: {
   models: ModelDef[];
 }) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
   const m = findModel(value, models);
   const ref = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+        setSearch('');
+      }
     };
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
   }, []);
 
+  // Auto-focus search when dropdown opens
+  useEffect(() => {
+    if (open) setTimeout(() => searchRef.current?.focus(), 30);
+    else setSearch('');
+  }, [open]);
+
+  const q = search.toLowerCase();
+  const filtered = q
+    ? models.filter(o => o.id.toLowerCase().includes(q) || o.label.toLowerCase().includes(q) || o.vendor.toLowerCase().includes(q))
+    : models;
+
+  // Group by vendor, preserving the sort order from the API
+  const groups: { vendor: string; hue: string; items: ModelDef[] }[] = [];
+  for (const opt of filtered) {
+    const last = groups[groups.length - 1];
+    if (last && last.vendor === opt.vendor) {
+      last.items.push(opt);
+    } else {
+      groups.push({ vendor: opt.vendor, hue: opt.hue, items: [opt] });
+    }
+  }
+
+  function pick(opt: ModelDef) {
+    if (opt.id === excludeId) return;
+    onChange(opt.id);
+    setOpen(false);
+    setSearch('');
+  }
+
   return (
     <div ref={ref} style={{ position: 'relative' }}>
+      {/* Trigger button */}
       <button
         onClick={() => setOpen(o => !o)}
         style={{
@@ -155,57 +190,145 @@ function ModelPicker({ value, onChange, side, excludeId, models }: {
           <div style={{ fontSize: 11, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '.08em', fontWeight: 600 }}>
             {side === 'source' ? 'From' : 'To'}
           </div>
-          <div style={{ fontSize: 14.5, fontWeight: 600, marginTop: 1, color: 'var(--text)' }}>{m.label}</div>
+          <div style={{ fontSize: 14.5, fontWeight: 600, marginTop: 1, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.label}</div>
           <div style={{ fontSize: 10.5, color: 'var(--text-subtle)', fontFamily: 'var(--font-geist-mono, monospace)' }}>{m.vendor}</div>
         </div>
-        <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="var(--text-subtle)" strokeWidth={2} strokeLinecap="round">
+        <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="var(--text-subtle)" strokeWidth={2} strokeLinecap="round"
+          style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .15s ease', flexShrink: 0 }}>
           <path d="M6 9l6 6 6-6" />
         </svg>
       </button>
+
       {open && (
         <div style={{
-          position: 'absolute', top: 'calc(100% + 6px)', left: 0, width: '100%', minWidth: 280,
-          zIndex: 30, padding: 6,
+          position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0, minWidth: 300,
+          zIndex: 40,
           background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12,
-          boxShadow: '0 12px 28px rgba(15,15,30,.08), 0 4px 8px rgba(15,15,30,.04)',
-          maxHeight: 340, overflowY: 'auto',
-          animation: 'bwFadeIn .15s ease both',
+          boxShadow: '0 16px 36px rgba(15,15,30,.12), 0 4px 10px rgba(15,15,30,.06)',
+          display: 'flex', flexDirection: 'column',
+          maxHeight: 400, overflow: 'hidden',
+          animation: 'bwFadeIn .12s ease both',
         }}>
-          {models.map(opt => {
-            const disabled = opt.id === excludeId;
-            const selected = opt.id === value;
-            return (
-              <button
-                key={opt.id}
-                onClick={() => { if (!disabled) { onChange(opt.id); setOpen(false); } }}
-                disabled={disabled}
+          {/* Search bar */}
+          <div style={{
+            padding: '8px 8px 6px', borderBottom: '1px solid var(--border)', flexShrink: 0,
+          }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              background: 'var(--surface-2)', borderRadius: 8, padding: '6px 10px',
+              border: '1px solid var(--border)',
+            }}>
+              <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="var(--text-subtle)" strokeWidth={2.2} strokeLinecap="round" style={{ flexShrink: 0 }}>
+                <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
+              </svg>
+              <input
+                ref={searchRef}
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search models…"
                 style={{
-                  width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-                  padding: '9px 10px', borderRadius: 6, border: 0,
-                  background: selected ? 'var(--surface-2)' : 'transparent',
-                  textAlign: 'left', opacity: disabled ? .4 : 1, cursor: disabled ? 'not-allowed' : 'pointer',
-                  transition: 'background 100ms',
+                  flex: 1, border: 'none', outline: 'none', background: 'transparent',
+                  fontSize: 12.5, color: 'var(--text)', fontFamily: 'var(--font-geist-mono, monospace)',
                 }}
-                onMouseEnter={e => { if (!disabled) (e.currentTarget as HTMLButtonElement).style.background = 'var(--surface-2)'; }}
-                onMouseLeave={e => { if (!disabled) (e.currentTarget as HTMLButtonElement).style.background = selected ? 'var(--surface-2)' : 'transparent'; }}
-              >
-                <VendorDot hue={opt.hue} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)' }}>{opt.label}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-subtle)' }}>{opt.vendor}</div>
-                </div>
-                {selected && (
-                  <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth={2.5} strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
-                )}
-                {disabled && (
+              />
+              {search && (
+                <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: 'var(--text-subtle)', lineHeight: 1 }}>
+                  <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Grouped list */}
+          <div style={{ overflowY: 'auto', flex: 1, padding: '4px 6px 6px' }}>
+            {groups.length === 0 ? (
+              <div style={{ padding: '20px 12px', textAlign: 'center', color: 'var(--text-subtle)', fontSize: 12.5 }}>
+                No models match &ldquo;{search}&rdquo;
+              </div>
+            ) : groups.map(group => (
+              <div key={group.vendor}>
+                {/* Group header */}
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 7,
+                  padding: '8px 8px 4px', position: 'sticky', top: 0,
+                  background: 'var(--surface)',
+                }}>
+                  <VendorDot hue={group.hue} size={7} />
                   <span style={{
-                    fontSize: 9.5, padding: '2px 6px', borderRadius: 4,
-                    border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text-subtle)',
-                  }}>in use</span>
-                )}
-              </button>
-            );
-          })}
+                    fontSize: 10, fontWeight: 700, color: 'var(--text-subtle)',
+                    textTransform: 'uppercase', letterSpacing: '.09em',
+                    fontFamily: 'var(--font-geist-mono, monospace)',
+                  }}>
+                    {group.vendor}
+                  </span>
+                  <span style={{ fontSize: 9.5, color: 'var(--text-subtle)', opacity: 0.6, fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                    {group.items.length}
+                  </span>
+                </div>
+
+                {/* Models in group */}
+                {group.items.map(opt => {
+                  const disabled = opt.id === excludeId;
+                  const selected = opt.id === value;
+                  return (
+                    <button
+                      key={opt.id}
+                      onClick={() => pick(opt)}
+                      disabled={disabled}
+                      style={{
+                        width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                        padding: '7px 8px 7px 22px', borderRadius: 7, border: 0,
+                        background: selected ? 'var(--primary-soft)' : 'transparent',
+                        textAlign: 'left', opacity: disabled ? .35 : 1,
+                        cursor: disabled ? 'not-allowed' : 'pointer',
+                        transition: 'background 80ms',
+                      }}
+                      onMouseEnter={e => { if (!disabled && !selected) (e.currentTarget as HTMLButtonElement).style.background = 'var(--surface-2)'; }}
+                      onMouseLeave={e => { if (!disabled) (e.currentTarget as HTMLButtonElement).style.background = selected ? 'var(--primary-soft)' : 'transparent'; }}
+                    >
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{
+                          fontSize: 12.5, fontWeight: selected ? 600 : 400,
+                          color: selected ? 'var(--primary)' : 'var(--text)',
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        }}>
+                          {opt.label}
+                        </div>
+                        <div style={{
+                          fontSize: 10.5, color: 'var(--text-subtle)',
+                          fontFamily: 'var(--font-geist-mono, monospace)',
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        }}>
+                          {opt.id}
+                        </div>
+                      </div>
+                      {selected && (
+                        <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth={2.5} strokeLinecap="round" style={{ flexShrink: 0 }}>
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      )}
+                      {disabled && (
+                        <span style={{
+                          fontSize: 9, padding: '2px 5px', borderRadius: 4, flexShrink: 0,
+                          border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text-subtle)',
+                        }}>in use</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+
+          {/* Footer: result count */}
+          {search && filtered.length > 0 && (
+            <div style={{
+              padding: '5px 14px', borderTop: '1px solid var(--border)', flexShrink: 0,
+              fontSize: 10.5, color: 'var(--text-subtle)', fontFamily: 'var(--font-geist-mono, monospace)',
+            }}>
+              {filtered.length} result{filtered.length !== 1 ? 's' : ''}
+            </div>
+          )}
         </div>
       )}
     </div>
