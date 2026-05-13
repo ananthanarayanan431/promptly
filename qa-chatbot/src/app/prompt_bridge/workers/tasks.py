@@ -62,6 +62,7 @@ def run_prompt_transfer(
             TransferJobRepository,
         )
         from app.prompt_bridge.infrastructure.cache import (
+            is_pb_job_cancelled,
             set_pb_job_progress,
             set_pb_job_result,
             set_pb_job_status,
@@ -159,6 +160,9 @@ def run_prompt_transfer(
                     progress_cb=_source_progress,
                 )
 
+                if await is_pb_job_cancelled(job_id):
+                    raise InterruptedError("Job cancelled by user after source calibration.")
+
                 await set_pb_job_progress(
                     job_id, {"stage": "calibrating_target", "step": 0, "total": 1}
                 )
@@ -184,6 +188,9 @@ def run_prompt_transfer(
                     reflection_llm=reflection_llm,
                     progress_cb=_target_progress,
                 )
+
+                if await is_pb_job_cancelled(job_id):
+                    raise InterruptedError("Job cancelled by user after target calibration.")
 
                 # Extract mapping
                 await set_pb_job_status(job_id, "extracting_mapping")
@@ -230,6 +237,9 @@ def run_prompt_transfer(
                     await db.commit()
 
             # ── Finalise job ───────────────────────────────────────────────
+            if await is_pb_job_cancelled(job_id):
+                raise InterruptedError("Job cancelled by user before final adapt.")
+
             await set_pb_job_status(job_id, "adapting")
             await set_pb_job_progress(job_id, {"stage": "adapting"})
 

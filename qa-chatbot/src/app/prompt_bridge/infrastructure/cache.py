@@ -87,3 +87,31 @@ async def get_pb_job_progress(job_id: str) -> dict[str, Any] | None:
     if raw is None:
         return None
     return dict(json.loads(raw))
+
+
+async def set_pb_job_cancel(job_id: str) -> None:
+    """Signal the worker to stop at the next inter-stage checkpoint."""
+    redis = await get_redis_client()
+    await redis.set(f"{_key(job_id)}:cancel", "1", ex=3600)
+
+
+async def is_pb_job_cancelled(job_id: str) -> bool:
+    redis = await get_redis_client()
+    val: str | None = await redis.get(f"{_key(job_id)}:cancel")
+    return val == "1"
+
+
+async def set_pb_celery_task_id(job_id: str, celery_task_id: str) -> None:
+    """Store the Celery task ID so cancel can revoke it from the broker queue."""
+    redis = await get_redis_client()
+    await redis.set(
+        f"{_key(job_id)}:celery_task_id",
+        celery_task_id,
+        ex=_redis_settings.REDIS_TTL_SECONDS,
+    )
+
+
+async def get_pb_celery_task_id(job_id: str) -> str | None:
+    redis = await get_redis_client()
+    result: str | None = await redis.get(f"{_key(job_id)}:celery_task_id")
+    return result

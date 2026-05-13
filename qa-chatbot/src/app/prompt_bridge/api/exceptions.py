@@ -39,3 +39,11 @@ class PBSameModelException(HTTPException):
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="source_model and target_model must be different.",
         )
+
+
+class PBJobNotCancellableException(HTTPException):
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Job cannot be cancelled — it is already completed, failed, or cancelled.",
+        )

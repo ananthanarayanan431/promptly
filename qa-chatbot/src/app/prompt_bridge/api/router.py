@@ -1,12 +1,13 @@
 """
 PromptBridge API routes.
 
-POST  /prompt-bridge/transfer          Submit a transfer job (5 credits full, 1 credit reuse)
-GET   /prompt-bridge/jobs/{job_id}     Poll job status + result
-GET   /prompt-bridge/jobs              List user's transfer jobs
-GET   /prompt-bridge/mappings          List user's saved model-pair mappings
-GET   /prompt-bridge/mappings/{id}     Get mapping detail with prompt pairs
-DELETE /prompt-bridge/mappings/{id}    Delete a mapping
+POST   /prompt-bridge/transfer            Submit a transfer job (5 credits full, 1 credit reuse)
+GET    /prompt-bridge/jobs/{job_id}       Poll job status + result
+POST   /prompt-bridge/jobs/{job_id}/cancel Cancel a queued/running job + refund credits
+GET    /prompt-bridge/jobs                List user's transfer jobs
+GET    /prompt-bridge/mappings            List user's saved model-pair mappings
+GET    /prompt-bridge/mappings/{id}       Get mapping detail with prompt pairs
+DELETE /prompt-bridge/mappings/{id}       Delete a mapping + all its pairs
 """
 
 from __future__ import annotations
@@ -23,11 +24,14 @@ from app.dependencies import get_current_user, get_db
 from app.models.user import User
 from app.prompt_bridge.api.exceptions import (
     PBInsufficientCreditsException,
+    PBJobNotCancellableException,
     PBJobNotFoundException,
     PBMappingNotFoundException,
     PBSameModelException,
 )
 from app.prompt_bridge.api.schemas import (
+    CancelJobResponse,
+    DeleteJobResponse,
     DeleteMappingResponse,
     MappingListResponse,
     PromptMappingDetailResponse,
@@ -42,15 +46,20 @@ from app.prompt_bridge.api.schemas import (
 from app.prompt_bridge.data.models import TransferJob, TransferJobStatus
 from app.prompt_bridge.data.repository import PromptMappingRepository, TransferJobRepository
 from app.prompt_bridge.infrastructure.cache import (
+    get_pb_celery_task_id,
     get_pb_job_owner,
     get_pb_job_progress,
     get_pb_job_result,
     get_pb_job_status,
+    set_pb_celery_task_id,
+    set_pb_job_cancel,
     set_pb_job_owner,
+    set_pb_job_result,
     set_pb_job_status,
 )
 from app.prompt_bridge.workers.tasks import run_prompt_transfer
 from app.repositories.user_repo import UserRepository
+from app.workers.celery_app import celery_app
 
 router = APIRouter(prefix="/prompt-bridge", tags=["prompt-bridge"])
 
@@ -103,6 +112,8 @@ async def submit_transfer(
     if not deducted:
         raise PBInsufficientCreditsException(required=cost)
 
+    job_id = str(uuid.uuid4())
+
     job_repo = TransferJobRepository(db)
     job = await job_repo.create(
         user_id=current_user.id,
@@ -113,14 +124,13 @@ async def submit_transfer(
         mapping_id=existing_mapping.id if existing_mapping else None,
         reused_mapping=reused,
         credits_charged=cost,
+        redis_job_id=job_id,
     )
     await db.commit()
-
-    job_id = str(uuid.uuid4())
     await set_pb_job_status(job_id, "queued")
     await set_pb_job_owner(job_id, str(current_user.id))
 
-    run_prompt_transfer.apply_async(
+    celery_result = run_prompt_transfer.apply_async(
         kwargs={
             "job_id": job_id,
             "transfer_job_id": str(job.id),
@@ -131,6 +141,7 @@ async def submit_transfer(
             "existing_mapping_id": str(existing_mapping.id) if existing_mapping else None,
         }
     )
+    await set_pb_celery_task_id(job_id, celery_result.id)
 
     msg = (
         "Reusing existing mapping — adapter-only run (1 credit)."
@@ -188,6 +199,93 @@ async def poll_transfer_job(
             error=error,
         )
     )
+
+
+@router.post(
+    "/jobs/{db_job_id}/cancel-by-id",
+    response_model=SuccessResponse[CancelJobResponse],
+    dependencies=[Depends(_write_limiter)],
+)
+async def cancel_transfer_job_by_db_id(
+    db_job_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> SuccessResponse[CancelJobResponse]:
+    """
+    Cancel a job using its DB UUID (usable after page reload when Redis job_id is unknown).
+
+    Looks up the redis_job_id stored on the DB record and delegates to the same
+    two-pronged cancellation logic as the Redis-key-based cancel endpoint.
+    """
+    from app.repositories.user_repo import UserRepository
+
+    job_repo = TransferJobRepository(db)
+    job = await job_repo.get_by_id_and_user(db_job_id, current_user.id)
+    if job is None:
+        raise PBJobNotFoundException()
+    terminal = (TransferJobStatus.completed, TransferJobStatus.failed, TransferJobStatus.cancelled)
+    if job.status in terminal:
+        raise PBJobNotCancellableException()
+
+    redis_id = job.redis_job_id
+    if redis_id is None:
+        # No redis_job_id stored — just mark cancelled in DB and refund
+        await job_repo.set_status(
+            job, TransferJobStatus.cancelled, error_message="Cancelled by user."
+        )
+        user_repo = UserRepository(db)
+        await user_repo.refund_credits(current_user.id, job.credits_charged)
+        await db.commit()
+        return SuccessResponse(data=CancelJobResponse(job_id=str(db_job_id), cancelled=True))
+
+    # Revoke from broker
+    celery_task_id = await get_pb_celery_task_id(redis_id)
+    if celery_task_id:
+        from celery.result import AsyncResult
+
+        AsyncResult(celery_task_id, app=celery_app).revoke(terminate=True, signal="SIGTERM")
+
+    await set_pb_job_cancel(redis_id)
+    await set_pb_job_status(redis_id, "cancelled")
+    await set_pb_job_result(redis_id, {"error": "Cancelled by user."})
+
+    await job_repo.set_status(job, TransferJobStatus.cancelled, error_message="Cancelled by user.")
+    user_repo = UserRepository(db)
+    await user_repo.refund_credits(current_user.id, job.credits_charged)
+    await db.commit()
+
+    return SuccessResponse(data=CancelJobResponse(job_id=str(db_job_id), cancelled=True))
+
+
+@router.delete(
+    "/jobs/{job_id}",
+    response_model=SuccessResponse[DeleteJobResponse],
+    dependencies=[Depends(_write_limiter)],
+)
+async def delete_transfer_job(
+    job_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> SuccessResponse[DeleteJobResponse]:
+    """
+    Delete a completed or failed transfer job record.
+
+    Only non-running jobs (completed, failed, cancelled) can be deleted.
+    Running jobs must be cancelled first via POST /jobs/{job_id}/cancel.
+    """
+    job_repo = TransferJobRepository(db)
+    job = await job_repo.get_by_id_and_user(job_id, current_user.id)
+    if job is None:
+        raise PBJobNotFoundException()
+    if job.status not in (
+        TransferJobStatus.completed,
+        TransferJobStatus.failed,
+        TransferJobStatus.cancelled,
+    ):
+        raise PBJobNotCancellableException()
+    deleted = await job_repo.delete_by_id_and_user(job_id, current_user.id)
+    await db.commit()
+    return SuccessResponse(data=DeleteJobResponse(job_id=job_id, deleted=deleted))
 
 
 @router.get(
@@ -261,3 +359,85 @@ async def delete_mapping(
         raise PBMappingNotFoundException()
     await db.commit()
     return SuccessResponse(data=DeleteMappingResponse(mapping_id=mapping_id, deleted=True))
+
+
+@router.post(
+    "/jobs/{job_id}/cancel",
+    response_model=SuccessResponse[CancelJobResponse],
+    dependencies=[Depends(_write_limiter)],
+)
+async def cancel_transfer_job(
+    job_id: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> SuccessResponse[CancelJobResponse]:
+    """
+    Cancel a queued or in-progress transfer job.
+
+    Two-pronged cancellation:
+      1. Revoke the Celery task from the Redis broker queue (removes it if still
+         queued; sends SIGTERM if already running, with terminate=True).
+      2. Set a Redis cancel flag that the worker checks at each inter-stage
+         checkpoint so it stops cleanly even if revoke arrives mid-execution.
+
+    Credits are refunded immediately via the DB record.
+    Returns 409 if the job is already completed, failed, or cancelled.
+    """
+    from app.repositories.user_repo import UserRepository
+
+    owner = await get_pb_job_owner(job_id)
+    if owner is None or owner != str(current_user.id):
+        raise PBJobNotFoundException()
+
+    current_status = await get_pb_job_status(job_id)
+    if current_status is None:
+        raise PBJobNotFoundException()
+    if current_status in ("completed", "failed", "cancelled"):
+        raise PBJobNotCancellableException()
+
+    # ── 1. Revoke from the broker (Redis queue) ────────────────────────────
+    # terminate=True sends SIGTERM to the worker process if the task is already
+    # executing; signal="SIGKILL" is intentionally avoided to let the worker
+    # clean up its own DB/Redis state.  If the task is still queued (not yet
+    # picked up) revoke() removes it from the Redis list entirely.
+    celery_task_id = await get_pb_celery_task_id(job_id)
+    if celery_task_id:
+        from celery.result import AsyncResult
+
+        AsyncResult(celery_task_id, app=celery_app).revoke(terminate=True, signal="SIGTERM")
+
+    # ── 2. Set cooperative cancel flag for the inter-stage checkpoints ──────
+    await set_pb_job_cancel(job_id)
+
+    # ── 3. Update Redis job state immediately ──────────────────────────────
+    await set_pb_job_status(job_id, "cancelled")
+    await set_pb_job_result(job_id, {"error": "Cancelled by user."})
+
+    # ── 4. Persist cancellation + refund credits in DB ─────────────────────
+    job_repo = TransferJobRepository(db)
+    # Find the DB record for this job_id via the owner's recent jobs.
+    # job_id is our Redis key (uuid4), not the DB primary key — match by status.
+    transfer_jobs = await job_repo.get_by_user(current_user.id, limit=20)
+    matching = next(
+        (
+            j
+            for j in transfer_jobs
+            if j.status
+            not in (
+                TransferJobStatus.completed,
+                TransferJobStatus.failed,
+            )
+        ),
+        None,
+    )
+    if matching is not None:
+        await job_repo.set_status(
+            matching,
+            TransferJobStatus.failed,
+            error_message="Cancelled by user.",
+        )
+        user_repo = UserRepository(db)
+        await user_repo.refund_credits(current_user.id, matching.credits_charged)
+        await db.commit()
+
+    return SuccessResponse(data=CancelJobResponse(job_id=job_id, cancelled=True))

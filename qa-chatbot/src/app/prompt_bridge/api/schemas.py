@@ -106,12 +106,24 @@ class TransferJobSummary(BaseModel):
     status: TransferJobStatus
     reused_mapping: bool
     credits_charged: int
+    source_prompt: str
     adapted_prompt: str | None
     error_message: str | None
     created_at: datetime
+    redis_job_id: str | None = None
 
     model_config = {"from_attributes": True}
 
 
 class TransferJobListResponse(BaseModel):
     jobs: list[TransferJobSummary]
+
+
+class CancelJobResponse(BaseModel):
+    job_id: str
+    cancelled: bool
+
+
+class DeleteJobResponse(BaseModel):
+    job_id: uuid.UUID
+    deleted: bool

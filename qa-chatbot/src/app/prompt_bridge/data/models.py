@@ -25,6 +25,7 @@ class TransferJobStatus(enum.StrEnum):
     adapting = "adapting"
     completed = "completed"
     failed = "failed"
+    cancelled = "cancelled"
 
 
 class TransferJob(Base, UUIDMixin, TimestampMixin):
@@ -59,6 +60,7 @@ class TransferJob(Base, UUIDMixin, TimestampMixin):
     reused_mapping: Mapped[bool] = mapped_column(default=False, nullable=False)
     credits_charged: Mapped[int] = mapped_column(Integer, default=5, nullable=False)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    redis_job_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
 
     mapping: Mapped[PromptMapping | None] = relationship(
         "PromptMapping", back_populates="jobs", foreign_keys=[mapping_id], lazy="raise"

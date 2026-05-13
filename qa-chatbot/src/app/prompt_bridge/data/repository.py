@@ -33,6 +33,14 @@ class TransferJobRepository(BaseRepository[TransferJob]):
         )
         return list(result.scalars().all())
 
+    async def delete_by_id_and_user(self, job_id: uuid.UUID, user_id: uuid.UUID) -> bool:
+        job = await self.get_by_id_and_user(job_id, user_id)
+        if job is None:
+            return False
+        await self.db.delete(job)
+        await self.db.flush()
+        return True
+
     async def set_status(
         self,
         job: TransferJob,
