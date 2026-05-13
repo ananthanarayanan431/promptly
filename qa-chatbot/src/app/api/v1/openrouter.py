@@ -1,7 +1,8 @@
-"""Proxy endpoint that surfaces OpenRouter account metrics to the frontend."""
+"""Proxy endpoints that surface OpenRouter account metrics and model catalogue."""
 
 from __future__ import annotations
 
+import time
 from typing import Annotated
 
 import httpx
@@ -20,6 +21,11 @@ from app.models.user import User
 
 router = APIRouter(prefix="/openrouter", tags=["openrouter"])
 _limiter = RateLimiter(requests=30, window_seconds=60)
+
+# Models list is identical for every user — cache in-process for 10 minutes
+_models_cache: list[ModelInfo] = []
+_models_cache_ts: float = 0.0
+_MODELS_TTL = 600.0  # seconds
 
 _BASE = "https://openrouter.ai/api/v1"
 _TIMEOUT = 10.0
@@ -52,6 +58,24 @@ class ModelSpend(BaseModel):
 class OpenRouterStats(BaseModel):
     key: KeyData
     top_models: list[ModelSpend]
+
+
+class ModelPricing(BaseModel):
+    prompt_per_token: float  # USD per input token
+    completion_per_token: float  # USD per output token
+
+
+class ModelInfo(BaseModel):
+    id: str  # OpenRouter slug, e.g. "openai/gpt-4o"
+    name: str  # Display name, e.g. "OpenAI: GPT-4o"
+    context_length: int | None
+    modality: str | None  # e.g. "text+image->text"
+    pricing: ModelPricing | None
+
+
+class ModelListResponse(BaseModel):
+    models: list[ModelInfo]
+    cached: bool
 
 
 # ── Cost table (blended $/1M tokens) ────────────────────────────────────────
@@ -93,6 +117,101 @@ async def _fetch_key_info() -> dict[str, object]:
 
 
 # ── Routes ───────────────────────────────────────────────────────────────────
+
+
+@router.get(
+    "/models",
+    response_model=SuccessResponse[ModelListResponse],
+    dependencies=[Depends(_limiter)],
+)
+async def get_models(
+    _: Annotated[User, Depends(get_current_user)],
+) -> SuccessResponse[ModelListResponse]:
+    """
+    Return the full OpenRouter model catalogue.
+
+    Response is cached in-process for 10 minutes — OpenRouter's list rarely
+    changes and this endpoint is called on every modal open.
+    """
+    global _models_cache, _models_cache_ts  # noqa: PLW0603
+
+    now = time.monotonic()
+    if _models_cache and now - _models_cache_ts < _MODELS_TTL:
+        return SuccessResponse(data=ModelListResponse(models=_models_cache, cached=True))
+
+    headers = {"Authorization": f"Bearer {_api_key()}"}
+    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        resp = await client.get(f"{_BASE}/models", headers=headers)
+    if resp.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"OpenRouter models error: {resp.text[:200]}")
+
+    raw: dict[str, object] = resp.json()
+    raw_models: list[dict[str, object]] = raw.get("data", [])  # type: ignore[assignment]
+
+    models: list[ModelInfo] = []
+    for m in raw_models:
+        if not isinstance(m, dict):
+            continue
+        model_id = str(m.get("id") or "")
+        if not model_id:
+            continue
+
+        # Skip non-text-output models (image/audio generation)
+        arch = m.get("architecture")
+        modality: str | None = None
+        if isinstance(arch, dict):
+            modality = str(arch.get("modality") or "")
+            out_mods = arch.get("output_modalities") or []
+            if isinstance(out_mods, list) and "text" not in out_mods:
+                continue
+
+        pricing: ModelPricing | None = None
+        raw_pricing = m.get("pricing")
+        if isinstance(raw_pricing, dict):
+            try:
+                pricing = ModelPricing(
+                    prompt_per_token=float(str(raw_pricing.get("prompt") or 0)),
+                    completion_per_token=float(str(raw_pricing.get("completion") or 0)),
+                )
+            except (ValueError, TypeError):
+                pass
+
+        ctx = m.get("context_length")
+        models.append(
+            ModelInfo(
+                id=model_id,
+                name=str(m.get("name") or model_id),
+                context_length=int(str(ctx)) if ctx is not None else None,
+                modality=modality or None,
+                pricing=pricing,
+            )
+        )
+
+    # Sort: known providers first, then alphabetically
+    _provider_order = [
+        "openai",
+        "anthropic",
+        "google",
+        "meta-llama",
+        "mistralai",
+        "x-ai",
+        "deepseek",
+        "qwen",
+    ]
+
+    def _sort_key(m: ModelInfo) -> tuple[int, str]:
+        provider = m.id.split("/")[0]
+        try:
+            return (_provider_order.index(provider), m.id)
+        except ValueError:
+            return (len(_provider_order), m.id)
+
+    models.sort(key=_sort_key)
+
+    _models_cache = models
+    _models_cache_ts = now
+
+    return SuccessResponse(data=ModelListResponse(models=models, cached=False))
 
 
 @router.get(
