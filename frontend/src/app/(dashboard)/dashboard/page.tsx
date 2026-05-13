@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import type { DashboardStats, RecentSessionsResponse } from '@/types/api';
 import type { TransferJobSummary, PromptMapping } from '@/types/bridge';
 import type { DomainPrompt } from '@/types/domain-prompts';
+import type { OpenRouterStats } from '@/types/openrouter';
 import { formatDistanceToNow } from 'date-fns';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
@@ -422,6 +423,136 @@ function DomainPanel({ domains, loading }: { domains: DomainPrompt[]; loading: b
   );
 }
 
+/* ── OpenRouter panel ────────────────────────────────────────────────────── */
+function OpenRouterPanel({ data, loading }: { data: OpenRouterStats | undefined; loading: boolean }) {
+  const usagePct = data?.key.limit
+    ? Math.min(100, (data.key.spend.all_time / data.key.limit) * 100)
+    : null;
+
+  return (
+    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+            <div style={{
+              width: 28, height: 28, borderRadius: 7, background: 'rgba(124,92,255,0.1)',
+              border: '1px solid var(--primary-border)', display: 'flex', alignItems: 'center',
+              justifyContent: 'center', color: 'var(--primary)',
+            }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 8v4l3 3" />
+              </svg>
+            </div>
+            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>OpenRouter</span>
+            {data?.key.is_free_tier && (
+              <span style={{ fontSize: 10, fontFamily: 'var(--font-geist-mono, monospace)', fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: 'rgba(245,158,11,0.12)', color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Free tier
+              </span>
+            )}
+          </div>
+          <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5, color: 'var(--text-subtle)' }}>
+            {data?.key.label ?? 'API key usage & model spend'}
+          </div>
+        </div>
+      </div>
+
+      {loading ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <SkeletonBlock height={52} />
+          <SkeletonBlock height={80} />
+          <SkeletonBlock height={100} />
+        </div>
+      ) : !data ? (
+        <div style={{ textAlign: 'center', padding: '20px 0', color: 'var(--text-subtle)', fontSize: 13 }}>
+          Could not load OpenRouter stats
+        </div>
+      ) : (
+        <>
+          {/* Spend periods */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+            {([
+              { label: 'Today', value: data.key.spend.daily },
+              { label: 'This week', value: data.key.spend.weekly },
+              { label: 'This month', value: data.key.spend.monthly },
+              { label: 'All time', value: data.key.spend.all_time },
+            ] as const).map(({ label, value }) => (
+              <div key={label} style={{ background: 'var(--surface-2)', borderRadius: 8, padding: '10px 12px', border: '1px solid var(--border)' }}>
+                <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 14, fontWeight: 700, color: 'var(--text)', lineHeight: 1 }}>
+                  ${value.toFixed(4)}
+                </div>
+                <div style={{ fontSize: 10.5, color: 'var(--text-subtle)', marginTop: 4 }}>{label}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Credit limit bar (only when limit is set) */}
+          {data.key.limit != null && usagePct != null && (
+            <div style={{ background: 'var(--surface-2)', borderRadius: 8, padding: '10px 14px', border: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
+                <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>Credit limit</span>
+                <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 11.5, color: 'var(--text-subtle)' }}>
+                  ${data.key.spend.all_time.toFixed(4)} / ${data.key.limit.toFixed(2)}
+                </span>
+              </div>
+              <div style={{ height: 4, background: 'var(--border)', borderRadius: 99 }}>
+                <div style={{
+                  height: '100%', borderRadius: 99, width: `${usagePct}%`,
+                  background: usagePct > 85 ? '#ff6b7a' : usagePct > 60 ? '#f59e0b' : 'var(--primary)',
+                  transition: 'width 0.4s ease',
+                }} />
+              </div>
+              {data.key.limit_remaining != null && (
+                <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5, color: 'var(--text-subtle)', marginTop: 5 }}>
+                  ${data.key.limit_remaining.toFixed(4)} remaining
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Top models by spend */}
+          {data.top_models.length > 0 && (
+            <div>
+              <div style={{ fontSize: 11, fontFamily: 'var(--font-geist-mono, monospace)', color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
+                Top models by estimated spend
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {data.top_models.slice(0, 5).map((m) => {
+                  const maxCost = data.top_models[0].total_cost_usd;
+                  const barPct = maxCost > 0 ? (m.total_cost_usd / maxCost) * 100 : 0;
+                  return (
+                    <div key={m.model} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{ fontSize: 11.5, color: 'var(--text-muted)', width: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                        {m.model.split('/').pop()}
+                      </div>
+                      <div style={{ flex: 1, height: 4, background: 'var(--border)', borderRadius: 99 }}>
+                        <div style={{ height: '100%', width: `${barPct}%`, background: 'var(--primary)', borderRadius: 99, opacity: 0.7 }} />
+                      </div>
+                      <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5, color: 'var(--text-subtle)', width: 60, textAlign: 'right', flexShrink: 0 }}>
+                        ~${m.total_cost_usd.toFixed(4)}
+                      </div>
+                      <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5, color: 'var(--text-subtle)', width: 42, textAlign: 'right', flexShrink: 0 }}>
+                        {formatTokens(m.total_tokens)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {data.top_models.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '12px 0', color: 'var(--text-subtle)', fontSize: 12 }}>
+              No generation history yet
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 /* ── Page ─────────────────────────────────────────────────────────────────── */
 
 export default function DashboardHome() {
@@ -470,6 +601,16 @@ export default function DashboardHome() {
       return res.data.data.domains;
     },
     staleTime: 30_000,
+  });
+
+  const { data: orStats, isLoading: orLoading } = useQuery({
+    queryKey: ['dashboard-openrouter'],
+    queryFn: async () => {
+      const res = await api.get<{ data: OpenRouterStats }>('/api/v1/openrouter/stats');
+      return res.data.data;
+    },
+    staleTime: 60_000,
+    retry: 1,
   });
 
   const lowCredits = stats ? stats.credits_remaining < 20 : false;
@@ -564,6 +705,17 @@ export default function DashboardHome() {
             <BridgePanel jobs={bridgeJobs} mappings={bridgeMappings} loading={bridgeLoading} />
             <DomainPanel domains={domains} loading={domainLoading} />
           </div>
+        </div>
+
+        {/* OpenRouter account panel */}
+        <div>
+          <div style={{
+            fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5,
+            color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 14,
+          }}>
+            OpenRouter account
+          </div>
+          <OpenRouterPanel data={orStats} loading={orLoading} />
         </div>
 
         {/* Charts row 1 — activity + quality trend */}
