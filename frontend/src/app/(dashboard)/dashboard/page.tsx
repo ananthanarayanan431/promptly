@@ -10,14 +10,18 @@ import { useAuthStore } from '@/stores/auth-store';
 
 const ActivityChart = dynamic(
   () => import('@/components/dashboard/activity-chart').then((m) => ({ default: m.ActivityChart })),
-  { ssr: false }
+  { ssr: false },
 );
 const QualityTrendChart = dynamic(
   () =>
     import('@/components/dashboard/quality-trend-chart').then((m) => ({
       default: m.QualityTrendChart,
     })),
-  { ssr: false }
+  { ssr: false },
+);
+const ModelChart = dynamic(
+  () => import('@/components/dashboard/model-chart').then((m) => ({ default: m.ModelChart })),
+  { ssr: false },
 );
 
 function formatTokens(n: number): string {
@@ -35,31 +39,95 @@ interface StatCardProps {
   label: string;
   value: string;
   sub?: string;
-  accent?: boolean;
   low?: boolean;
   icon: React.ReactNode;
 }
 
 function StatCard({ label, value, sub, low, icon }: StatCardProps) {
   return (
-    <div style={{ background: '#1a1a1a', border: `1px solid ${low ? 'rgba(255,107,122,0.3)' : '#1f1f23'}`,
-      borderRadius: 10, padding: '20px 20px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <div style={{ width: 34, height: 34, borderRadius: 8,
-        background: low ? 'rgba(255,107,122,0.1)' : 'rgba(124,92,255,0.1)',
-        border: `1px solid ${low ? 'rgba(255,107,122,0.2)' : 'rgba(124,92,255,0.2)'}`,
+    <div style={{
+      background: 'var(--surface)', border: `1px solid ${low ? 'rgba(255,107,122,0.3)' : 'var(--border)'}`,
+      borderRadius: 10, padding: '20px 20px 18px', display: 'flex', flexDirection: 'column', gap: 14,
+    }}>
+      <div style={{
+        width: 34, height: 34, borderRadius: 8,
+        background: low ? 'rgba(255,107,122,0.1)' : 'var(--primary-soft)',
+        border: `1px solid ${low ? 'rgba(255,107,122,0.2)' : 'var(--primary-border)'}`,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        color: low ? '#ff6b7a' : '#7c5cff' }}>
+        color: low ? '#ff6b7a' : 'var(--primary)',
+      }}>
         {icon}
       </div>
       <div>
-        <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1,
-          color: low ? '#ff6b7a' : '#ededed', fontFamily: 'var(--font-geist-mono, monospace)',
-          marginBottom: 6 }}>
+        <div style={{
+          fontSize: 28, fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1,
+          color: low ? '#ff6b7a' : 'var(--text)',
+          fontFamily: 'var(--font-geist-mono, monospace)', marginBottom: 6,
+        }}>
           {value}
         </div>
-        <div style={{ fontSize: 12.5, color: '#8a8a90' }}>{label}</div>
-        {sub && <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5,
-          color: '#5a5a60', marginTop: 3 }}>{sub}</div>}
+        <div style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>{label}</div>
+        {sub && (
+          <div style={{
+            fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5,
+            color: 'var(--text-subtle)', marginTop: 3,
+          }}>{sub}</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ChartCard({ title, sub, icon, children, minHeight = 220 }: {
+  title: string; sub: string; icon: React.ReactNode; children: React.ReactNode; minHeight?: number;
+}) {
+  return (
+    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: 20 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16 }}>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)', marginBottom: 3 }}>{title}</div>
+          <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5, color: 'var(--text-subtle)' }}>{sub}</div>
+        </div>
+        <div style={{
+          width: 28, height: 28, borderRadius: 7, background: 'var(--primary-soft)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)',
+        }}>
+          {icon}
+        </div>
+      </div>
+      <div style={{ minHeight }}>{children}</div>
+    </div>
+  );
+}
+
+function SkeletonBlock({ height }: { height: number }) {
+  return (
+    <div style={{
+      height, background: 'var(--surface-2)', borderRadius: 8,
+      animation: 'pulse 2s ease-in-out infinite',
+    }} />
+  );
+}
+
+function UsageRow({ label, calls, credits, color }: { label: string; calls: number; credits: number; color: string }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      padding: '10px 0', borderBottom: '1px solid var(--border)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0 }} />
+        <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{label}</span>
+      </div>
+      <div style={{ display: 'flex', gap: 24 }}>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 13, color: 'var(--text)', fontWeight: 600 }}>{calls}</div>
+          <div style={{ fontSize: 10.5, color: 'var(--text-subtle)' }}>calls</div>
+        </div>
+        <div style={{ textAlign: 'right', minWidth: 48 }}>
+          <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 13, color: 'var(--text)', fontWeight: 600 }}>{credits}</div>
+          <div style={{ fontSize: 10.5, color: 'var(--text-subtle)' }}>credits</div>
+        </div>
       </div>
     </div>
   );
@@ -89,24 +157,32 @@ export default function DashboardHome() {
   const lowCredits = stats ? stats.credits_remaining < 20 : false;
   const firstName = user?.email?.split('@')[0] ?? 'there';
   const recentSessions = recentData?.sessions ?? [];
+  const usage = stats?.usage;
 
   return (
-    <div style={{ height: '100%', overflowY: 'auto', padding: '28px 40px 80px',
-      fontFamily: 'var(--font-geist, ui-sans-serif)' }}>
+    <div style={{
+      height: '100%', overflowY: 'auto', padding: '28px 40px 80px',
+      fontFamily: 'var(--font-geist, ui-sans-serif)',
+    }}>
       <div style={{ maxWidth: 1100, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 36 }}>
 
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 24 }}>
           <div>
-            <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 11,
-              color: '#7c5cff', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 8 }}>
+            <div style={{
+              fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 11,
+              color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 8,
+            }}>
               / dashboard
             </div>
-            <h1 style={{ fontFamily: 'var(--font-instrument-serif, Georgia, serif)', fontWeight: 400,
-              fontSize: 42, letterSpacing: '-0.02em', lineHeight: 1.12, margin: '0 0 6px', color: '#ededed' }}>
-              Hey, <em style={{ color: '#7c5cff', fontStyle: 'italic' }}>{firstName}</em>.
+            <h1 style={{
+              fontFamily: 'var(--font-instrument-serif, Georgia, serif)', fontWeight: 400,
+              fontSize: 42, letterSpacing: '-0.02em', lineHeight: 1.12, margin: '0 0 6px',
+              color: 'var(--text)',
+            }}>
+              Hey, <em style={{ color: 'var(--primary)', fontStyle: 'italic' }}>{firstName}</em>.
             </h1>
-            <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 11.5, color: '#5a5a60' }}>
+            <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 11.5, color: 'var(--text-subtle)' }}>
               Last active {timeAgo(stats?.last_optimized_at ?? null)}
               {stats && stats.streak_days > 0 && (
                 <span style={{ marginLeft: 12, color: '#f59e0b' }}>
@@ -115,13 +191,13 @@ export default function DashboardHome() {
               )}
             </div>
           </div>
-          <Link href="/optimize"
-            style={{ height: 34, padding: '0 16px', borderRadius: 8, background: '#7c5cff',
-              border: '1px solid #7c5cff', fontSize: 13, color: '#fff', textDecoration: 'none',
-              display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, marginTop: 8,
-              fontWeight: 500 }}>
+          <Link href="/optimize" style={{
+            height: 34, padding: '0 16px', borderRadius: 8, background: 'var(--primary)',
+            border: '1px solid var(--primary)', fontSize: 13, color: '#fff', textDecoration: 'none',
+            display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, marginTop: 8, fontWeight: 500,
+          }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
-              <path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M5.6 18.4l2.8-2.8M15.6 8.4l2.8-2.8"/>
+              <path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M5.6 18.4l2.8-2.8M15.6 8.4l2.8-2.8" />
             </svg>
             New optimization
           </Link>
@@ -131,89 +207,165 @@ export default function DashboardHome() {
         {statsLoading ? (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
             {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} style={{ background: '#1a1a1a', border: '1px solid #1f1f23',
-                borderRadius: 10, height: 130, animation: 'pulse 2s ease-in-out infinite' }} />
+              <div key={i} style={{
+                background: 'var(--surface)', border: '1px solid var(--border)',
+                borderRadius: 10, height: 130, animation: 'pulse 2s ease-in-out infinite',
+              }} />
             ))}
           </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
-            <StatCard label="Prompts optimized" value={String(stats?.prompts_optimized ?? 0)}
-              sub="total runs"
-              icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M5.6 18.4l2.8-2.8M15.6 8.4l2.8-2.8"/></svg>} />
-            <StatCard label="Sessions started" value={String(stats?.total_sessions ?? 0)}
-              sub="conversations"
-              icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>} />
+            <StatCard label="Prompts optimized" value={String(stats?.prompts_optimized ?? 0)} sub="total runs"
+              icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M5.6 18.4l2.8-2.8M15.6 8.4l2.8-2.8" /></svg>}
+            />
+            <StatCard label="Sessions started" value={String(stats?.total_sessions ?? 0)} sub="conversations"
+              icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" /></svg>}
+            />
             <StatCard label="Versions saved" value={String(stats?.versions_saved ?? 0)}
               sub={stats && stats.total_versions > 0 ? `${stats.total_versions} total` : 'prompt families'}
-              icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5"/></svg>} />
+              icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M12 2L2 7l10 5 10-5-10-5z" /><path d="M2 17l10 5 10-5M2 12l10 5 10-5" /></svg>}
+            />
             <StatCard label="Tokens used" value={formatTokens(stats?.total_tokens ?? 0)}
               sub={stats?.avg_tokens_per_run ? `~${formatTokens(stats.avg_tokens_per_run)} avg` : 'across all runs'}
-              icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>} />
-            <StatCard label="Estimated cost" value={`$${(stats?.estimated_cost_usd ?? 0).toFixed(4)}`}
-              sub="blended model rate"
-              icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>} />
+              icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" /></svg>}
+            />
+            <StatCard label="Estimated cost" value={`$${(stats?.estimated_cost_usd ?? 0).toFixed(4)}`} sub="blended model rate"
+              icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" /></svg>}
+            />
             <StatCard label="Credits remaining" value={String(stats?.credits_remaining ?? 0)}
               sub={lowCredits ? 'running low' : '10 per optimization'} low={lowCredits}
-              icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>} />
+              icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><rect x="2" y="5" width="20" height="14" rx="2" /><path d="M2 10h20" /></svg>}
+            />
           </div>
         )}
 
-        {/* Charts */}
+        {/* Charts row 1 — activity + quality trend */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-          <div style={{ background: '#1a1a1a', border: '1px solid #1f1f23', borderRadius: 10, padding: 20 }}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16 }}>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 500, color: '#ededed', marginBottom: 3 }}>
-                  Optimization activity
-                </div>
-                <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5, color: '#5a5a60' }}>
-                  Prompts per day — last 30 days
-                </div>
-              </div>
-              <div style={{ width: 28, height: 28, borderRadius: 7, background: 'rgba(124,92,255,0.1)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#7c5cff' }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
-                  <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/>
-                </svg>
-              </div>
-            </div>
+          <ChartCard title="Optimization activity" sub="Prompts per day — last 30 days"
+            icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17" /><polyline points="16 7 22 7 22 13" /></svg>}
+          >
             {statsLoading ? (
-              <div style={{ height: 220, background: '#222226', borderRadius: 8 }} />
+              <SkeletonBlock height={220} />
             ) : (
               <ActivityChart data={stats?.daily_activity ?? []} />
             )}
-          </div>
+          </ChartCard>
 
-          <div style={{ background: '#1a1a1a', border: '1px solid #1f1f23', borderRadius: 10, padding: 20 }}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16 }}>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 500, color: '#ededed', marginBottom: 3 }}>
-                  Prompt quality trend
-                </div>
-                <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5, color: '#5a5a60' }}>
-                  Avg health score per day — last 30 days
-                </div>
-              </div>
-              <div style={{ width: 28, height: 28, borderRadius: 7, background: 'rgba(124,92,255,0.1)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#7c5cff' }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
-                  <path d="M3 3v18h18"/><path d="M7 14v4M12 10v8M17 6v12"/>
-                </svg>
-              </div>
-            </div>
+          <ChartCard title="Prompt quality trend" sub="Avg health score per day — last 30 days"
+            icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M3 3v18h18" /><path d="M7 14v4M12 10v8M17 6v12" /></svg>}
+          >
             {statsLoading ? (
-              <div style={{ height: 220, background: '#222226', borderRadius: 8 }} />
+              <SkeletonBlock height={220} />
             ) : stats?.quality_trend && stats.quality_trend.length > 0 ? (
               <QualityTrendChart data={stats.quality_trend} />
             ) : (
-              <div style={{ height: 220, display: 'flex', flexDirection: 'column', alignItems: 'center',
-                justifyContent: 'center', gap: 8, color: '#5a5a60', textAlign: 'center' }}>
+              <div style={{
+                height: 220, display: 'flex', flexDirection: 'column', alignItems: 'center',
+                justifyContent: 'center', gap: 8, color: 'var(--text-subtle)', textAlign: 'center',
+              }}>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4">
-                  <path d="M3 3v18h18"/><path d="M7 14v4M12 10v8M17 6v12"/>
+                  <path d="M3 3v18h18" /><path d="M7 14v4M12 10v8M17 6v12" />
                 </svg>
                 <div style={{ fontSize: 13 }}>No quality data yet</div>
                 <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5 }}>
                   Scores appear after your first optimization
+                </div>
+              </div>
+            )}
+          </ChartCard>
+        </div>
+
+        {/* Charts row 2 — model usage + usage breakdown */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <ChartCard title="Token usage by model" sub="Total tokens consumed per model"
+            icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /></svg>}
+          >
+            {statsLoading ? (
+              <SkeletonBlock height={220} />
+            ) : stats?.model_breakdown && stats.model_breakdown.length > 0 ? (
+              <ModelChart data={stats.model_breakdown} />
+            ) : (
+              <div style={{
+                height: 220, display: 'flex', flexDirection: 'column', alignItems: 'center',
+                justifyContent: 'center', gap: 8, color: 'var(--text-subtle)', textAlign: 'center',
+              }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4">
+                  <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" />
+                  <rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" />
+                </svg>
+                <div style={{ fontSize: 13 }}>No model data yet</div>
+                <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5 }}>
+                  Appears after your first optimization
+                </div>
+              </div>
+            )}
+          </ChartCard>
+
+          {/* Usage breakdown */}
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 4 }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)', marginBottom: 3 }}>Usage breakdown</div>
+                <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5, color: 'var(--text-subtle)' }}>Credits spent by feature</div>
+              </div>
+              <div style={{
+                width: 28, height: 28, borderRadius: 7, background: 'var(--primary-soft)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)',
+              }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+                  <path d="M12 20V10M18 20V4M6 20v-4" />
+                </svg>
+              </div>
+            </div>
+
+            {/* This month / All time toggle label */}
+            <div style={{ display: 'flex', gap: 16, margin: '14px 0 8px' }}>
+              {(['this_month', 'all_time'] as const).map((key) => (
+                <div key={key} style={{
+                  fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10, textTransform: 'uppercase',
+                  letterSpacing: '0.08em', color: 'var(--text-subtle)', paddingBottom: 4,
+                }}>
+                  {key === 'this_month' ? 'This month' : 'All time'}
+                </div>
+              ))}
+            </div>
+
+            {statsLoading ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
+                {[1, 2, 3].map((i) => <SkeletonBlock key={i} height={36} />)}
+              </div>
+            ) : (
+              <div>
+                <UsageRow
+                  label="Optimize"
+                  calls={usage?.this_month.optimize_calls ?? 0}
+                  credits={usage?.this_month.optimize_credits ?? 0}
+                  color="var(--primary)"
+                />
+                <UsageRow
+                  label="Health Score"
+                  calls={usage?.this_month.health_score_calls ?? 0}
+                  credits={usage?.this_month.health_score_credits ?? 0}
+                  color="#10b981"
+                />
+                <UsageRow
+                  label="Advisory"
+                  calls={usage?.this_month.advisory_calls ?? 0}
+                  credits={usage?.this_month.advisory_credits ?? 0}
+                  color="#f59e0b"
+                />
+                <div style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  paddingTop: 12, marginTop: 2,
+                }}>
+                  <span style={{ fontSize: 12, color: 'var(--text-subtle)', fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                    Total this month
+                  </span>
+                  <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>
+                    {(usage?.this_month.optimize_credits ?? 0) +
+                      (usage?.this_month.health_score_credits ?? 0) +
+                      (usage?.this_month.advisory_credits ?? 0)} credits
+                  </span>
                 </div>
               </div>
             )}
@@ -224,50 +376,64 @@ export default function DashboardHome() {
         {recentSessions.length > 0 && (
           <div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-              <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5,
-                color: '#5a5a60', textTransform: 'uppercase', letterSpacing: '0.12em' }}>
+              <div style={{
+                fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5,
+                color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.12em',
+              }}>
                 Continue where you left off
               </div>
-              <Link href="/history" style={{ fontFamily: 'var(--font-geist-mono, monospace)',
-                fontSize: 11, color: '#7c5cff', textDecoration: 'none' }}>
+              <Link href="/history" style={{
+                fontFamily: 'var(--font-geist-mono, monospace)',
+                fontSize: 11, color: 'var(--primary)', textDecoration: 'none',
+              }}>
                 View all →
               </Link>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {recentSessions.map((session) => (
-                <div key={session.id}
-                  style={{ background: '#1a1a1a', border: '1px solid #1f1f23', borderRadius: 10,
-                    padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 16 }}>
-                  <div style={{ width: 36, height: 36, borderRadius: 9, flexShrink: 0,
-                    background: 'rgba(124,92,255,0.1)', border: '1px solid rgba(124,92,255,0.2)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#7c5cff' }}>
+                <div key={session.id} style={{
+                  background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10,
+                  padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 16,
+                }}>
+                  <div style={{
+                    width: 36, height: 36, borderRadius: 9, flexShrink: 0,
+                    background: 'var(--primary-soft)', border: '1px solid var(--primary-border)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)',
+                  }}>
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
-                      <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+                      <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
                     </svg>
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 500, color: '#ededed', marginBottom: 4,
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <div style={{
+                      fontSize: 13, fontWeight: 500, color: 'var(--text)', marginBottom: 4,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
                       {session.title || 'Untitled conversation'}
                     </div>
                     {session.last_prompt && (
-                      <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 11,
-                        color: '#5a5a60', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <div style={{
+                        fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 11,
+                        color: 'var(--text-subtle)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      }}>
                         {session.last_prompt}
                       </div>
                     )}
-                    <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5,
-                      color: '#3a3a40', marginTop: 3 }}>
+                    <div style={{
+                      fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5,
+                      color: 'var(--text-subtle)', marginTop: 3,
+                    }}>
                       {formatDistanceToNow(new Date(session.updated_at), { addSuffix: true })}
                     </div>
                   </div>
-                  <Link href={`/optimize?session=${session.id}`}
-                    style={{ height: 30, padding: '0 14px', borderRadius: 7, flexShrink: 0,
-                      background: 'rgba(124,92,255,0.12)', border: '1px solid rgba(124,92,255,0.25)',
-                      fontSize: 12, color: '#7c5cff', textDecoration: 'none', fontWeight: 500,
-                      display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Link href={`/optimize?session=${session.id}`} style={{
+                    height: 30, padding: '0 14px', borderRadius: 7, flexShrink: 0,
+                    background: 'var(--primary-soft)', border: '1px solid var(--primary-border)',
+                    fontSize: 12, color: 'var(--primary)', textDecoration: 'none', fontWeight: 500,
+                    display: 'flex', alignItems: 'center', gap: 6,
+                  }}>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <polygon points="5 3 19 12 5 21 5 3"/>
+                      <polygon points="5 3 19 12 5 21 5 3" />
                     </svg>
                     Resume
                   </Link>
@@ -279,64 +445,66 @@ export default function DashboardHome() {
 
         {/* Quick actions */}
         <div>
-          <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5,
-            color: '#5a5a60', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 12 }}>
+          <div style={{
+            fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5,
+            color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 12,
+          }}>
             Quick actions
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
             {[
               {
-                href: '/optimize',
-                title: 'Optimize a prompt',
+                href: '/optimize', title: 'Optimize a prompt', primary: true,
                 desc: 'Run any prompt through 4 AI models and get a sharper result.',
                 cta: 'Start optimizing',
-                primary: true,
-                icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M5.6 18.4l2.8-2.8M15.6 8.4l2.8-2.8"/></svg>,
+                icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M5.6 18.4l2.8-2.8M15.6 8.4l2.8-2.8" /></svg>,
               },
               {
-                href: '/versions',
-                title: 'Browse versions',
+                href: '/versions', title: 'Browse versions', primary: false,
                 desc: 'Review past prompt iterations and build on what worked.',
                 cta: 'View history',
-                primary: false,
-                icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5"/></svg>,
+                icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M12 2L2 7l10 5 10-5-10-5z" /><path d="M2 17l10 5 10-5M2 12l10 5 10-5" /></svg>,
               },
               {
-                href: '/analyze',
-                title: 'Analyze quality',
+                href: '/analyze', title: 'Analyze quality', primary: false,
                 desc: 'Score any prompt across 8 dimensions with a full advisory.',
                 cta: 'Analyze prompt',
-                primary: false,
-                icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M3 3v18h18"/><path d="M7 14v4M12 10v8M17 6v12"/></svg>,
+                icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M3 3v18h18" /><path d="M7 14v4M12 10v8M17 6v12" /></svg>,
               },
             ].map((action) => (
-              <div key={action.href}
-                style={{ background: '#1a1a1a', border: '1px solid #1f1f23', borderRadius: 10, padding: 20,
-                  display: 'flex', flexDirection: 'column', gap: 16 }}>
-                <div style={{ width: 34, height: 34, borderRadius: 8,
-                  background: action.primary ? 'rgba(124,92,255,0.15)' : 'rgba(255,255,255,0.04)',
-                  border: `1px solid ${action.primary ? 'rgba(124,92,255,0.3)' : '#2a2a2e'}`,
+              <div key={action.href} style={{
+                background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10,
+                padding: 20, display: 'flex', flexDirection: 'column', gap: 16,
+              }}>
+                <div style={{
+                  width: 34, height: 34, borderRadius: 8,
+                  background: action.primary ? 'var(--primary-soft)' : 'var(--surface-2)',
+                  border: `1px solid ${action.primary ? 'var(--primary-border)' : 'var(--border)'}`,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: action.primary ? '#7c5cff' : '#8a8a90' }}>
+                  color: action.primary ? 'var(--primary)' : 'var(--text-muted)',
+                }}>
                   {action.icon}
                 </div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 500, color: '#ededed', marginBottom: 6 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 500, color: 'var(--text)', marginBottom: 6 }}>
                     {action.title}
                   </div>
-                  <div style={{ fontSize: 12.5, color: '#5a5a60', lineHeight: 1.55 }}>
+                  <div style={{ fontSize: 12.5, color: 'var(--text-subtle)', lineHeight: 1.55 }}>
                     {action.desc}
                   </div>
                 </div>
-                <Link href={action.href}
-                  style={{ height: 32, borderRadius: 6, border: `1px solid ${action.primary ? '#7c5cff' : '#2a2a2e'}`,
-                    background: action.primary ? '#7c5cff' : 'transparent', fontSize: 12.5,
-                    color: action.primary ? '#fff' : '#b5b5ba', textDecoration: 'none',
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '0 12px', fontWeight: action.primary ? 500 : 400 }}>
+                <Link href={action.href} style={{
+                  height: 32, borderRadius: 6,
+                  border: `1px solid ${action.primary ? 'var(--primary)' : 'var(--border)'}`,
+                  background: action.primary ? 'var(--primary)' : 'transparent',
+                  fontSize: 12.5, color: action.primary ? '#fff' : 'var(--text-muted)',
+                  textDecoration: 'none', display: 'flex', alignItems: 'center',
+                  justifyContent: 'space-between', padding: '0 12px',
+                  fontWeight: action.primary ? 500 : 400,
+                }}>
                   {action.cta}
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                    <path d="M9 6l6 6-6 6"/>
+                    <path d="M9 6l6 6-6 6" />
                   </svg>
                 </Link>
               </div>
