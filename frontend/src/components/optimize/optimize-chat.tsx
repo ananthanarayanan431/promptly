@@ -246,6 +246,7 @@ export function OptimizeChat() {
                   already_optimized: msg.already_optimized ?? false,
                   gate_dimension_scores: msg.gate_dimension_scores ?? null,
                   gate_rationale: msg.gate_rationale ?? null,
+                  reasoning: msg.reasoning ?? null,
                 } as JobResult)
               : undefined,
           };
@@ -656,7 +657,7 @@ export function OptimizeChat() {
             className={cn(
               'fixed inset-y-0 right-0 z-50 flex h-full min-h-0 lg:static lg:z-auto',
               'animate-in slide-in-from-right-4 duration-200 lg:animate-none lg:slide-in-from-right-0',
-              'lg:w-1/2 lg:min-w-0 lg:shrink-0'
+              'lg:w-1/2 lg:min-w-0 lg:shrink-0 lg:self-stretch'
             )}
           >
             <ResultPanel

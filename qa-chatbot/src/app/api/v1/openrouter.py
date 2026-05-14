@@ -92,8 +92,12 @@ _DEFAULT_COST = 1.00
 
 
 def _cost_per_token(model: str) -> float:
+    # Strip provider prefix (e.g. "openai/gpt-4o" → "gpt-4o") before matching
+    name = model.split("/", 1)[-1]
+    if name in _COST:
+        return _COST[name] / 1_000_000
     for slug, rate in _COST.items():
-        if slug in model:
+        if name.startswith(slug):
             return rate / 1_000_000
     return _DEFAULT_COST / 1_000_000
 

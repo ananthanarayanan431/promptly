@@ -73,6 +73,11 @@ async def extract_mapping(
     )
     response = await extractor_llm.ainvoke([{"role": "user", "content": system}])
     mapping = str(response.content).strip()
+    if not mapping:
+        _log.error(
+            "Mapping extractor returned empty content for %s → %s", source_model, target_model
+        )
+        raise ValueError("Mapping extractor returned empty content")
     _log.debug("Transfer mapping extracted (%d chars)", len(mapping))
     return mapping
 
@@ -114,6 +119,9 @@ async def adapt_prompt(
     _log.info("Adapting prompt: %s → %s", source_model, target_model)
     response = await adapter_llm.ainvoke([{"role": "user", "content": system}])
     adapted = str(response.content).strip()
+    if not adapted:
+        _log.error("Adapter returned empty content for %s → %s", source_model, target_model)
+        raise ValueError("Adapter returned empty content")
     _log.debug("Prompt adapted (%d → %d chars)", len(source_prompt), len(adapted))
     return adapted
 

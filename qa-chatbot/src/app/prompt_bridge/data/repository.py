@@ -24,6 +24,16 @@ class TransferJobRepository(BaseRepository[TransferJob]):
         )
         return result.scalar_one_or_none()
 
+    async def get_by_redis_job_id(
+        self, redis_job_id: str, user_id: uuid.UUID
+    ) -> TransferJob | None:
+        result = await self.db.execute(
+            select(TransferJob).where(
+                TransferJob.redis_job_id == redis_job_id, TransferJob.user_id == user_id
+            )
+        )
+        return result.scalar_one_or_none()
+
     async def get_by_user(self, user_id: uuid.UUID, *, limit: int = 50) -> list[TransferJob]:
         result = await self.db.execute(
             select(TransferJob)
@@ -85,6 +95,7 @@ class PromptMappingRepository(BaseRepository[PromptMapping]):
         result = await self.db.execute(
             select(PromptMapping)
             .where(PromptMapping.user_id == user_id)
+            .options(selectinload(PromptMapping.pairs))
             .order_by(PromptMapping.created_at.desc())
         )
         return list(result.scalars().all())

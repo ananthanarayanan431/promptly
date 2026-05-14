@@ -45,6 +45,7 @@ class GraphState(TypedDict):
     critic_responses: list[dict[str, Any]]
 
     final_response: str  # synthesized best optimized prompt (chairman output)
+    reasoning: dict[str, Any] | None  # structured explanation of changes (summary/changes/kept)
 
     # Refinement loop state
     iteration_count: int  # current iteration (0-indexed)

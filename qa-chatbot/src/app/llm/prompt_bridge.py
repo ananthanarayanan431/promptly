@@ -40,7 +40,7 @@ def build_pb_target_llm(model: str, api_key: str) -> ChatOpenAI:
     The actual target model — responses used for MAP-RPE evaluation.
     model is the user-supplied target model slug (e.g. 'anthropic/claude-3.5-haiku').
     """
-    return _build(model, temperature=0.7, api_key=api_key)
+    return _build(model, temperature=0.7, max_tokens=1024, api_key=api_key)
 
 
 def build_pb_eval_llm(api_key: str) -> ChatOpenAI:
@@ -68,6 +68,7 @@ def build_pb_extractor_llm(api_key: str) -> ChatOpenAI:
     return _build(
         "openai/gpt-4o",
         temperature=0.0,
+        max_tokens=256,
         api_key=api_key,
     )
 
@@ -77,5 +78,6 @@ def build_pb_adapter_llm(api_key: str) -> ChatOpenAI:
     return _build(
         "openai/gpt-4o",
         temperature=0.3,
+        max_tokens=512,
         api_key=api_key,
     )

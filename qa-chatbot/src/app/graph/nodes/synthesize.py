@@ -7,14 +7,18 @@ weaknesses, and produce the single definitive optimized prompt.
 """
 
 import asyncio
+import json
+import logging
 import time
 from typing import Any
 
 from app.core.cache import push_job_progress
-from app.graph.prompts import category_guidance_block, synthesize_messages
+from app.graph.prompts import category_guidance_block, reasoning_messages, synthesize_messages
 from app.graph.state import GraphState
 from app.llm import LLMClient
 from app.llm.pipeline import build_synthesizer
+
+_log = logging.getLogger(__name__)
 
 _loop_id: int | None = None
 _synthesizer: LLMClient | None = None
@@ -129,6 +133,8 @@ async def synthesize_node(state: GraphState) -> dict[str, Any]:
         )
     )
 
+    synthesized = str(response.content).strip()
+
     total_tokens = sum(
         r.get("usage", {}).get("total_tokens", 0) for r in state["council_responses"]
     )
@@ -136,7 +142,41 @@ async def synthesize_node(state: GraphState) -> dict[str, Any]:
     if job_id := state.get("job_id"):
         await push_job_progress(job_id, {"step": "synthesize", "ts": time.time()})
 
+    reasoning: dict[str, Any] | None = None
+    try:
+        reason_response = await asyncio.wait_for(
+            _get_synthesizer().ainvoke(
+                reasoning_messages(
+                    original=state["raw_prompt"],
+                    optimized=synthesized,
+                )
+            ),
+            timeout=30.0,
+        )
+        raw_json = str(reason_response.content).strip()
+        # Strip markdown fences if the model wrapped output anyway
+        if raw_json.startswith("```"):
+            raw_json = raw_json.split("```")[1]
+            if raw_json.startswith("json"):
+                raw_json = raw_json[4:]
+        # Find the first {...} block in case there's leading/trailing text
+        start = raw_json.find("{")
+        end = raw_json.rfind("}") + 1
+        if start != -1 and end > start:
+            raw_json = raw_json[start:end]
+        parsed = json.loads(raw_json)
+        if isinstance(parsed, dict):
+            reasoning = parsed
+            _log.info(
+                "reasoning generated: summary=%r changes=%d",
+                reasoning.get("summary", "")[:60],
+                len(reasoning.get("changes", [])),
+            )
+    except Exception as exc:
+        _log.warning("reasoning generation failed (non-critical): %s", exc)
+
     return {
-        "final_response": str(response.content).strip(),
+        "final_response": synthesized,
         "token_usage": {"total_tokens": total_tokens},
+        "reasoning": reasoning,
     }

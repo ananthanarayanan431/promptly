@@ -619,6 +619,11 @@ export default function DashboardHome() {
   const usage = stats?.usage;
   const bridgeJobs = bridgeJobsData ?? [];
   const bridgeMappings = bridgeMappingsData ?? [];
+  const now = new Date();
+  const monthlyBridge = bridgeJobs.filter(j => {
+    const d = new Date(j.created_at);
+    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+  });
   const domains = domainData ?? [];
 
   return (
@@ -773,14 +778,14 @@ export default function DashboardHome() {
                 <UsageRow label="Optimize" calls={usage?.this_month.optimize_calls ?? 0} credits={usage?.this_month.optimize_credits ?? 0} color="var(--primary)" />
                 <UsageRow label="Health Score" calls={usage?.this_month.health_score_calls ?? 0} credits={usage?.this_month.health_score_credits ?? 0} color="#10b981" />
                 <UsageRow label="Advisory" calls={usage?.this_month.advisory_calls ?? 0} credits={usage?.this_month.advisory_credits ?? 0} color="#f59e0b" />
-                <UsageRow label="Bridge" calls={bridgeJobs.length} credits={bridgeJobs.reduce((s, j) => s + j.credits_charged, 0)} color="#3b82f6" />
+                <UsageRow label="Bridge" calls={monthlyBridge.length} credits={monthlyBridge.reduce((s, j) => s + j.credits_charged, 0)} color="#3b82f6" />
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 12, marginTop: 2 }}>
                   <span style={{ fontSize: 12, color: 'var(--text-subtle)', fontFamily: 'var(--font-geist-mono, monospace)' }}>Total this month</span>
                   <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>
                     {(usage?.this_month.optimize_credits ?? 0) +
                       (usage?.this_month.health_score_credits ?? 0) +
                       (usage?.this_month.advisory_credits ?? 0) +
-                      bridgeJobs.reduce((s, j) => s + j.credits_charged, 0)} credits
+                      monthlyBridge.reduce((s, j) => s + j.credits_charged, 0)} credits
                   </span>
                 </div>
               </div>

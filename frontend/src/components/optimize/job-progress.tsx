@@ -1,11 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import type { JobProgressEvent } from '@/types/api';
 
 // ─── Phase derivation ──────────────────────────────────────────────────────
-// Three user-facing phases that map across the internal pipeline.
-// We never expose "council", "critic", "synthesize" to the user.
 
 type Phase = 'analyzing' | 'optimizing' | 'refining' | 'done';
 
@@ -14,15 +12,13 @@ interface PhaseInfo {
   label: string;
   sublabel: string;
   progress: number; // 0–100
-  iterationLabel?: string; // e.g. "Pass 2 of 3"
 }
 
 function derivePhase(events: JobProgressEvent[]): PhaseInfo {
   if (events.length === 0) {
-    return { phase: 'analyzing', label: 'Analyzing your prompt', sublabel: 'Understanding the task…', progress: 2 };
+    return { phase: 'analyzing', label: 'Optimizing your prompt', sublabel: 'Understanding the task…', progress: 2 };
   }
 
-  // Track what has been seen
   let seenIntent = false;
   let maxCouncilDone = 0;
   let councilTotal = 4;
@@ -43,7 +39,6 @@ function derivePhase(events: JobProgressEvent[]): PhaseInfo {
     else if (ev.step === 'synthesize') seenSynthesize = true;
     else if (ev.step === 'quality_gate') {
       lastGateDecision = ev.decision;
-      // Reset per-round tracking when a loop begins
       if (ev.decision === 'loop') {
         maxCouncilDone = 0;
         seenCritic = false;
@@ -53,53 +48,45 @@ function derivePhase(events: JobProgressEvent[]): PhaseInfo {
   }
 
   const isRefinement = maxIteration > 0;
-  const passLabel = isRefinement ? ` · Pass ${maxIteration + 1}` : '';
 
-  // Phase: analyzing
   if (!seenIntent) {
-    return { phase: 'analyzing', label: 'Analyzing your prompt', sublabel: 'Understanding the task…', progress: 5 };
+    return { phase: 'analyzing', label: 'Optimizing your prompt', sublabel: 'Understanding the task…', progress: 5 };
   }
 
-  const label = isRefinement ? `Improving your prompt${passLabel}` : 'Optimizing your prompt';
+  const label = 'Optimizing your prompt';
   const phase: Phase = isRefinement ? 'refining' : 'optimizing';
 
-  // Council still in progress (includes: all 4 done but critic not yet fired)
   if (!seenCritic) {
     const pct = 10 + Math.round((maxCouncilDone / councilTotal) * 35);
     const sublabel = maxCouncilDone === 0
       ? 'Generating multiple perspectives…'
       : maxCouncilDone < councilTotal
-        ? `Building perspective ${maxCouncilDone} of ${councilTotal}…`
+        ? `Building perspective ${maxCouncilDone} of ${councilTotal}…\n↳ Drafting from a guardrails angle…`
         : 'Finalising perspectives…';
     return { phase, label, sublabel, progress: pct };
   }
 
-  // Cross-checking (critic done, synthesize not yet)
   if (!seenSynthesize) {
     return { phase, label, sublabel: 'Cross-checking perspectives…', progress: 60 };
   }
 
-  // Synthesize done, quality gate not yet fired
   if (!lastGateDecision) {
     return { phase, label, sublabel: 'Combining the best insights…', progress: 82 };
   }
 
-  // Quality gate decided to loop — next refinement pass starting
   if (lastGateDecision === 'loop') {
     return {
       phase: 'refining',
-      label: `Refining further · Pass ${maxIteration + 2}`,
-      sublabel: 'Quality check found room to improve — running another pass…',
+      label: 'Optimizing your prompt',
+      sublabel: `Quality check found room to improve — running pass ${maxIteration + 2}…`,
       progress: 92,
     };
   }
 
-  // Quality gate decided to exit (pass / max / converged) — job still completing
-  return { phase: 'optimizing', label: 'Finishing up…', sublabel: 'Wrapping up the result…', progress: 97 };
+  return { phase: 'optimizing', label: 'Optimizing your prompt', sublabel: 'Wrapping up the result…', progress: 97 };
 }
 
-// ─── Detail steps (secondary layer) ───────────────────────────────────────
-// Neutral language — no "council", "critic", "synthesize", no model counts
+// ─── Detail steps ──────────────────────────────────────────────────────────
 
 interface DetailStep {
   id: string;
@@ -139,86 +126,87 @@ function buildDetailSteps(events: JobProgressEvent[]): DetailStep[] {
   return steps;
 }
 
-function resolveDetailDone(events: JobProgressEvent[]): Map<string, { gateDecision?: string }> {
-  const done = new Map<string, { gateDecision?: string }>();
-  // Track per-iteration critic/synthesize
-  const criticSeen = new Set<number>();
-  const synthSeen = new Set<number>();
+function resolveDetailDone(events: JobProgressEvent[]): Map<string, { gateDecision?: string; ts?: number }> {
+  const done = new Map<string, { gateDecision?: string; ts?: number }>();
 
   for (const ev of events) {
     const iter = ev.iteration ?? 0;
-    if (ev.step === 'intent') done.set('intent', {});
-    else if (ev.step === 'council' && ev.done != null) done.set(`council_${iter}_${ev.done}`, {});
-    else if (ev.step === 'critic') {
-      criticSeen.add(iter);
-      done.set(`crosscheck_${iter}`, {});
-    } else if (ev.step === 'synthesize') {
-      synthSeen.add(iter);
-      done.set(`combine_${iter}`, {});
-    } else if (ev.step === 'quality_gate') {
-      done.set(`quality_${iter}`, { gateDecision: ev.decision });
-    }
+    if (ev.step === 'intent') done.set('intent', { ts: ev.ts });
+    else if (ev.step === 'council' && ev.done != null) done.set(`council_${iter}_${ev.done}`, { ts: ev.ts });
+    else if (ev.step === 'critic') done.set(`crosscheck_${iter}`, { ts: ev.ts });
+    else if (ev.step === 'synthesize') done.set(`combine_${iter}`, { ts: ev.ts });
+    else if (ev.step === 'quality_gate') done.set(`quality_${iter}`, { gateDecision: ev.decision, ts: ev.ts });
   }
   return done;
-}
-
-// ─── Progress bar ──────────────────────────────────────────────────────────
-
-function ProgressBar({ pct }: { pct: number }) {
-  return (
-    <div style={{
-      width: '100%',
-      height: 3,
-      borderRadius: 999,
-      background: 'var(--surface-2)',
-      overflow: 'hidden',
-      marginTop: 10,
-    }}>
-      <div style={{
-        height: '100%',
-        borderRadius: 999,
-        width: `${pct}%`,
-        background: 'linear-gradient(90deg, #7c5cff, #a78bfa)',
-        transition: 'width 600ms cubic-bezier(0.4,0,0.2,1)',
-        boxShadow: '0 0 8px rgba(124,92,255,0.5)',
-      }} />
-    </div>
-  );
 }
 
 // ─── Gate badge ────────────────────────────────────────────────────────────
 
 function GateBadge({ decision }: { decision?: string }) {
   if (!decision) return null;
-
   if (decision === 'exit' || decision === 'exit_converged') {
     return (
-      <span style={{ fontSize: 9.5, color: '#22c55e', background: 'rgba(34,197,94,0.08)',
-        border: '1px solid rgba(34,197,94,0.2)', borderRadius: 4, padding: '1px 5px',
-        fontFamily: 'var(--font-geist-mono, monospace)', marginLeft: 6 }}>
+      <span style={{ fontSize: 9.5, color: 'var(--success)', background: 'var(--success-soft)',
+        borderRadius: 4, padding: '1px 5px',
+        fontFamily: 'var(--mono)', marginLeft: 6 }}>
         passed
       </span>
     );
   }
   if (decision === 'exit_max') {
     return (
-      <span style={{ fontSize: 9.5, color: '#f59e0b', background: 'rgba(245,158,11,0.08)',
-        border: '1px solid rgba(245,158,11,0.2)', borderRadius: 4, padding: '1px 5px',
-        fontFamily: 'var(--font-geist-mono, monospace)', marginLeft: 6 }}>
+      <span style={{ fontSize: 9.5, color: 'var(--warning)', background: 'var(--warning-soft)',
+        borderRadius: 4, padding: '1px 5px',
+        fontFamily: 'var(--mono)', marginLeft: 6 }}>
         max passes reached
       </span>
     );
   }
   if (decision === 'loop') {
     return (
-      <span style={{ fontSize: 9.5, color: '#a78bfa', background: 'rgba(167,139,250,0.08)',
-        border: '1px solid rgba(167,139,250,0.2)', borderRadius: 4, padding: '1px 5px',
-        fontFamily: 'var(--font-geist-mono, monospace)', marginLeft: 6 }}>
+      <span style={{ fontSize: 9.5, color: 'var(--primary)', background: 'var(--primary-soft)',
+        borderRadius: 4, padding: '1px 5px',
+        fontFamily: 'var(--mono)', marginLeft: 6 }}>
         improving
       </span>
     );
   }
   return null;
+}
+
+// ─── Elapsed timer ─────────────────────────────────────────────────────────
+
+function useElapsed(): number {
+  const startRef = useRef(Date.now());
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setElapsed(Date.now() - startRef.current);
+    }, 100);
+    return () => clearInterval(id);
+  }, []);
+
+  return elapsed;
+}
+
+// ─── Step timing ───────────────────────────────────────────────────────────
+
+function useStepTimings(
+  doneDet: Map<string, { gateDecision?: string; ts?: number }>,
+  startTs: number,
+): Map<string, number> {
+  const timingsRef = useRef<Map<string, number>>(new Map());
+  const recordedRef = useRef<Set<string>>(new Set());
+
+  Array.from(doneDet.keys()).forEach((id) => {
+    if (!recordedRef.current.has(id)) {
+      recordedRef.current.add(id);
+      timingsRef.current.set(id, Date.now() - startTs);
+    }
+  });
+
+  return timingsRef.current;
 }
 
 // ─── Main component ────────────────────────────────────────────────────────
@@ -228,164 +216,243 @@ interface Props {
 }
 
 export function JobProgress({ progress }: Props) {
-  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(true);
+  const startTsRef = useRef(Date.now());
+  const elapsed = useElapsed();
 
   const phaseInfo = derivePhase(progress);
   const detailSteps = buildDetailSteps(progress);
   const doneDet = resolveDetailDone(progress);
   const activeDetIdx = detailSteps.findIndex((s) => !doneDet.has(s.id));
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+  const stepTimings = useStepTimings(doneDet, startTsRef.current);
 
-      {/* ── Primary layer ── */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {/* Status row */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {/* Animated pulse dot */}
-          <div style={{
-            width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
-            background: 'var(--primary)',
-            boxShadow: '0 0 0 0 rgba(124,92,255,0.4)',
-            animation: 'progressPulse 1.6s ease-in-out infinite',
-          }} />
-          <span style={{
-            fontFamily: 'var(--font-geist-mono, monospace)',
-            fontSize: 12,
-            fontWeight: 500,
-            color: 'var(--primary)',
-          }}>
-            {phaseInfo.label}
-          </span>
+  const totalSteps = detailSteps.length;
+  const currentStep = activeDetIdx === -1 ? totalSteps : activeDetIdx + 1;
+  const elapsedSec = (elapsed / 1000).toFixed(1);
+  const isDone = activeDetIdx === -1;
+
+  // Sublabel lines (may contain \n for active sub-sublabel)
+  const sublabelLines = phaseInfo.sublabel.split('\n');
+
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', gap: 12,
+      background: 'var(--surface)',
+      border: '1px solid var(--border)',
+      borderRadius: 12,
+      boxShadow: 'var(--shadow-sm)',
+      padding: '16px 18px',
+    }}>
+
+      {/* ── Header row ── */}
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+        {/* Icon square */}
+        <div style={{
+          width: 30, height: 30, borderRadius: 9, flexShrink: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: isDone ? 'var(--success-soft)' : 'var(--primary-soft)',
+          color: isDone ? 'var(--success)' : 'var(--primary)',
+        }}>
+          {isDone ? (
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20 6L9 17l-5-5"/>
+            </svg>
+          ) : (
+            <span style={{
+              display: 'block',
+              width: 12, height: 12,
+              borderRadius: '50%',
+              border: '2px solid currentColor',
+              borderTopColor: 'transparent',
+              animation: 'spin .9s linear infinite',
+            }} />
+          )}
         </div>
 
-        {/* Sub-label */}
-        <span style={{
-          fontFamily: 'var(--font-geist-mono, monospace)',
-          fontSize: 10.5,
-          color: 'var(--text-subtle)',
-          paddingLeft: 15,
-        }}>
-          {phaseInfo.sublabel}
-        </span>
+        {/* Title + subtitle */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 600, letterSpacing: '-0.005em', color: 'var(--text)' }}>
+            {isDone ? 'Optimization complete' : 'Optimizing your prompt'}
+          </div>
+          <div style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+            Step {currentStep} of {totalSteps} · {elapsedSec}s elapsed
+          </div>
+        </div>
 
-        {/* Progress bar */}
-        <ProgressBar pct={phaseInfo.progress} />
+        {/* Toggle button */}
+        <button
+          type="button"
+          onClick={() => setDetailsOpen(v => !v)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 4,
+            padding: '4px 8px', borderRadius: 6,
+            background: 'transparent', border: '1px solid transparent',
+            color: 'var(--text-muted)', cursor: 'pointer', fontSize: 11,
+            fontFamily: 'var(--mono)',
+            transition: 'background 150ms',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-2)'; }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+        >
+          <svg
+            width="11" height="11" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+            style={{ transform: detailsOpen ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 200ms' }}
+          >
+            <path d="M6 9l6 6 6-6"/>
+          </svg>
+          {detailsOpen ? 'Less' : 'More'}
+        </button>
       </div>
 
-      {/* ── Details toggle ── */}
-      <button
-        type="button"
-        onClick={() => setDetailsOpen((v) => !v)}
-        style={{
-          display: 'flex', alignItems: 'center', gap: 4,
-          marginTop: 10,
-          background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-          width: 'fit-content',
-        }}
-      >
-        <svg
-          width="10" height="10" viewBox="0 0 12 12" fill="none"
-          stroke="var(--text-subtle)" strokeWidth="1.6"
-          style={{
-            transform: detailsOpen ? 'rotate(90deg)' : 'rotate(0deg)',
-            transition: 'transform 200ms',
-            flexShrink: 0,
-          }}
-        >
-          <path d="M4 2l4 4-4 4" />
-        </svg>
-        <span style={{
-          fontFamily: 'var(--font-geist-mono, monospace)',
-          fontSize: 10,
-          color: 'var(--text-subtle)',
-          userSelect: 'none',
-        }}>
-          {detailsOpen ? 'Hide details' : 'Show details'}
+      {/* ── Status banner ── */}
+      <div style={{
+        padding: '10px 12px',
+        borderRadius: 9,
+        background: isDone ? 'var(--success-soft)' : 'var(--surface-2)',
+        border: isDone ? 'none' : '1px solid var(--border)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 3,
+      }}>
+        <span style={{ fontFamily: 'var(--mono)', fontSize: 12.5, fontWeight: 500, color: 'var(--text)' }}>
+          {sublabelLines[0]}
         </span>
-      </button>
+        {sublabelLines[1] && (
+          <span style={{
+            fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--text-muted)',
+            animation: 'fade-in-fast .25s ease both',
+          }}>
+            {sublabelLines[1]}
+          </span>
+        )}
+      </div>
 
-      {/* ── Secondary layer (detail steps) ── */}
-      {detailsOpen && (
+      {/* ── Progress bar ── */}
+      <div style={{ height: 4, background: 'var(--surface-2)', borderRadius: 999, overflow: 'hidden' }}>
         <div style={{
-          marginTop: 8,
-          paddingTop: 10,
-          borderTop: '1px solid var(--border)',
-          display: 'flex', flexDirection: 'column', gap: 8,
-        }}>
+          height: '100%', borderRadius: 999,
+          width: `${isDone ? 100 : phaseInfo.progress}%`,
+          background: isDone ? 'var(--success)' : 'var(--primary)',
+          transition: 'width 0.25s ease',
+        }} />
+      </div>
+
+      {/* ── Detail rail ── */}
+      {detailsOpen && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 0, paddingTop: 4 }}>
           {detailSteps.map((step, i) => {
             const isComplete = doneDet.has(step.id);
             const isActive = i === activeDetIdx;
+            const isPending = !isComplete && !isActive;
             const meta = doneDet.get(step.id);
+            const timingMs = stepTimings.get(step.id);
+            const timingSec = timingMs != null ? (timingMs / 1000).toFixed(1) + 's' : null;
+            const isLast = i === detailSteps.length - 1;
 
             return (
               <div key={step.id} style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                opacity: !isComplete && !isActive ? 0.28 : 1,
-                transition: 'opacity 300ms',
+                display: 'grid',
+                gridTemplateColumns: '22px 1fr auto',
+                gap: 12,
+                alignItems: 'flex-start',
+                padding: '7px 0',
+                position: 'relative',
               }}>
-                {/* Dot */}
+                {/* Connector line */}
+                {!isLast && (
+                  <div style={{
+                    position: 'absolute',
+                    left: 10,
+                    top: 28,
+                    bottom: -3,
+                    width: 2,
+                    background: i < (activeDetIdx === -1 ? totalSteps : activeDetIdx)
+                      ? 'var(--primary)'
+                      : 'var(--border)',
+                    transition: 'background 0.3s',
+                  }} />
+                )}
+
+                {/* Marker */}
                 <div style={{
-                  width: 14, height: 14, borderRadius: '50%', flexShrink: 0,
+                  width: 21, height: 21,
+                  borderRadius: '50%',
+                  position: 'relative',
+                  zIndex: 1,
+                  marginTop: 1,
+                  flexShrink: 0,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  background: isComplete ? 'rgba(124,92,255,0.12)' : isActive ? 'rgba(124,92,255,0.08)' : 'var(--surface-2)',
-                  border: `1px solid ${isComplete || isActive ? 'rgba(124,92,255,0.35)' : 'var(--border)'}`,
+                  background: isComplete
+                    ? 'var(--primary)'
+                    : 'var(--bg)',
+                  border: isComplete
+                    ? '2px solid var(--primary)'
+                    : isActive
+                      ? '2px solid var(--primary)'
+                      : '1.5px solid var(--border)',
+                  boxShadow: isActive ? '0 0 0 4px var(--primary-ring)' : 'none',
+                  transition: 'all 250ms',
                 }}>
                   {isComplete ? (
-                    <svg width="7" height="7" viewBox="0 0 12 12" fill="none">
-                      <path d="M2 6l3 3 5-5" stroke="#7c5cff" strokeWidth="1.8"
-                        strokeLinecap="round" strokeLinejoin="round" />
+                    <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
+                      <path d="M2 6l3 3 5-5" stroke="#fff" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round"/>
                     </svg>
                   ) : isActive ? (
                     <div style={{
-                      width: 5, height: 5, borderRadius: '50%',
-                      background: '#7c5cff',
-                      animation: 'pulse 1.4s ease-in-out infinite',
+                      width: 7, height: 7, borderRadius: '50%',
+                      background: 'var(--primary)',
+                      animation: 'pulse-dot 1.2s ease-in-out infinite',
                     }} />
                   ) : (
-                    <div style={{ width: 4, height: 4, borderRadius: '50%', background: 'var(--surface-3)' }} />
+                    <div style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--border)' }} />
                   )}
                 </div>
 
-                {/* Label */}
-                <span style={{
-                  fontFamily: 'var(--font-geist-mono, monospace)',
+                {/* Label column */}
+                <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{
+                      fontSize: 12.5,
+                      fontWeight: isActive ? 600 : 500,
+                      color: isPending ? 'var(--text-subtle)' : 'var(--text)',
+                      transition: 'color 250ms',
+                    }}>
+                      {step.label}
+                    </span>
+                    {step.id.startsWith('quality_') && isComplete && (
+                      <GateBadge decision={meta?.gateDecision} />
+                    )}
+                  </div>
+                  {isActive && sublabelLines[0] && (
+                    <span style={{
+                      fontFamily: 'var(--mono)',
+                      fontSize: 10.5, color: 'var(--text-muted)',
+                      marginTop: 3, lineHeight: 1.4,
+                      animation: 'fade-in-fast .25s ease both',
+                    }}>
+                      {sublabelLines[0]}
+                    </span>
+                  )}
+                </div>
+
+                {/* Timing column */}
+                <div style={{
+                  fontFamily: 'var(--mono)',
                   fontSize: 10.5,
-                  color: isComplete
-                    ? 'var(--primary)'
-                    : isActive ? 'var(--primary)' : 'var(--text-subtle)',
-                  transition: 'color 300ms',
+                  minWidth: 34,
+                  textAlign: 'right',
+                  fontVariantNumeric: 'tabular-nums',
+                  color: isActive ? 'var(--primary)' : 'var(--text-subtle)',
                 }}>
-                  {step.label}
-                </span>
-
-                {/* Gate badge */}
-                {step.id.startsWith('quality_') && isComplete && (
-                  <GateBadge decision={meta?.gateDecision} />
-                )}
-
-                {/* Done label for non-gate steps */}
-                {isComplete && !step.id.startsWith('quality_') && (
-                  <span style={{
-                    fontFamily: 'var(--font-geist-mono, monospace)',
-                    fontSize: 9.5, color: 'var(--text-subtle)', marginLeft: 'auto',
-                  }}>
-                    done
-                  </span>
-                )}
+                  {isActive ? `${elapsedSec}s` : (isComplete && timingSec ? timingSec : '')}
+                </div>
               </div>
             );
           })}
         </div>
       )}
-
-      {/* Keyframe for the pulse dot — injected once */}
-      <style>{`
-        @keyframes progressPulse {
-          0%, 100% { box-shadow: 0 0 0 0 rgba(124,92,255,0.5); }
-          50% { box-shadow: 0 0 0 5px rgba(124,92,255,0); }
-        }
-      `}</style>
     </div>
   );
 }

@@ -77,7 +77,7 @@ async def set_pb_job_progress(job_id: str, progress: dict[str, Any]) -> None:
     await redis.set(
         f"{_key(job_id)}:progress",
         json.dumps(progress),
-        ex=3600,
+        ex=_redis_settings.REDIS_TTL_SECONDS,
     )
 
 

@@ -70,6 +70,18 @@ class CouncilProposal(BaseModel):
     usage: dict[str, Any]
 
 
+class ReasoningChange(BaseModel):
+    kind: str
+    title: str
+    detail: str
+
+
+class ReasoningBlock(BaseModel):
+    summary: str
+    changes: list[ReasoningChange]
+    kept: list[str]
+
+
 class ChatResponse(BaseModel):
     session_id: str
     original_prompt: str
@@ -84,6 +96,8 @@ class ChatResponse(BaseModel):
     already_optimized: bool = False
     gate_dimension_scores: dict[str, str] | None = None
     gate_rationale: str | None = None
+    # Structured reasoning explaining why this version was chosen
+    reasoning: ReasoningBlock | None = None
 
 
 class MessageOut(BaseModel):
@@ -101,6 +115,7 @@ class MessageOut(BaseModel):
     already_optimized: bool = False
     gate_dimension_scores: dict[str, str] | None = None
     gate_rationale: str | None = None
+    reasoning: ReasoningBlock | None = None
 
     model_config = {"from_attributes": True}
 
@@ -113,6 +128,12 @@ class MessageOut(BaseModel):
             if isinstance(raw_scores, dict):
                 self.gate_dimension_scores = {str(k): str(v) for k, v in raw_scores.items()}
             self.gate_rationale = tu.get("_gate_rationale")
+        raw_reasoning = tu.get("_reasoning")
+        if isinstance(raw_reasoning, dict):
+            try:
+                self.reasoning = ReasoningBlock.model_validate(raw_reasoning)
+            except Exception:  # noqa: BLE001, S110
+                pass
         return self
 
 

@@ -126,7 +126,6 @@ async def submit_transfer(
         credits_charged=cost,
         redis_job_id=job_id,
     )
-    await db.commit()
     await set_pb_job_status(job_id, "queued")
     await set_pb_job_owner(job_id, str(current_user.id))
 
@@ -141,6 +140,7 @@ async def submit_transfer(
             "existing_mapping_id": str(existing_mapping.id) if existing_mapping else None,
         }
     )
+    await db.commit()
     await set_pb_celery_task_id(job_id, celery_result.id)
 
     msg = (
@@ -187,7 +187,8 @@ async def poll_transfer_job(
     elif job_status == "failed":
         raw = await get_pb_job_result(job_id)
         if raw:
-            error = str(raw.get("error", "Unknown error"))
+            raw_error = raw.get("error")
+            error = str(raw_error) if raw_error is not None else "Unknown error"
 
     return SuccessResponse(
         data=TransferJobPollResponse(
@@ -217,8 +218,6 @@ async def cancel_transfer_job_by_db_id(
     Looks up the redis_job_id stored on the DB record and delegates to the same
     two-pronged cancellation logic as the Redis-key-based cancel endpoint.
     """
-    from app.repositories.user_repo import UserRepository
-
     job_repo = TransferJobRepository(db)
     job = await job_repo.get_by_id_and_user(db_job_id, current_user.id)
     if job is None:
@@ -383,8 +382,6 @@ async def cancel_transfer_job(
     Credits are refunded immediately via the DB record.
     Returns 409 if the job is already completed, failed, or cancelled.
     """
-    from app.repositories.user_repo import UserRepository
-
     owner = await get_pb_job_owner(job_id)
     if owner is None or owner != str(current_user.id):
         raise PBJobNotFoundException()
@@ -415,25 +412,11 @@ async def cancel_transfer_job(
 
     # ── 4. Persist cancellation + refund credits in DB ─────────────────────
     job_repo = TransferJobRepository(db)
-    # Find the DB record for this job_id via the owner's recent jobs.
-    # job_id is our Redis key (uuid4), not the DB primary key — match by status.
-    transfer_jobs = await job_repo.get_by_user(current_user.id, limit=20)
-    matching = next(
-        (
-            j
-            for j in transfer_jobs
-            if j.status
-            not in (
-                TransferJobStatus.completed,
-                TransferJobStatus.failed,
-            )
-        ),
-        None,
-    )
+    matching = await job_repo.get_by_redis_job_id(job_id, current_user.id)
     if matching is not None:
         await job_repo.set_status(
             matching,
-            TransferJobStatus.failed,
+            TransferJobStatus.cancelled,
             error_message="Cancelled by user.",
         )
         user_repo = UserRepository(db)

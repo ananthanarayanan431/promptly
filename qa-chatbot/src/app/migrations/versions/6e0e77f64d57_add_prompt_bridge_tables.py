@@ -48,6 +48,12 @@ def upgrade() -> None:
     op.create_index(
         op.f("ix_pb_prompt_mappings_user_id"), "pb_prompt_mappings", ["user_id"], unique=False
     )
+    op.create_index(
+        "ix_pb_prompt_mappings_user_source_target",
+        "pb_prompt_mappings",
+        ["user_id", "source_model", "target_model"],
+        unique=False,
+    )
 
     op.create_table(
         "pb_prompt_pairs",
@@ -132,6 +138,7 @@ def downgrade() -> None:
     op.drop_table("pb_transfer_jobs")
     op.drop_index(op.f("ix_pb_prompt_pairs_mapping_id"), table_name="pb_prompt_pairs")
     op.drop_table("pb_prompt_pairs")
+    op.drop_index("ix_pb_prompt_mappings_user_source_target", table_name="pb_prompt_mappings")
     op.drop_index(op.f("ix_pb_prompt_mappings_user_id"), table_name="pb_prompt_mappings")
     op.drop_table("pb_prompt_mappings")
     op.execute("DROP TYPE IF EXISTS pb_transfer_job_status")

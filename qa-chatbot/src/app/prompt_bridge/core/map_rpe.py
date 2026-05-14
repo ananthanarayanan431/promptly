@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import logging
 import random
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
 from app.llm import LLMClient
@@ -237,7 +238,7 @@ async def run_map_rpe(
     target_llm: LLMClient,
     eval_llm: LLMClient,
     reflection_llm: LLMClient,
-    progress_cb: object = None,
+    progress_cb: Callable[[int, int, float], Awaitable[None]] | None = None,
 ) -> PromptCandidate:
     """
     Run MAP-RPE to find the best prompt for target_model starting from source_prompt.
