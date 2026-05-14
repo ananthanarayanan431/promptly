@@ -23,6 +23,7 @@ interface ModelDef {
   vendor: string;
   hue: string;
   short: string;
+  contextLength: number | null;
 }
 
 // Per-provider hue for the colored dot
@@ -62,17 +63,18 @@ function modelDefFromInfo(m: ModelInfo): ModelDef {
     vendor: vendorMap[provider] ?? (provider.charAt(0).toUpperCase() + provider.slice(1)),
     hue: PROVIDER_HUE[provider] ?? DEFAULT_HUE,
     short: short || slug,
+    contextLength: m.context_length ?? null,
   };
 }
 
 // Fallback static list shown while the API loads (keeps the UI responsive)
 const FALLBACK_MODELS: ModelDef[] = [
-  { id: 'openai/gpt-4o',               label: 'GPT-4o',            vendor: 'OpenAI',    hue: PROVIDER_HUE.openai,    short: 'GPT-4o' },
-  { id: 'openai/gpt-4o-mini',          label: 'GPT-4o mini',       vendor: 'OpenAI',    hue: PROVIDER_HUE.openai,    short: '4o mini' },
-  { id: 'anthropic/claude-3.5-haiku',  label: 'Claude 3.5 Haiku',  vendor: 'Anthropic', hue: PROVIDER_HUE.anthropic, short: 'Haiku' },
-  { id: 'anthropic/claude-sonnet-4-5', label: 'Claude Sonnet 4.5', vendor: 'Anthropic', hue: PROVIDER_HUE.anthropic, short: 'Sonnet' },
-  { id: 'google/gemini-2.5-flash',     label: 'Gemini 2.5 Flash',  vendor: 'Google',    hue: PROVIDER_HUE.google,    short: 'Flash' },
-  { id: 'x-ai/grok-3-beta',            label: 'Grok 3',            vendor: 'xAI',       hue: PROVIDER_HUE['x-ai'],   short: 'Grok 3' },
+  { id: 'openai/gpt-4o',               label: 'GPT-4o',            vendor: 'OpenAI',    hue: PROVIDER_HUE.openai,    short: 'GPT-4o',   contextLength: 128000 },
+  { id: 'openai/gpt-4o-mini',          label: 'GPT-4o mini',       vendor: 'OpenAI',    hue: PROVIDER_HUE.openai,    short: '4o mini',  contextLength: 128000 },
+  { id: 'anthropic/claude-3.5-haiku',  label: 'Claude 3.5 Haiku',  vendor: 'Anthropic', hue: PROVIDER_HUE.anthropic, short: 'Haiku',    contextLength: 200000 },
+  { id: 'anthropic/claude-sonnet-4-5', label: 'Claude Sonnet 4.5', vendor: 'Anthropic', hue: PROVIDER_HUE.anthropic, short: 'Sonnet',   contextLength: 200000 },
+  { id: 'google/gemini-2.5-flash',     label: 'Gemini 2.5 Flash',  vendor: 'Google',    hue: PROVIDER_HUE.google,    short: 'Flash',    contextLength: 1048576 },
+  { id: 'x-ai/grok-3-beta',            label: 'Grok 3',            vendor: 'xAI',       hue: PROVIDER_HUE['x-ai'],   short: 'Grok 3',   contextLength: 131072 },
 ];
 
 function useModelCatalog() {
@@ -95,7 +97,15 @@ function findModel(id: string, models: ModelDef[]): ModelDef {
     vendor: id.split('/')[0] ?? '',
     hue: PROVIDER_HUE[id.split('/')[0] ?? ''] ?? DEFAULT_HUE,
     short: (id.split('/')[1] ?? id).slice(0, 14),
+    contextLength: null,
   };
+}
+
+function fmtCtx(n: number | null): string {
+  if (n === null) return '';
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n % 1_000_000 === 0 ? 0 : 1)}M ctx`;
+  if (n >= 1_000) return `${Math.round(n / 1_000)}k ctx`;
+  return `${n} ctx`;
 }
 
 // Stage labels (no architecture leak)
@@ -295,11 +305,28 @@ function ModelPicker({ value, onChange, side, excludeId, models }: {
                           {opt.label}
                         </div>
                         <div style={{
-                          fontSize: 10.5, color: 'var(--text-subtle)',
-                          fontFamily: 'var(--font-geist-mono, monospace)',
-                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          display: 'flex', alignItems: 'center', gap: 6, marginTop: 1,
                         }}>
-                          {opt.id}
+                          <span style={{
+                            fontSize: 10, color: 'var(--text-subtle)',
+                            fontFamily: 'var(--font-geist-mono, monospace)',
+                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                            flex: 1,
+                          }}>
+                            {opt.id}
+                          </span>
+                          {opt.contextLength !== null && (
+                            <span style={{
+                              fontSize: 9.5, fontFamily: 'var(--font-geist-mono, monospace)',
+                              color: selected ? 'var(--primary)' : 'var(--text-subtle)',
+                              background: selected ? 'var(--primary-ring)' : 'var(--surface-2)',
+                              border: '1px solid var(--border)',
+                              borderRadius: 4, padding: '1px 5px',
+                              whiteSpace: 'nowrap', flexShrink: 0,
+                            }}>
+                              {fmtCtx(opt.contextLength)}
+                            </span>
+                          )}
                         </div>
                       </div>
                       {selected && (
@@ -967,7 +994,7 @@ export function BridgeWorkspace() {
       } catch { /* keep polling */ }
     }, 2500);
     return () => { if (pollingRef.current) clearInterval(pollingRef.current); };
-  }, [activeJobId, source, target]);
+  }, [activeJobId]);
 
   const swap = () => {
     if (running) return;
@@ -989,7 +1016,7 @@ export function BridgeWorkspace() {
   }, []);
 
   const handleCancel = useCallback(async () => {
-    clearInterval(pollingRef.current!);
+    if (pollingRef.current) clearInterval(pollingRef.current);
     if (activeDbJobId) {
       try {
         await api.post(`/api/v1/prompt-bridge/jobs/${activeDbJobId}/cancel-by-id`);
@@ -1264,12 +1291,17 @@ export function BridgeWorkspace() {
       {showNewModal && (
         <NewTransferModal
           onClose={() => { setShowNewModal(false); setModalPrefill(null); }}
-          onJobStarted={(jobId) => {
+          onJobStarted={async (jobId) => {
             setShowNewModal(false);
             setModalPrefill(null);
             setActiveJobId(jobId);
             setRunning(true);
             setStage('source');
+            try {
+              const jobsRes = await api.get<{ data: TransferJobListResponse }>('/api/v1/prompt-bridge/jobs');
+              const match = jobsRes.data.data.jobs.find(j => j.redis_job_id === jobId);
+              if (match) setActiveDbJobId(String(match.id));
+            } catch { /* cancel will still work via Redis-based endpoint */ }
           }}
           defaultSourceModel={modalPrefill?.sourceModel}
           defaultTargetModel={modalPrefill?.targetModel}
