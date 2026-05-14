@@ -27,8 +27,9 @@ function fmtCtx(n: number | null): string {
 
 function fmtPrice(p: ModelInfo['pricing']): string {
   if (!p) return '';
-  const inp = (p.prompt_per_token * 1_000_000).toFixed(2);
-  return `$${inp}/M`;
+  const val = Number(p.prompt_per_token);
+  if (Number.isNaN(val)) return '';
+  return `$${(val * 1_000_000).toFixed(2)}/M`;
 }
 
 interface Props {
@@ -56,7 +57,7 @@ function ModelInput({
   const [open, setOpen] = useState(false);
   const query = value.toLowerCase();
   const filtered = models.filter(
-    (m) => m.id.toLowerCase().includes(query) || m.name.toLowerCase().includes(query),
+    (m) => m.id.toLowerCase().includes(query) || (m.name ?? '').toLowerCase().includes(query),
   );
 
   return (
@@ -216,7 +217,7 @@ export function NewTransferModal({ onClose, onJobStarted, defaultSourceModel = '
 
   const { data: models = [], isLoading: modelsLoading } = useModels();
 
-  const valid = sourceModel.trim().length >= 3 && targetModel.trim().length >= 3 && sourcePrompt.trim().length >= 10;
+  const valid = sourceModel.trim().length >= 3 && targetModel.trim().length >= 3 && sourcePrompt.trim().length >= 10 && sourceModel.trim() !== targetModel.trim();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
