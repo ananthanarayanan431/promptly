@@ -1055,7 +1055,8 @@ export function BridgeWorkspace() {
     setSource(m.source_model);
     setTarget(m.target_model);
     setResultJob(null);
-    topRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setModalPrefill({ sourceModel: m.source_model, targetModel: m.target_model });
+    setShowNewModal(true);
   };
 
   return (
