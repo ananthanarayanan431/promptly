@@ -36,6 +36,7 @@ const NAV_GROUPS = [
     items: [
       { href: '/optimize',      label: 'Optimize',       icon: 'sparkles', primary: true },
       { href: '/domain-prompts', label: 'Domain',         icon: 'flask',    primary: true },
+      { href: '/bridge',         label: 'Bridge',          icon: 'bridge',   primary: true },
       { href: '/analyze',       label: 'Analyze',         icon: 'activity' },
     ],
   },
@@ -52,6 +53,7 @@ const NAV_GROUPS = [
   {
     group: 'Account',
     items: [
+      { href: '/dashboard',     label: 'Dashboard',        icon: 'dashboard' },
       { href: '/settings',      label: 'API Keys',         icon: 'chip' },
       { href: '/billing',       label: 'Billing',          icon: 'creditCard' },
     ],
@@ -70,6 +72,8 @@ function NavIcon({ name }: { name: string }) {
     creditCard: 'M2 5h20v14H2zM2 10h20',
     folder: 'M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z',
     image: 'M21 15l-5-5L5 21M21 3H3a2 2 0 00-2 2v14a2 2 0 002 2h18a2 2 0 002-2V5a2 2 0 00-2-2zM8.5 10a1.5 1.5 0 100-3 1.5 1.5 0 000 3z',
+    bridge: 'M4 12h4M16 12h4M8 12a4 4 0 008 0M8 12V8M16 12V8M8 8h8M6 5h3M15 5h3',
+    dashboard: 'M3 3h8v8H3zM13 3h8v8h-8zM3 13h8v8H3zM13 13h8v8h-8z',
   };
   const d = paths[name] || '';
   return (

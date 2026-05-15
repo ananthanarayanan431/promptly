@@ -41,7 +41,7 @@ export function QualityTrendChart({ data }: Props) {
           tickLine={false}
           axisLine={false}
         />
-        <ReferenceLine y={7} stroke="rgba(124,92,255,0.25)" strokeDasharray="4 3" />
+        <ReferenceLine y={7} stroke="var(--primary-border)" strokeDasharray="4 3" />
         <Tooltip
           contentStyle={{
             borderRadius: '8px',
@@ -56,9 +56,9 @@ export function QualityTrendChart({ data }: Props) {
           type="monotone"
           dataKey="avg_score"
           strokeWidth={2}
-          dot={{ r: 3, fill: '#7c5cff' }}
+          dot={{ r: 3, fill: 'var(--primary)' }}
           activeDot={{ r: 5 }}
-          stroke="#7c5cff"
+          stroke="var(--primary)"
         />
       </LineChart>
     </ResponsiveContainer>

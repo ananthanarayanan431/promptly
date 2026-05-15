@@ -12,7 +12,11 @@ celery_app = Celery(
     "qa_chatbot",
     broker=str(redis_settings.REDIS_URL),
     backend=str(redis_settings.REDIS_URL),
-    include=["app.workers.tasks", "app.domain_prompt.workers.tasks"],
+    include=[
+        "app.workers.tasks",
+        "app.domain_prompt.workers.tasks",
+        "app.prompt_bridge.workers.tasks",
+    ],
 )
 
 celery_app.conf.update(

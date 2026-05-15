@@ -50,6 +50,18 @@ export interface CouncilProposal {
   };
 }
 
+export interface ReasoningChange {
+  kind: string;
+  title: string;
+  detail: string;
+}
+
+export interface ReasoningBlock {
+  summary: string;
+  changes: ReasoningChange[];
+  kept: string[];
+}
+
 export interface JobResult {
   session_id: string;
   original_prompt: string;
@@ -65,6 +77,8 @@ export interface JobResult {
   already_optimized?: boolean;
   gate_dimension_scores?: Record<string, string> | null;
   gate_rationale?: string | null;
+  // Structured reasoning — why this version was chosen
+  reasoning?: ReasoningBlock | null;
 }
 
 export interface JobStatusResponse {
@@ -257,6 +271,7 @@ export interface SessionMessage {
   already_optimized?: boolean;
   gate_dimension_scores?: Record<string, string> | null;
   gate_rationale?: string | null;
+  reasoning?: ReasoningBlock | null;
   created_at: string;
 }
 

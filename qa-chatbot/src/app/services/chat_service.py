@@ -65,6 +65,7 @@ class ChatService:
             "iteration_count": 0,
             "max_iterations": max_iterations,
             "previous_synthesis": None,
+            "reasoning": None,
         }
 
         result = await self.graph.ainvoke(initial_state, config=config)
@@ -78,6 +79,8 @@ class ChatService:
                 token_usage["_gate_dimension_scores"] = result["gate_dimension_scores"]
             if result.get("gate_rationale"):
                 token_usage["_gate_rationale"] = result["gate_rationale"]
+        if result.get("reasoning"):
+            token_usage["_reasoning"] = result["reasoning"]
 
         # Persist the exchange (response = final optimized prompt)
         await self.msg_repo.create(
@@ -101,6 +104,7 @@ class ChatService:
             "already_optimized": result.get("already_optimized", False),
             "gate_dimension_scores": result.get("gate_dimension_scores"),
             "gate_rationale": result.get("gate_rationale"),
+            "reasoning": result.get("reasoning"),
         }
 
     async def stream(
@@ -132,6 +136,7 @@ class ChatService:
             "iteration_count": 0,
             "max_iterations": 1,
             "previous_synthesis": None,
+            "reasoning": None,
         }
         async for event in self.graph.astream_events(initial_state, config=config, version="v2"):
             if event["event"] == "on_chat_model_stream":

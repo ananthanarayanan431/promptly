@@ -34,7 +34,6 @@ export function ChatInput({
   const [versionName, setVersionName] = useState(defaultName);
   const [versioning, setVersioning] = useState(!!defaultName);
   const [nameLoading, setNameLoading] = useState(false);
-  const [focused, setFocused] = useState(false);
   const [categorySlug, setCategorySlug] = useState<string>('general');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -144,12 +143,12 @@ export function ChatInput({
       )}
 
       <div style={{ position: 'relative', borderRadius: 12,
-        border: `1px solid ${focused ? 'rgba(124,92,255,0.5)' : 'var(--border)'}`,
+        border: '1.5px solid var(--primary)',
         background: 'var(--surface)',
-        boxShadow: focused ? '0 0 0 3px rgba(124,92,255,0.1)' : 'none',
+        boxShadow: '0 0 0 4px var(--primary-ring)',
         transition: 'border-color 150ms, box-shadow 150ms' }}>
         <textarea ref={textareaRef} value={text} onChange={(e) => setText(e.target.value)}
-          onKeyDown={handleKeyDown} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
+          onKeyDown={handleKeyDown}
           placeholder={hasPreviousTurns ? 'Give feedback to refine the result...' : 'Paste your prompt here to optimize...'}
           disabled={isLoading} autoFocus={autoFocus} rows={1}
           style={{ width: '100%', resize: 'none', background: 'transparent',
@@ -167,10 +166,11 @@ export function ChatInput({
               title={versioning ? 'Stop versioning' : 'Save as version'}
               style={{ display: 'flex', alignItems: 'center', gap: 5, height: 26, padding: '0 10px',
                 borderRadius: 999, fontSize: 11.5, fontWeight: 500, cursor: 'pointer',
-                border: versioning ? '1px solid rgba(124,92,255,0.3)' : '1px solid transparent',
-                background: versioning ? 'rgba(124,92,255,0.08)' : 'transparent',
-                color: versioning ? 'var(--primary)' : 'var(--text-subtle)',
-                fontFamily: 'inherit', transition: 'all 120ms' }}>
+                border: '1px solid rgba(124,92,255,0.3)',
+                background: 'var(--primary-soft)',
+                color: 'var(--primary)',
+                fontFamily: 'inherit', transition: 'all 120ms',
+                opacity: versioning ? 1 : 0.7 }}>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                 <path d="M6 3v12"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/>
                 <path d="M18 9a9 9 0 01-9 9"/>
