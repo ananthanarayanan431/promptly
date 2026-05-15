@@ -438,6 +438,45 @@ async def list_domain_runs(
     )
 
 
+@router.post(
+    "/{domain_id}/stop",
+    response_model=SuccessResponse[DomainPromptResponse],
+    dependencies=[Depends(_write_limiter)],
+)
+async def stop_domain_tournament(
+    domain_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> SuccessResponse[DomainPromptResponse]:
+    """
+    Force-stop a stuck tournament.
+
+    If the Celery worker crashed mid-run, the domain stays in 'optimizing' or
+    'preparing_dataset' forever. This endpoint resets it to 'completed' (when a
+    dataset exists) or 'failed' so the user can try again.
+    """
+    repo = DomainPromptRepository(db)
+    domain = await repo.get_by_id_and_user(domain_id, current_user.id)
+    if domain is None:
+        raise DomainNotFoundException()
+
+    stuck_statuses = (DomainPromptStatus.optimizing, DomainPromptStatus.preparing_dataset)
+    if domain.status not in stuck_statuses:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Domain is not in a running state — nothing to stop.",
+        )
+
+    # Reset to completed if dataset is ready, otherwise to failed
+    has_dataset = domain.dataset is not None and domain.dataset.dataset_key is not None
+    new_status = DomainPromptStatus.completed if has_dataset else DomainPromptStatus.failed
+    await repo.set_status(domain, new_status)
+    await db.commit()
+    await db.refresh(domain)
+
+    return SuccessResponse(data=DomainPromptResponse.model_validate(domain))
+
+
 @router.delete(
     "/{domain_id}",
     response_model=SuccessResponse[DeleteDomainResponse],
