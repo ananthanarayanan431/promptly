@@ -28,7 +28,8 @@ def _build_pairs_block(pairs: list[tuple[str, str]]) -> str:
     """Format calibrated (source, target) prompt pairs for the extractor prompt."""
     blocks: list[str] = []
     for i, (src, tgt) in enumerate(pairs, 1):
-        blocks.append(f"--- Pair {i} ---\n" f"[SOURCE PROMPT]\n{src}\n\n" f"[TARGET PROMPT]\n{tgt}")
+        entry = f"--- Pair {i} ---\n[SOURCE PROMPT]\n{src}\n\n[TARGET PROMPT]\n{tgt}"
+        blocks.append(entry)
     return "\n\n".join(blocks)
 
 

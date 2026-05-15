@@ -12,6 +12,7 @@ DELETE /prompt-bridge/mappings/{id}       Delete a mapping + all its pairs
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from typing import Annotated
 
@@ -194,7 +195,7 @@ async def poll_transfer_job(
         data=TransferJobPollResponse(
             job_id=job_id,
             status=job_status,
-            stage=str(progress.get("stage")) if progress else None,
+            stage=str(progress["stage"]) if progress and "stage" in progress else None,
             progress=progress,
             result=result_payload,
             error=error,
@@ -242,7 +243,8 @@ async def cancel_transfer_job_by_db_id(
     if celery_task_id:
         from celery.result import AsyncResult
 
-        AsyncResult(celery_task_id, app=celery_app).revoke(terminate=True, signal="SIGTERM")
+        _ar = AsyncResult(celery_task_id, app=celery_app)
+        await asyncio.to_thread(lambda: _ar.revoke(terminate=True, signal="SIGTERM"))
 
     await set_pb_job_cancel(redis_id)
     await set_pb_job_status(redis_id, "cancelled")
@@ -401,7 +403,8 @@ async def cancel_transfer_job(
     if celery_task_id:
         from celery.result import AsyncResult
 
-        AsyncResult(celery_task_id, app=celery_app).revoke(terminate=True, signal="SIGTERM")
+        _ar = AsyncResult(celery_task_id, app=celery_app)
+        await asyncio.to_thread(lambda: _ar.revoke(terminate=True, signal="SIGTERM"))
 
     # ── 2. Set cooperative cancel flag for the inter-stage checkpoints ──────
     await set_pb_job_cancel(job_id)
