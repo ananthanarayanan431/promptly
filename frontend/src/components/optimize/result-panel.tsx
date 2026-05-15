@@ -198,7 +198,7 @@ function wordCount(text: string): number {
 }
 
 function countSections(text: string): number {
-  return (text.match(/\n#/g) ?? []).length;
+  return (text.match(/(^|\n)#/g) ?? []).length;
 }
 
 function estimateTokens(text: string): number {
@@ -237,14 +237,18 @@ export function ResultPanel({ result, onClose, onForceOptimize, isLoading = fals
 
   const handleSaveToggle = async () => {
     if (isSavePending || !result.prompt_version_id) return;
-    if (isFavorited) {
-      await unlikeMutation.mutateAsync(result.prompt_version_id);
-      setIsFavorited(false);
-      setFavoriteId(null);
-    } else {
-      const res = await likeMutation.mutateAsync({ prompt_version_id: result.prompt_version_id });
-      setIsFavorited(true);
-      setFavoriteId(res.id);
+    try {
+      if (isFavorited) {
+        await unlikeMutation.mutateAsync(result.prompt_version_id);
+        setIsFavorited(false);
+        setFavoriteId(null);
+      } else {
+        const res = await likeMutation.mutateAsync({ prompt_version_id: result.prompt_version_id });
+        setIsFavorited(true);
+        setFavoriteId(res.id);
+      }
+    } catch {
+      toast.error('Failed to update saved state');
     }
   };
 
@@ -256,7 +260,7 @@ export function ResultPanel({ result, onClose, onForceOptimize, isLoading = fals
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(result.optimized_prompt);
+      await navigator.clipboard.writeText(showing);
       setCopied(true);
       toast.success('Copied');
       setTimeout(() => setCopied(false), 2000);

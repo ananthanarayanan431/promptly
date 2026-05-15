@@ -110,7 +110,7 @@ function UserBubble({ text, isFeedback }: { text: string; isFeedback: boolean })
 
 // Compute sections count from markdown headers
 function countSections(text: string): number {
-  return (text.match(/\n#/g) ?? []).length;
+  return (text.match(/(^|\n)#/g) ?? []).length;
 }
 
 // Compute approximate token estimate (rough: 1 token ≈ 4 chars)
