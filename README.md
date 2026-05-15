@@ -1,46 +1,207 @@
 # Promptly — AI Prompt Optimization Platform
 
-Promptly optimises your prompts using a multi-model council: four LLMs independently rewrite your prompt, critique each other's proposals, and a chairman model synthesises the best result.
+Promptly turns rough prompts into production-grade ones using a **multi-model council pipeline**: four LLMs independently rewrite your prompt, blind-review each other's proposals, and a chairman model synthesises the best result.
+
+---
+
+## Features
+
+### Core — Prompt Optimization
+- **Council pipeline** — 4 models optimize in parallel (Round 1), blind peer-review all proposals (Round 2), chairman synthesizes the winner (Round 3)
+- **Quality gate** — detects already-optimized prompts and short-circuits (5 credits instead of 10)
+- **Iterative refinement** — quality gate can trigger additional passes when the first synthesis isn't strong enough
+- **Structured reasoning** — every optimization explains what changed, why, and what was preserved
+- **Feedback loop** — submit feedback on any result to refine it further in the same session
+- **Version history** — every optimization is saved as a versioned prompt family; compare across versions
+- **Prompt categories** — tag prompts by category (code generation, analysis, writing, etc.) to apply specialized optimization guidance
+
+### Prompt Analysis
+- **Health score** — 8-dimension quality scoring (role/persona, goal clarity, context, output format, examples, guardrails, tone, conciseness)
+- **Advisory** — strengths, weaknesses, and improvement suggestions without running a full optimization
+
+### Domain Prompts
+- Upload a PDF of domain knowledge to build a specialized dataset
+- Generate Q&A pairs from the document, then optimize a prompt against them
+- Stored in MinIO; supports dataset augmentation and re-optimization runs
+
+### Prompt Bridge
+- Transfer a prompt optimized for one LLM (e.g. GPT-4o) to work well on another (e.g. Claude Sonnet)
+- Learns a style-transfer mapping from calibrated example pairs, then applies it to your prompt
+- Reuses saved mappings (1 credit) or performs a full re-extraction (5 credits)
+
+### Library
+- **Versions** — browse and restore any version of any prompt family
+- **Prompt Library** — saved/favorited prompts (prompt store)
+- **Prompt Project** — organize prompts into projects
+- **History** — full session history with sidebar search
+
+### Account
+- Credits system (starts at 100): optimize = 10 credits, health/advisory = 5, bridge = 1–5, domain = variable
+- API key management for programmatic access (`qac_`-prefixed keys)
+- Billing dashboard
+
+---
 
 ## Architecture
 
 ```
 Browser → Next.js (:3000)
-              ↓ axios
+              ↓ axios (NEXT_PUBLIC_API_URL)
          FastAPI (:8000)  →  202 { job_id }
-              ↓ Celery task
+              ↓ Celery task dispatch
          Redis (broker)
               ↓ Celery Worker → LangGraph → OpenRouter LLMs
-              ↓ result written to Redis
-         FastAPI GET /chat/jobs/{id} ← frontend polls every 2 s
+              ↓ writes result + SSE progress events to Redis
+         FastAPI GET /chat/jobs/{id}/stream ← frontend SSE stream
+                                            ← falls back to polling every 1 s
 ```
+
+`POST /api/v1/chat/` never blocks — it returns `job_id` immediately. The LangGraph pipeline runs in the Celery worker. Without the worker running, all optimize requests will hang in `queued` state.
+
+---
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|------------|
-| Frontend | Next.js 14, TypeScript, Tailwind CSS, shadcn/ui, TanStack Query v5 |
-| Backend | FastAPI, Python 3.11, SQLAlchemy 2 (asyncpg), Alembic |
+| Frontend | Next.js 14 (App Router), TypeScript strict, Tailwind CSS, shadcn/ui, TanStack Query v5, Zustand |
+| Backend | FastAPI, Python 3.12, SQLAlchemy 2.0 (async + asyncpg), Alembic |
 | Queue | Celery + Redis |
-| AI Pipeline | LangGraph, OpenRouter (multi-model) |
-| Database | PostgreSQL 16 + pgvector |
+| AI Pipeline | LangGraph, OpenRouter (multi-model council) |
+| Database | PostgreSQL 16 |
+| Object Storage | MinIO (domain prompt PDFs and datasets) |
+| Code Quality | Ruff, MyPy strict, ESLint, pre-commit hooks |
+
+---
 
 ## Quick Start
 
-See [`qa-chatbot/CLAUDE.md`](qa-chatbot/CLAUDE.md) and [`frontend/CLAUDE.md`](frontend/CLAUDE.md) for full setup instructions.
+### Prerequisites
+- Docker (for PostgreSQL, Redis, MinIO)
+- Python 3.12 + [uv](https://github.com/astral-sh/uv)
+- Node.js 18+
+
+### 1. Backend
 
 ```bash
-# 1. Backend + infra
-cd qa-chatbot && make infra && make migrate && make dev
-
-# 2. Celery worker (separate terminal)
-cd qa-chatbot && make worker
-
-# 3. Frontend (separate terminal)
-cd frontend && npm install && npm run dev
+cd qa-chatbot
+cp .env.example .env       # fill in OPENROUTER_API_KEY and other vars
+make install               # uv sync --all-extras
+make infra                 # start postgres + redis + minio containers
+make migrate               # run alembic migrations
+make dev                   # uvicorn on :8000
 ```
 
+### 2. Celery Worker (required — separate terminal)
+
+```bash
+cd qa-chatbot && make worker
+```
+
+### 3. Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev                # Next.js on :3000
+```
+
+Set `NEXT_PUBLIC_API_URL=http://localhost:8000` in `frontend/.env.local`.
+
 Visit `http://localhost:3000` · API docs at `http://localhost:8000/docs`
+
+---
+
+## Environment Variables
+
+### Backend (`qa-chatbot/.env`)
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `OPENROUTER_API_KEY` | ✅ | Routes all LLM calls |
+| `DATABASE_URL` | ✅ | Async postgres (`postgresql+asyncpg://...`) |
+| `REDIS_URL` | ✅ | Celery broker/backend + job state cache |
+| `SECRET_KEY` | ✅ | JWT signing key |
+| `COUNCIL_MODELS` | — | Override 4 model slugs (comma-separated); index order maps to the 4 optimization strategies |
+| `DEFAULT_MODEL` | — | Chairman/synthesizer model slug |
+| `MINIO_ENDPOINT_URL` | — | Default: `http://localhost:9000` |
+| `MINIO_ACCESS_KEY` | — | MinIO credentials |
+| `MINIO_SECRET_KEY` | — | MinIO credentials |
+| `MINIO_BUCKET_NAME` | — | Default: `promptly` |
+
+### Frontend (`frontend/.env.local`)
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `NEXT_PUBLIC_API_URL` | ✅ | Backend base URL |
+
+---
+
+## Project Structure
+
+```
+promptly/
+├── qa-chatbot/                   # FastAPI backend
+│   ├── prompts/                  # LLM system prompts (.md files, edit to change behavior)
+│   └── src/app/
+│       ├── api/v1/               # FastAPI routers (chat, auth, prompts, health, ...)
+│       ├── graph/                # LangGraph pipeline — nodes, state, checkpointer
+│       ├── services/             # Business logic (ChatService, PromptService)
+│       ├── repositories/         # Async SQLAlchemy data access
+│       ├── models/               # ORM models (User, ChatSession, Message, PromptVersion, ...)
+│       ├── schemas/              # Pydantic I/O contracts
+│       ├── workers/              # Celery app + task definitions
+│       ├── domain_prompt/        # Domain Prompts feature (PDF → dataset → optimize)
+│       └── prompt_bridge/        # Prompt Bridge feature (cross-model style transfer)
+└── frontend/                    # Next.js frontend
+    └── src/
+        ├── app/(dashboard)/      # Dashboard routes
+        │   ├── optimize/         # Main optimization chat page
+        │   ├── analyze/          # Health score + advisory
+        │   ├── bridge/           # Prompt Bridge UI
+        │   ├── domain-prompts/   # Domain Prompts UI
+        │   └── versions/         # Version history browser
+        ├── components/optimize/  # Chat messages, result panel, job progress stepper
+        ├── hooks/                # TanStack Query hooks, SSE job stream
+        ├── stores/               # Zustand (auth, job state)
+        └── types/api.ts          # TypeScript interfaces mirroring backend schemas
+```
+
+---
+
+## Controlling LLM Behavior
+
+All system prompts live in `qa-chatbot/prompts/` as `.md` files, loaded once at startup. Edit them and restart the worker — no code changes needed.
+
+| File | Controls |
+|------|----------|
+| `council_optimizer.md` | How all 4 council models optimize prompts |
+| `critic.md` | How models blind-review each other's proposals |
+| `synthesize_best.md` | How the chairman picks and merges the best result |
+| `intent_classifier.md` | What gets rejected vs. passed to the optimizer |
+| `prompt_health_score.md` | The 8 scoring dimensions and their weights |
+| `prompt_advisory.md` | Strengths/weaknesses analysis format |
+
+---
+
+## Development Commands
+
+```bash
+# Backend
+cd qa-chatbot
+make lint        # ruff check
+make format      # ruff format
+make typecheck   # mypy --strict
+make test        # pytest with coverage
+make check       # lint + format + typecheck in one go
+
+# Frontend
+cd frontend
+npm run lint     # eslint
+npm run build    # type-check + production build
+```
+
+---
 
 ## Contributing
 
