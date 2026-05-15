@@ -11,7 +11,7 @@ from app.models.user import User
 fake = Faker()
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(loop_scope="session")
 async def auth_headers(
     client: AsyncClient, db_session: AsyncSession
 ) -> AsyncGenerator[dict[str, str], None]:

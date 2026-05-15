@@ -127,7 +127,8 @@ async def test_api_key_revoked_returns_401(
     key_id = create_res.json()["data"]["id"]
     raw_key = create_res.json()["data"]["key"]
 
-    await client.delete(f"/api/v1/users/api-keys/{key_id}", headers=auth_headers)
+    delete_res = await client.delete(f"/api/v1/users/api-keys/{key_id}", headers=auth_headers)
+    assert delete_res.status_code == 200
 
     res = await client.get("/api/v1/users/me", headers={"Authorization": f"Bearer {raw_key}"})
     assert res.status_code == 401
