@@ -115,3 +115,35 @@ async def test_api_key_revoked_returns_401(
 
     res = await client.get("/api/v1/users/me", headers={"Authorization": f"Bearer {raw_key}"})
     assert res.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_refresh_token_happy_path(client: AsyncClient) -> None:
+    email = fake.unique.email()
+    password = "Pass123!"  # noqa: S105
+    await client.post("/api/v1/auth/register", json={"email": email, "password": password})
+    login = await client.post("/api/v1/auth/login", data={"username": email, "password": password})
+    refresh_token = login.json()["data"]["refresh_token"]
+
+    res = await client.post("/api/v1/auth/refresh", json={"refresh_token": refresh_token})
+    assert res.status_code == 200
+    data = res.json()["data"]
+    assert "access_token" in data
+    assert "refresh_token" in data
+    assert data["token_type"] == "bearer"  # noqa: S105
+
+
+@pytest.mark.asyncio
+async def test_refresh_token_invalid(client: AsyncClient) -> None:
+    res = await client.post("/api/v1/auth/refresh", json={"refresh_token": "not.a.valid.token"})
+    assert res.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_register_with_full_name(client: AsyncClient) -> None:
+    res = await client.post(
+        "/api/v1/auth/register",
+        json={"email": fake.unique.email(), "password": "StrongPass1!", "full_name": "Jane Doe"},
+    )
+    assert res.status_code == 200
+    assert res.json()["data"]["full_name"] == "Jane Doe"

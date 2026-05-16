@@ -330,3 +330,208 @@ async def test_tags_endpoint_is_user_scoped(client: AsyncClient, db_session: Asy
 
     res = await client.get("/api/v1/favorites/tags", headers=_auth(tok_a))
     assert res.json()["data"]["tags"] == ["alpha", "beta"]
+
+
+# ---------------------------------------------------------------------------
+# Additional tests for uncovered lines
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_list_favorites_empty(client: AsyncClient, db_session: AsyncSession) -> None:
+    """List returns empty items/total when user has no favorites."""
+    _, token = await _make_user_and_token(db_session, "empty@test.com")
+    await db_session.commit()
+
+    res = await client.get("/api/v1/favorites", headers=_auth(token))
+    assert res.status_code == 200
+    data = res.json()["data"]
+    assert data["total"] == 0
+    assert data["items"] == []
+
+
+@pytest.mark.asyncio
+async def test_list_favorites_unauthenticated_returns_401(client: AsyncClient) -> None:
+    res = await client.get("/api/v1/favorites")
+    assert res.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_get_favorite_by_id_not_found_returns_404(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    _, token = await _make_user_and_token(db_session, "notfound@test.com")
+    await db_session.commit()
+
+    res = await client.get(f"/api/v1/favorites/{uuid.uuid4()}", headers=_auth(token))
+    assert res.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_favorite_by_id_returns_favorite(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    user, token = await _make_user_and_token(db_session, "getfav@test.com")
+    pv = await _make_version(db_session, user)
+    await db_session.commit()
+
+    with patch(
+        "app.services.favorite_service.FavoriteService._generate_tags",
+        AsyncMock(return_value=(set(), "Other")),
+    ):
+        created = await client.post(
+            "/api/v1/favorites",
+            json={"prompt_version_id": str(pv.id)},
+            headers=_auth(token),
+        )
+    fav_id = created.json()["data"]["id"]
+
+    res = await client.get(f"/api/v1/favorites/{fav_id}", headers=_auth(token))
+    assert res.status_code == 200
+    assert res.json()["data"]["id"] == fav_id
+
+
+@pytest.mark.asyncio
+async def test_unlike_nonexistent_favorite_returns_404(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    _, token = await _make_user_and_token(db_session, "unlnf@test.com")
+    await db_session.commit()
+
+    res = await client.delete(f"/api/v1/favorites/{uuid.uuid4()}", headers=_auth(token))
+    assert res.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_unlike_by_version_not_favorited_returns_404(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    user, token = await _make_user_and_token(db_session, "ulbvnf@test.com")
+    pv = await _make_version(db_session, user)
+    await db_session.commit()
+
+    res = await client.delete(f"/api/v1/favorites/by-version/{pv.id}", headers=_auth(token))
+    assert res.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_unlike_by_version_then_status_is_false(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    user, token = await _make_user_and_token(db_session, "ulbvs@test.com")
+    pv = await _make_version(db_session, user)
+    await db_session.commit()
+
+    with patch(
+        "app.services.favorite_service.FavoriteService._generate_tags",
+        AsyncMock(return_value=(set(), "Other")),
+    ):
+        await client.post(
+            "/api/v1/favorites",
+            json={"prompt_version_id": str(pv.id)},
+            headers=_auth(token),
+        )
+
+    del_res = await client.delete(f"/api/v1/favorites/by-version/{pv.id}", headers=_auth(token))
+    assert del_res.status_code == 204
+
+    status_res = await client.get(
+        f"/api/v1/favorites/status?prompt_version_id={pv.id}",
+        headers=_auth(token),
+    )
+    assert status_res.json()["data"]["is_favorited"] is False
+
+
+@pytest.mark.asyncio
+async def test_update_favorite_note_and_is_pinned(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    user, token = await _make_user_and_token(db_session, "upd@test.com")
+    pv = await _make_version(db_session, user)
+    await db_session.commit()
+
+    with patch(
+        "app.services.favorite_service.FavoriteService._generate_tags",
+        AsyncMock(return_value=(set(), "Other")),
+    ):
+        created = await client.post(
+            "/api/v1/favorites",
+            json={"prompt_version_id": str(pv.id)},
+            headers=_auth(token),
+        )
+    fav_id = created.json()["data"]["id"]
+
+    res = await client.patch(
+        f"/api/v1/favorites/{fav_id}",
+        json={"note": "my custom note", "is_pinned": True},
+        headers=_auth(token),
+    )
+    assert res.status_code == 200
+    data = res.json()["data"]
+    assert data["note"] == "my custom note"
+    assert data["is_pinned"] is True
+
+
+@pytest.mark.asyncio
+async def test_use_favorite_increments_use_count(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    user, token = await _make_user_and_token(db_session, "use2@test.com")
+    pv = await _make_version(db_session, user)
+    await db_session.commit()
+
+    with patch(
+        "app.services.favorite_service.FavoriteService._generate_tags",
+        AsyncMock(return_value=(set(), "Other")),
+    ):
+        created = await client.post(
+            "/api/v1/favorites",
+            json={"prompt_version_id": str(pv.id)},
+            headers=_auth(token),
+        )
+    fav_id = created.json()["data"]["id"]
+
+    use_res = await client.post(f"/api/v1/favorites/{fav_id}/use", headers=_auth(token))
+    assert use_res.status_code == 204
+
+    get_res = await client.get(f"/api/v1/favorites/{fav_id}", headers=_auth(token))
+    assert get_res.json()["data"]["use_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_use_favorite_nonexistent_returns_404(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    _, token = await _make_user_and_token(db_session, "usenf@test.com")
+    await db_session.commit()
+
+    res = await client.post(f"/api/v1/favorites/{uuid.uuid4()}/use", headers=_auth(token))
+    assert res.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_status_check_false_for_unknown_version(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    _, token = await _make_user_and_token(db_session, "statusunk@test.com")
+    await db_session.commit()
+
+    res = await client.get(
+        f"/api/v1/favorites/status?prompt_version_id={uuid.uuid4()}",
+        headers=_auth(token),
+    )
+    assert res.status_code == 200
+    assert res.json()["data"]["is_favorited"] is False
+    assert res.json()["data"]["prompt_store_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_list_tags_empty_when_no_favorites(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    _, token = await _make_user_and_token(db_session, "notags@test.com")
+    await db_session.commit()
+
+    res = await client.get("/api/v1/favorites/tags", headers=_auth(token))
+    assert res.status_code == 200
+    assert res.json()["data"]["tags"] == []
