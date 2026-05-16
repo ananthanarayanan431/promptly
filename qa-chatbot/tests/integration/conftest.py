@@ -30,11 +30,27 @@ def mock_rate_limit_redis(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture(autouse=True)
 def mock_cache_redis(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Patch get_redis_client used by core/cache and prompt_bridge/cache so Redis ops are no-ops."""
+    """Patch get_redis_client used by core/cache and prompt_bridge/cache so Redis ops are no-ops.
+
+    Uses an in-memory dict so set/get round-trips work correctly for job-tracking tests.
+    """
+    _store: dict[str, str] = {}
+
+    async def _set(key: str, value: str, ex: int | None = None) -> bool:  # noqa: ANN001
+        _store[key] = value
+        return True
+
+    async def _get(key: str) -> str | None:
+        return _store.get(key)
+
+    async def _setex(key: str, ttl: int, value: str) -> bool:  # noqa: ANN001
+        _store[key] = value
+        return True
+
     mock_redis = AsyncMock()
-    mock_redis.set = AsyncMock(return_value=True)
-    mock_redis.get = AsyncMock(return_value=None)
-    mock_redis.setex = AsyncMock(return_value=True)
+    mock_redis.set = AsyncMock(side_effect=_set)
+    mock_redis.get = AsyncMock(side_effect=_get)
+    mock_redis.setex = AsyncMock(side_effect=_setex)
     monkeypatch.setattr("app.db.redis.get_redis_client", AsyncMock(return_value=mock_redis))
     monkeypatch.setattr("app.core.cache.get_redis_client", AsyncMock(return_value=mock_redis))
     monkeypatch.setattr(
