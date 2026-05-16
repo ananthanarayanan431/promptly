@@ -1,25 +1,8 @@
-from unittest.mock import AsyncMock, MagicMock
-
 import pytest
 from faker import Faker
 from httpx import AsyncClient
 
 fake = Faker()
-
-
-@pytest.fixture(autouse=True)
-def mock_rate_limit_redis(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Patch the middleware Redis client so rate-limit counters never trigger 429."""
-    mock_pipe = MagicMock()
-    mock_pipe.incr = MagicMock()
-    mock_pipe.expire = MagicMock()
-    mock_pipe.execute = AsyncMock(return_value=[1, True])
-    mock_redis = MagicMock()
-    mock_redis.pipeline = MagicMock(return_value=mock_pipe)
-    monkeypatch.setattr(
-        "app.core.middleware.get_redis_client",
-        AsyncMock(return_value=mock_redis),
-    )
 
 
 @pytest.mark.asyncio

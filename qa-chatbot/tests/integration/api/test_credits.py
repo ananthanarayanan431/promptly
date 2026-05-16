@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 import pytest_asyncio
@@ -13,7 +13,7 @@ from app.models.user import User
 fake = Faker()
 
 
-@pytest_asyncio.fixture(autouse=True, loop_scope="session")
+@pytest_asyncio.fixture(autouse=True)
 async def seed_general_category(db_session: AsyncSession) -> None:
     """Insert the 'general' predefined category so POST /chat/ resolves it."""
     existing = await db_session.execute(
@@ -30,36 +30,6 @@ async def seed_general_category(db_session: AsyncSession) -> None:
             )
         )
         await db_session.flush()
-
-
-@pytest.fixture(autouse=True)
-def mock_rate_limit_redis(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Patch the middleware Redis client so rate-limit counters never trigger 429."""
-    mock_pipe = MagicMock()
-    mock_pipe.incr = MagicMock()
-    mock_pipe.expire = MagicMock()
-    mock_pipe.execute = AsyncMock(return_value=[1, True])
-    mock_redis = MagicMock()
-    mock_redis.pipeline = MagicMock(return_value=mock_pipe)
-    monkeypatch.setattr(
-        "app.core.middleware.get_redis_client",
-        AsyncMock(return_value=mock_redis),
-    )
-
-
-@pytest.fixture(autouse=True)
-def mock_cache_redis(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Patch get_redis_client used by core/cache and prompt_bridge/cache so Redis ops are no-ops."""
-    mock_redis = AsyncMock()
-    mock_redis.set = AsyncMock(return_value=True)
-    mock_redis.get = AsyncMock(return_value=None)
-    mock_redis.setex = AsyncMock(return_value=True)
-    monkeypatch.setattr("app.db.redis.get_redis_client", AsyncMock(return_value=mock_redis))
-    monkeypatch.setattr("app.core.cache.get_redis_client", AsyncMock(return_value=mock_redis))
-    monkeypatch.setattr(
-        "app.prompt_bridge.infrastructure.cache.get_redis_client",
-        AsyncMock(return_value=mock_redis),
-    )
 
 
 async def _register_and_login(
