@@ -200,7 +200,8 @@ async def reflect_and_generate(
     Reflective step: analyze failure and generate an improved prompt candidate.
     """
     top_block = "\n\n".join(
-        f"[Rank {i+1} | score={c.combined_score:.3f}]\n{c.text}" for i, c in enumerate(top_prompts)
+        f"[Rank {i + 1} | score={c.combined_score:.3f}]\n{c.text}"
+        for i, c in enumerate(top_prompts)
     )
     system = REFLECTION_SYSTEM.format(
         target_model=target_model,
