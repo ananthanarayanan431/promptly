@@ -8,6 +8,7 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.prompt_category import PromptCategory
 from app.models.user import User
 
 fake = Faker()
@@ -87,3 +88,22 @@ async def auth_headers(
     if user:
         await db_session.delete(user)
         await db_session.commit()
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def seed_general_category(db_session: AsyncSession) -> None:
+    """Insert the 'general' predefined category so POST /chat/ resolves it."""
+    existing = await db_session.execute(
+        select(PromptCategory).where(PromptCategory.slug == "general")
+    )
+    if existing.scalar_one_or_none() is None:
+        db_session.add(
+            PromptCategory(
+                user_id=None,
+                slug="general",
+                name="General",
+                description="Default category.",
+                is_predefined=True,
+            )
+        )
+        await db_session.flush()

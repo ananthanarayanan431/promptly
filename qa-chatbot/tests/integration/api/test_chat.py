@@ -2,36 +2,15 @@ import uuid
 from unittest.mock import MagicMock, patch
 
 import pytest
-import pytest_asyncio
 from faker import Faker
 from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.cache import set_job_owner, set_job_result, set_job_status
-from app.models.prompt_category import PromptCategory
 from app.models.user import User
 
 fake = Faker()
-
-
-@pytest_asyncio.fixture(autouse=True)
-async def seed_general_category(db_session: AsyncSession) -> None:
-    """Insert the 'general' predefined category so POST /chat/ resolves it."""
-    existing = await db_session.execute(
-        select(PromptCategory).where(PromptCategory.slug == "general")
-    )
-    if existing.scalar_one_or_none() is None:
-        db_session.add(
-            PromptCategory(
-                user_id=None,
-                slug="general",
-                name="General",
-                description="Default category.",
-                is_predefined=True,
-            )
-        )
-        await db_session.flush()
 
 
 async def _make_user_with_credits(
