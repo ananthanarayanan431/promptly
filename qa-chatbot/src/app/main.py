@@ -11,6 +11,7 @@ from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
 
 from app.api.router import api_router
 from app.api.types.response import ResponseError
+from app.api.v1.webhooks import router as webhooks_router
 from app.config.app import AppSettings, get_app_settings
 from app.core.logging import RequestLoggingMiddleware, setup_logging
 from app.core.middleware import CorrelationIdMiddleware, RateLimitMiddleware, RequestLimitMiddleware
@@ -75,6 +76,9 @@ def create_app() -> FastAPI:
     app.add_middleware(RateLimitMiddleware)
     app.add_middleware(RequestLimitMiddleware)
     app.include_router(api_router, prefix=settings.API_V1_PREFIX)
+    # Webhooks are mounted at root level — Clerk calls /webhooks/clerk directly,
+    # not under /api/v1, and authentication is done via SVIX signature, not JWT.
+    app.include_router(webhooks_router)
 
     @app.exception_handler(ResponseError)
     async def global_error_response_handler(request: Request, exc: ResponseError) -> JSONResponse:
