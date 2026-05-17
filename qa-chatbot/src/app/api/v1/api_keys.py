@@ -13,10 +13,10 @@ from app.api.v1.exceptions.api_keys import (
     ApiKeyNameConflictException,
     ApiKeyNotFoundException,
 )
+from app.core.api_key_utils import generate_api_key
 from app.core.rate_limit import RateLimiter
-from app.core.security import generate_api_key
+from app.core.user_context import UserContext
 from app.dependencies import get_current_user, get_db
-from app.models.user import User
 from app.repositories.api_key_repo import ApiKeyRepository
 from app.schemas.api_key import (
     ApiKeyCreatedResponse,
@@ -47,7 +47,7 @@ _default_limiter = RateLimiter(requests=60, window_seconds=60)
 async def create_api_key(
     request: ApiKeyCreateRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> SuccessResponse[ApiKeyCreatedResponse]:
     """Create a new API key. The raw key is returned once and never stored."""
 
@@ -61,7 +61,7 @@ async def create_api_key(
     try:
         key = await repo.create(
             org_id=org_id,
-            created_by=current_user.id,
+            created_by=current_user.user_id,
             name=request.name,
             key_hash=key_hash,
         )
@@ -90,7 +90,7 @@ async def create_api_key(
 )
 async def list_api_keys(
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
     status: Annotated[
@@ -126,7 +126,7 @@ async def list_api_keys(
 async def get_api_key(
     key_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> SuccessResponse[ApiKeyResponse]:
     """Get metadata for a single API key."""
     repo = ApiKeyRepository(db)
@@ -147,7 +147,7 @@ async def get_api_key(
 async def revoke_api_key(
     key_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> SuccessResponse[ApiKeyResponse]:
     """Revoke an API key (soft delete)."""
     repo = ApiKeyRepository(db)

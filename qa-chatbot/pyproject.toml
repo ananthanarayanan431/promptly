@@ -27,8 +27,6 @@ dependencies = [
     "tenacity>=9.1.4",
     "sentry-sdk[fastapi]>=2.0.0",
     "uvicorn[standard]>=0.43.0",
-    "python-jose>=3.5.0",
-    "bcrypt>=5.0.0",
 ]
 
 
