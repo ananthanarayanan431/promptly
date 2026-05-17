@@ -412,3 +412,22 @@ export interface FavoriteUpdateRequest {
   category?: FavoriteCategory;
   is_pinned?: boolean;
 }
+
+export interface OrgPermissions {
+  org_id: string;
+  org_role: 'org:owner' | 'org:admin' | 'org:collaborator';
+  permissions: string[];
+}
+
+export interface ApiKeyResponse {
+  id: string;
+  name: string;
+  org_id: string;
+  is_active: boolean;
+  created_at: string;
+  last_used_at: string | null;
+}
+
+export interface ApiKeyCreatedResponse extends ApiKeyResponse {
+  key: string; // shown only once
+}

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { useAuthStore } from '@/stores/auth-store';
+import { useAuth } from '@clerk/nextjs';
 import type { JobProgressEvent, JobResult } from '@/types/api';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? '';
@@ -85,11 +85,11 @@ export function useJobStream(jobId: string | null): UseJobStreamResult {
   const [result, setResult] = useState<JobResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const { getToken } = useAuth();
 
   useEffect(() => {
     if (!jobId) return;
 
-    const token = useAuthStore.getState().token;
     const ctrl = new AbortController();
     abortRef.current = ctrl;
 
@@ -99,6 +99,7 @@ export function useJobStream(jobId: string | null): UseJobStreamResult {
     setStatus('streaming');
 
     (async () => {
+      const token = await getToken();
       try {
         const res = await fetch(`${API_URL}/api/v1/chat/jobs/${jobId}/stream`, {
           headers: { Authorization: `Bearer ${token ?? ''}` },
@@ -170,7 +171,7 @@ export function useJobStream(jobId: string | null): UseJobStreamResult {
     return () => {
       ctrl.abort();
     };
-  }, [jobId]);
+  }, [jobId, getToken]);
 
   const reset = () => {
     abortRef.current?.abort();
