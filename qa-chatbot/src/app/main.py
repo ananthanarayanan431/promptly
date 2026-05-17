@@ -13,7 +13,7 @@ from app.api.router import api_router
 from app.api.types.response import ResponseError
 from app.config.app import AppSettings, get_app_settings
 from app.config.env import get_env_settings
-from app.core.logging import setup_logging
+from app.core.logging import RequestLoggingMiddleware, setup_logging
 from app.core.middleware import CorrelationIdMiddleware, RateLimitMiddleware, RequestLimitMiddleware
 from app.db.session import AsyncSessionLocal
 from app.dependencies import _ANONYMOUS_USER
@@ -56,10 +56,10 @@ async def _seed_anonymous_user() -> None:
             session.add(
                 User(
                     id=_ANONYMOUS_USER.id,
+                    clerk_user_id=_ANONYMOUS_USER.clerk_user_id,
                     email=_ANONYMOUS_USER.email,
                     credits=_ANONYMOUS_USER.credits,
                     is_active=True,
-                    is_superuser=False,
                 )
             )
             await session.commit()
@@ -94,6 +94,7 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.add_middleware(RequestLoggingMiddleware)
     app.add_middleware(CorrelationIdMiddleware)
     app.add_middleware(RateLimitMiddleware)
     app.add_middleware(RequestLimitMiddleware)

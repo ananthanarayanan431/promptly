@@ -3,6 +3,7 @@ from collections.abc import AsyncGenerator
 from typing import Annotated, Any
 from uuid import UUID
 
+import structlog
 from fastapi import Depends, Request
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError
@@ -20,10 +21,10 @@ bearer_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=F
 # Stable stub used when AUTH_ENABLED=False — never persisted to the DB
 _ANONYMOUS_USER = User(
     id=uuid.UUID("00000000-0000-0000-0000-000000000000"),
+    clerk_user_id="anonymous",
     email="anonymous@local",
     credits=999999,
     is_active=True,
-    is_superuser=False,
 )
 
 
@@ -48,6 +49,7 @@ async def get_current_user(
     fixed anonymous user is returned — useful for local development.
     """
     if not get_env_settings().AUTH_ENABLED:
+        structlog.contextvars.bind_contextvars(user_id=str(_ANONYMOUS_USER.id))
         return _ANONYMOUS_USER
 
     if not token:
@@ -55,25 +57,21 @@ async def get_current_user(
 
     repo = UserRepository(db)
 
-    # API key path — check new api_keys table first, fall back to User.api_key_hash
+    # API key path — check api_keys table
     if token.startswith("qac_"):
         key_hash = hash_api_key(token)
 
-        # New multi-key table
         from app.repositories.api_key_repo import ApiKeyRepository  # noqa: PLC0415
 
         api_key_repo = ApiKeyRepository(db)
         api_key = await api_key_repo.get_active_by_hash(key_hash)
         if api_key is not None:
-            user = await repo.get_by_id(api_key.user_id)
+            user = await repo.get_by_id(api_key.created_by)
             if user and user.is_active:
+                structlog.contextvars.bind_contextvars(user_id=str(user.id))
                 return user
 
-        # Legacy single-key fallback (User.api_key_hash)
-        user = await repo.get_by_api_key_hash(key_hash)
-        if not user or not user.is_active:
-            raise UnauthorizedException(detail="Invalid API key")
-        return user
+        raise UnauthorizedException(detail="Invalid API key")
 
     # JWT path
     try:
@@ -81,6 +79,7 @@ async def get_current_user(
         user = await repo.get_by_id(UUID(user_id))
         if not user or not user.is_active:
             raise UnauthorizedException(detail="User not found or inactive")
+        structlog.contextvars.bind_contextvars(user_id=str(user.id))
         return user
     except (JWTError, ValueError) as e:
         raise UnauthorizedException(detail="Invalid token") from e
