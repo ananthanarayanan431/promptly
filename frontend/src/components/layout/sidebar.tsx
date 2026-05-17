@@ -1,10 +1,8 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
-import { Suspense } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useAuthStore } from '@/stores/auth-store';
-import { clearToken } from '@/lib/auth';
+import { useClerk, useUser } from '@clerk/nextjs';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import Link from 'next/link';
@@ -166,7 +164,8 @@ function RecentSessions() {
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { logout, user } = useAuthStore();
+  const { signOut } = useClerk();
+  const { user: clerkUser } = useUser();
 
   const { data: fetchedUser } = useQuery<User>({
     queryKey: ['user', 'me'],
@@ -177,21 +176,14 @@ export function Sidebar() {
     staleTime: 1000 * 60 * 5,
   });
 
-  const displayUser = fetchedUser ?? user;
-  const displayName = displayUser ? deriveDisplayName(displayUser.email) : '';
+  const clerkEmail = clerkUser?.primaryEmailAddress?.emailAddress ?? '';
+  const displayName = fetchedUser ? deriveDisplayName(fetchedUser.email) : (clerkEmail ? deriveDisplayName(clerkEmail) : '');
   const initials = deriveInitials(displayName);
-  const credits = fetchedUser?.credits ?? displayUser?.credits ?? 0;
+  const credits = fetchedUser?.credits ?? 0;
 
   const handleLogout = async () => {
-    logout();
-    try {
-      await clearToken();
-    } catch (e) {
-      console.error('clearToken failed', e);
-    } finally {
-      router.push('/login');
-      router.refresh();
-    }
+    await signOut();
+    router.push('/sign-in');
   };
 
   return (
@@ -285,7 +277,7 @@ export function Sidebar() {
       <div style={{ padding: 12, borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 10 }}>
         <CreditsCard credits={credits} />
 
-        {displayUser && (
+        {(fetchedUser || clerkUser) && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 4px' }}>
             <div style={{
               width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
@@ -300,7 +292,7 @@ export function Sidebar() {
                 {displayName}
               </div>
               <div style={{ fontSize: 11, color: 'var(--text-subtle)' }}>
-                {displayUser.email}
+                {fetchedUser?.email ?? clerkEmail}
               </div>
             </div>
             <button

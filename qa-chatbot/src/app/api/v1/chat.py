@@ -29,11 +29,11 @@ from app.core.cache import (
     set_job_status,
 )
 from app.core.rate_limit import RateLimiter
-from app.dependencies import get_current_user, get_db
+from app.core.user_context import UserContext
+from app.dependencies import get_current_user, get_db, require_permission
 from app.llm.naming import build_naming_llm
 from app.models.message import Message
 from app.models.session import ChatSession
-from app.models.user import User
 from app.repositories.message_repo import MessageRepository
 from app.repositories.prompt_version_repo import PromptVersionRepository
 from app.repositories.session_repo import SessionRepository
@@ -57,7 +57,10 @@ from app.schemas.chat import (
     SuggestNameResponse,
 )
 from app.services.category_service import CategoryService
+from app.utils.log import get_logger
 from app.workers.tasks import process_chat_async
+
+log = get_logger(__name__)
 
 _chat_limiter = RateLimiter(requests=10, window_seconds=60)
 _llm_limiter = RateLimiter(requests=20, window_seconds=60)
@@ -78,7 +81,7 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 async def create_chat(
     request: ChatRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(require_permission("org:optimize:general"))],
 ) -> SuccessResponse[ChatJobAcceptedResponse]:
     """
     Submit a prompt for optimization.
@@ -103,12 +106,18 @@ async def create_chat(
     Cost: 10 credits, deducted on submission.
     """
     if current_user.credits < 10:
+        log.warning(
+            "insufficient_credits",
+            user_id=str(current_user.user_id),
+            available=current_user.credits,
+            required=10,
+        )
         raise ChatInsufficientCreditsException()
 
     # Resolve category — defaults to "general" if omitted; 422 if slug unknown.
     category_service = CategoryService(db)
     requested_slug = request.category_slug or "general"
-    category = await category_service.resolve(slug=requested_slug, user_id=current_user.id)
+    category = await category_service.resolve(slug=requested_slug, user_id=current_user.user_id)
     if category is None:
         raise InvalidCategoryException(detail=f"Unknown category slug: {requested_slug}")
     resolved_category_slug = category.slug
@@ -120,7 +129,7 @@ async def create_chat(
 
     if request.prompt_id:
         version_repo = PromptVersionRepository(db)
-        latest = await version_repo.get_latest_by_prompt_id(request.prompt_id, current_user.id)
+        latest = await version_repo.get_latest_by_prompt_id(request.prompt_id, current_user.user_id)
         if latest is None:
             raise VersionedPromptNotFoundException()
         raw_prompt = latest.content
@@ -133,26 +142,28 @@ async def create_chat(
     session_id = str(request.session_id) if request.session_id else str(uuid.uuid4())
 
     user_repo = UserRepository(db)
-    deducted = await user_repo.deduct_credits(current_user.id, 10)
+    deducted = await user_repo.deduct_credits(current_user.user_id, 10)
     if not deducted:
+        log.warning("credit_deduction_failed", user_id=str(current_user.user_id), required=10)
         raise ChatInsufficientCreditsException()
+    log.info("credits_deducted", user_id=str(current_user.user_id), amount=10)
 
     # Ensure session exists BEFORE worker
     session_repo = SessionRepository(db)
     await session_repo.get_or_create(
         session_id=session_id,
-        user_id=current_user.id,
+        user_id=current_user.user_id,
         graph_thread_id=session_id,
     )
 
     await set_job_status(job_id, "queued")
-    await set_job_owner(job_id, str(current_user.id))
+    await set_job_owner(job_id, str(current_user.user_id))
 
     try:
         process_chat_async.apply_async(
             kwargs={
                 "job_id": job_id,
-                "user_id": str(current_user.id),
+                "user_id": str(current_user.user_id),
                 "raw_prompt": raw_prompt,
                 "session_id": session_id,
                 "feedback": request.feedback,
@@ -163,10 +174,25 @@ async def create_chat(
             },
         )
     except Exception as exc:
-        # Enqueue failed — refund the credits so the user is not charged
-        await user_repo.refund_credits(current_user.id, 10)
+        log.error(  # noqa: E501
+            "job_enqueue_failed", job_id=job_id, user_id=str(current_user.user_id), error=str(exc)
+        )
+        await user_repo.refund_credits(current_user.user_id, 10)
+        log.info(
+            "credits_refunded",
+            user_id=str(current_user.user_id),
+            amount=10,
+            reason="enqueue_failed",  # noqa: E501
+        )
         raise LLMTimeoutException() from exc
 
+    log.info(
+        "chat_job_queued",
+        job_id=job_id,
+        session_id=session_id,
+        category=resolved_category_slug,
+        user_id=str(current_user.user_id),
+    )
     return SuccessResponse(
         data=ChatJobAcceptedResponse(
             job_id=job_id,
@@ -186,7 +212,7 @@ async def create_chat(
 )
 async def poll_chat_job(
     job_id: str,
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> SuccessResponse[JobPollResponse]:
     """
     Poll for the result of a queued optimization job.
@@ -201,7 +227,7 @@ async def poll_chat_job(
 
     # ✅ SECURITY FIX
     owner = await get_job_owner(job_id)
-    if owner is None or owner != str(current_user.id):
+    if owner is None or owner != str(current_user.user_id):
         raise JobNotFoundException()
 
     status = await get_job_status(job_id)
@@ -238,7 +264,7 @@ async def poll_chat_job(
 )
 async def stream_job_progress(
     job_id: str,
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> StreamingResponse:
     """
     SSE stream of real-time pipeline progress events.
@@ -248,7 +274,7 @@ async def stream_job_progress(
     Poll interval on the server side: 250 ms.
     """
     owner = await get_job_owner(job_id)
-    if owner is None or owner != str(current_user.id):
+    if owner is None or owner != str(current_user.user_id):
         raise JobNotFoundException()
 
     async def generate() -> AsyncGenerator[str, None]:
@@ -305,7 +331,7 @@ async def stream_job_progress(
 )
 async def suggest_prompt_name(
     request: SuggestNameRequest,
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> SuccessResponse[SuggestNameResponse]:
     """
     Generate a short ALL-CAPS version name (2–4 words) for a given prompt text.
@@ -344,7 +370,7 @@ async def suggest_prompt_name(
 async def save_version_from_response(
     request: SaveVersionRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> SuccessResponse[SaveVersionResponse]:
     """
     Save a prompt + its optimized response as v1 + v2 of a new version family.
@@ -380,14 +406,14 @@ async def save_version_from_response(
 
     await version_repo.create_version(
         prompt_id=prompt_id,
-        user_id=current_user.id,
+        user_id=current_user.user_id,
         name=name,
         version=1,
         content=request.original_prompt,
     )
     await version_repo.create_version(
         prompt_id=prompt_id,
-        user_id=current_user.id,
+        user_id=current_user.user_id,
         name=name,
         version=2,
         content=request.optimized_prompt,
@@ -404,7 +430,7 @@ async def save_version_from_response(
 )
 async def list_sessions(
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> SuccessResponse[SessionsGroupedResponse]:
     """
     Return this user's chat sessions grouped by recency: today / last 7 days /
@@ -412,7 +438,7 @@ async def list_sessions(
     "Untitled" in the sidebar while the run is still in progress).
     """
     session_repo = SessionRepository(db)
-    sessions = await session_repo.get_by_user_id(current_user.id, limit=100)
+    sessions = await session_repo.get_by_user_id(current_user.user_id, limit=100)
 
     now = datetime.now(UTC)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -450,7 +476,7 @@ async def list_sessions(
 )
 async def get_recent_sessions(
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
     limit: Annotated[int, Query(ge=1, le=10)] = 3,
 ) -> SuccessResponse[RecentSessionsResponse]:
     """
@@ -491,7 +517,7 @@ async def get_recent_sessions(
             last_prompt_sq.c.raw_prompt,
         )
         .outerjoin(last_prompt_sq, ChatSession.id == last_prompt_sq.c.sid)
-        .where(ChatSession.user_id == current_user.id, ChatSession.title.isnot(None))
+        .where(ChatSession.user_id == current_user.user_id, ChatSession.title.isnot(None))
         .order_by(ChatSession.updated_at.desc())
         .limit(limit)
     )
@@ -517,7 +543,7 @@ async def get_recent_sessions(
 async def get_session(
     session_id: str,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> SuccessResponse[SessionDetailResponse]:
     """Return a specific session with all its messages (chronological order)."""
     try:
@@ -527,7 +553,7 @@ async def get_session(
 
     session_repo = SessionRepository(db)
     session = await session_repo.get_by_id(sid)
-    if session is None or session.user_id != current_user.id:
+    if session is None or session.user_id != current_user.user_id:
         raise SessionNotFoundException()
 
     msg_repo = MessageRepository(db)
@@ -552,7 +578,7 @@ async def rename_session(
     session_id: str,
     request: RenameSessionRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> SuccessResponse[SessionSummary]:
     """Rename a session's title."""
     try:
@@ -562,7 +588,7 @@ async def rename_session(
 
     session_repo = SessionRepository(db)
     session = await session_repo.get_by_id(sid)
-    if session is None or session.user_id != current_user.id:
+    if session is None or session.user_id != current_user.user_id:
         raise SessionNotFoundException()
 
     updated = await session_repo.update(session, title=request.title.strip())
@@ -577,7 +603,7 @@ async def rename_session(
 async def delete_session(
     session_id: str,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> SuccessResponse[DeleteSessionResponse]:
     """Delete a session and all its messages."""
     try:
@@ -587,7 +613,7 @@ async def delete_session(
 
     session_repo = SessionRepository(db)
     session = await session_repo.get_by_id(sid)
-    if session is None or session.user_id != current_user.id:
+    if session is None or session.user_id != current_user.user_id:
         raise SessionNotFoundException()
 
     await session_repo.delete(session)

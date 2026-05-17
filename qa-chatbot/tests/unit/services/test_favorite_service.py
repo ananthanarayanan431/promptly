@@ -10,7 +10,7 @@ from app.services.favorite_service import FavoriteService
 
 
 async def _seed(db: AsyncSession) -> tuple[User, PromptVersion]:
-    user = User(email=f"u-{uuid.uuid4().hex[:6]}@test.com")
+    user = User(email=f"u-{uuid.uuid4().hex[:6]}@test.com", clerk_user_id=f"user_{uuid.uuid4().hex}")
     db.add(user)
     await db.flush()
     pv = PromptVersion(
@@ -74,7 +74,7 @@ async def test_like_falls_back_on_llm_failure(db_session: AsyncSession) -> None:
 @pytest.mark.asyncio
 async def test_like_rejects_other_users_version(db_session: AsyncSession) -> None:
     owner, pv = await _seed(db_session)
-    stranger = User(email="stranger@test.com")
+    stranger = User(email="stranger@test.com", clerk_user_id=f"user_{uuid.uuid4().hex}")
     db_session.add(stranger)
     await db_session.flush()
     service = FavoriteService(db_session)

@@ -31,7 +31,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         </div>
 
         {/* Form content */}
-        <div style={{ margin: 'auto 0', maxWidth: 400, width: '100%' }}>
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           {children}
         </div>
 

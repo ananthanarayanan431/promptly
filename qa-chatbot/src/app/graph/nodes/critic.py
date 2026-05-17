@@ -24,6 +24,9 @@ from app.graph.prompts import critic_messages
 from app.graph.state import GraphState
 from app.llm import LLMClient
 from app.llm.pipeline import build_critic_models
+from app.utils.log import get_logger
+
+log = get_logger(__name__)
 
 _critic_loop_id: int | None = None
 _critic_models: list[LLMClient] | None = None
@@ -90,6 +93,7 @@ async def critic_node(state: GraphState) -> dict[str, Any]:
     previous_synthesis = state.get("previous_synthesis")
 
     if len(proposals) < 4:
+        log.warning("critic_skipped_insufficient_proposals", count=len(proposals))
         if job_id := state.get("job_id"):
             await push_job_progress(job_id, {"step": "critic", "ts": time.time()})
         return {"critic_responses": []}
@@ -123,7 +127,11 @@ async def critic_node(state: GraphState) -> dict[str, Any]:
     )
 
     valid = [r for r in results if isinstance(r, dict)]
+    failed = len(results) - len(valid)
+    if failed:
+        log.warning("critic_models_failed", failed=failed, total=len(results))
     quality_gaps = _collect_quality_gaps(valid)
+    log.info("critic_complete", critics=len(valid), quality_gaps=quality_gaps)
 
     if job_id := state.get("job_id"):
         await push_job_progress(job_id, {"step": "critic", "ts": time.time()})

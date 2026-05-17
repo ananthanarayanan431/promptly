@@ -35,7 +35,6 @@ from __future__ import annotations
 import asyncio
 import io
 import json
-import logging
 
 from pypdf import PdfReader
 
@@ -56,8 +55,9 @@ from app.llm.dataset import (
     build_strong_solver,
     build_weak_solver,
 )
+from app.utils.log import get_logger
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 
 # ── Text processing ───────────────────────────────────────────────────────────
@@ -200,7 +200,7 @@ async def _get_answer(llm: LLMClient, system: str, question: str) -> str:
         )
         return str(response.content).strip()
     except Exception as exc:  # noqa: BLE001
-        _log.warning("Solver call failed: %s", exc)
+        _log.warning("solver_call_failed", error=str(exc))
         return ""
 
 
@@ -232,7 +232,7 @@ async def _judge_answer(
         score = float(obj.get("score", 0.0))
         return max(0.0, min(1.0, score))
     except Exception as exc:  # noqa: BLE001
-        _log.warning("Judge call failed: %s", exc)
+        _log.warning("judge_call_failed", error=str(exc))
         return 0.0
 
 
@@ -265,7 +265,7 @@ async def _process_chunk_with_filtering(
         )
         candidates = _parse_pairs_with_rubric(str(response.content))
     except Exception as exc:  # noqa: BLE001
-        _log.warning("Challenger failed for chunk: %s", exc)
+        _log.warning("challenger_failed", error=str(exc))
         return [], stats
 
     if not candidates:
@@ -296,25 +296,25 @@ async def _process_chunk_with_filtering(
 
         gap = strong_score - weak_score
         _log.debug(
-            "Q: %s... | weak=%.2f strong=%.2f gap=%.2f",
-            question[:60],
-            weak_score,
-            strong_score,
-            gap,
+            "candidate_scored",
+            question_preview=question[:60],
+            weak_score=round(weak_score, 2),
+            strong_score=round(strong_score, 2),
+            gap=round(gap, 2),
         )
 
         # AutoData acceptance criteria (adapted)
         if weak_score > WEAK_MAX_SCORE:
             stats["too_easy"] += 1
-            _log.debug("Rejected (too easy — weak scored %.2f)", weak_score)
+            _log.debug("candidate_rejected", reason="too_easy", weak_score=round(weak_score, 2))
             return None
         if strong_score < STRONG_MIN_SCORE:
             stats["too_hard"] += 1
-            _log.debug("Rejected (too hard — strong scored %.2f)", strong_score)
+            _log.debug("candidate_rejected", reason="too_hard", strong_score=round(strong_score, 2))
             return None
         if gap < GAP_THRESHOLD:
             stats["quality_fail"] += 1
-            _log.debug("Rejected (gap too small — %.2f)", gap)
+            _log.debug("candidate_rejected", reason="gap_too_small", gap=round(gap, 2))
             return None
 
         stats["accepted"] += 1
@@ -339,7 +339,7 @@ async def _process_chunk_fallback(
         )
         return _parse_simple_pairs(str(response.content))
     except Exception as exc:  # noqa: BLE001
-        _log.warning("Fallback challenger failed: %s", exc)
+        _log.warning("fallback_challenger_failed", error=str(exc))
         return []
 
 
@@ -370,7 +370,7 @@ async def generate_qa_pairs(
     # Cap at 12 chunks → max 180 calls. Without filtering: 12 chunks × 1 call = 12 calls.
     max_chunks = 12
     if len(chunks) > max_chunks:
-        _log.warning("PDF produced %d chunks; processing first %d", len(chunks), max_chunks)
+        _log.warning("chunks_truncated", total=len(chunks), processing=max_chunks)
     selected = chunks[:max_chunks]
 
     if not base_prompt:
@@ -391,7 +391,7 @@ async def generate_qa_pairs(
                 if key not in seen:
                     seen.add(key)
                     all_pairs.append(p)
-        _log.info("Fallback generation: %d pairs from %d chunks", len(all_pairs), len(selected))
+        _log.info("fallback_generation_complete", pairs=len(all_pairs), chunks=len(selected))
         return all_pairs
 
     # Main path: AutoData weak-strong filtering
@@ -436,18 +436,16 @@ async def generate_qa_pairs(
 
     total_candidates = sum(total_stats.values())
     _log.info(
-        "AutoData filtering complete: %d/%d accepted (too_easy=%d, too_hard=%d, gap_fail=%d)",
-        total_stats["accepted"],
-        total_candidates,
-        total_stats["too_easy"],
-        total_stats["too_hard"],
-        total_stats["quality_fail"],
+        "autodata_filtering_complete",
+        accepted=total_stats["accepted"],
+        total_candidates=total_candidates,
+        too_easy=total_stats["too_easy"],
+        too_hard=total_stats["too_hard"],
+        gap_fail=total_stats["quality_fail"],
     )
 
     if not all_pairs:
-        _log.warning(
-            "No pairs passed AutoData filtering — lowering thresholds and retrying with fallback"
-        )
+        _log.warning("autodata_filtering_no_pairs")
         fallback_tasks = [_process_chunk_fallback(chunk, challenger_llm) for chunk in selected]
         fallback_results: list[list[dict[str, str]]] = await asyncio.gather(*fallback_tasks)
         seen = set()
@@ -457,7 +455,7 @@ async def generate_qa_pairs(
                 if key not in seen:
                     seen.add(key)
                     all_pairs.append(p)
-        _log.info("Fallback produced %d pairs", len(all_pairs))
+        _log.info("fallback_produced_pairs", pairs=len(all_pairs))
 
     return all_pairs
 

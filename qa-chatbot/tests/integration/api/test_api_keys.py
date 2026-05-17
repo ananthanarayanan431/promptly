@@ -13,7 +13,12 @@ fake = Faker()
 
 async def _make_user(db: AsyncSession, email: str | None = None) -> tuple[User, str]:
     """Create a bare User row and return (user, jwt_token)."""
-    user = User(email=email or fake.unique.email())
+    import uuid as _uuid
+
+    user = User(
+        email=email or fake.unique.email(),
+        clerk_user_id=f"user_{_uuid.uuid4().hex}",
+    )
     db.add(user)
     await db.flush()
     token = create_access_token(subject=str(user.id))

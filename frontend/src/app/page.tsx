@@ -31,7 +31,7 @@ const PRODUCTS = [
       { c: '#b5b5ba', t: 'Weave in 3 cited stats. No "in conclusion."' },
       { c: '#2fd589', t: '✓ done · 38s · quality +2.4 pts', mt: 10 },
     ],
-    href: '/register',
+    href: '/sign-up',
     cta: 'Start optimizing',
     accent: '#7c5cff',
   },
@@ -50,7 +50,7 @@ const PRODUCTS = [
       { c: '#ededed', t: 'winner: C0  win-rate: 78%' },
       { c: '#2fd589', t: '✓ empirically tested · 40 rounds · 127 pairs', mt: 6 },
     ],
-    href: '/register',
+    href: '/sign-up',
     cta: 'Try domain optimization',
     accent: '#f59e0b',
   },
@@ -133,19 +133,19 @@ const PRICING = [
     plan: 'Free', price: '$0', per: '/ forever',
     desc: 'Kick the tires. Good for side projects and one-off runs.',
     features: ['100 credits on signup', '10 credits / month refill', '3 saved prompt families', 'Community support'],
-    cta: 'Start free', href: '/register', featured: false,
+    cta: 'Start free', href: '/sign-up', featured: false,
   },
   {
     plan: 'Pro', price: '$29', per: '/ month',
     desc: 'For people shipping LLM features at work. Most teams start here.',
     features: ['1,000 credits / month', 'Unlimited prompt families', 'Domain optimization', 'API access + CLI', 'Priority email support'],
-    cta: 'Go Pro', href: '/register', featured: true,
+    cta: 'Go Pro', href: '/sign-up', featured: true,
   },
   {
     plan: 'Team', price: '$99', per: '/ month',
     desc: 'Shared workspaces, roles, and billing. Built for crews of 3–20.',
     features: ['5,000 credits pooled', 'Up to 10 seats', 'Shared domain knowledge bases', 'SSO + audit log', 'Dedicated Slack channel'],
-    cta: 'Start team trial', href: '/register', featured: false,
+    cta: 'Start team trial', href: '/sign-up', featured: false,
   },
 ];
 
@@ -202,13 +202,13 @@ export default function LandingPage() {
           ].map(({ l, href }) => (
             <a key={l} href={href} style={{ color: '#555', textDecoration: 'none' }}>{l}</a>
           ))}
-          <Link href="/login"
+          <Link href="/sign-in"
             style={{ height: 32, padding: '0 14px', borderRadius: 6,
               border: `1px solid ${line}`, display: 'inline-flex', alignItems: 'center',
               fontSize: 13, color: ink, textDecoration: 'none' }}>
             Sign in
           </Link>
-          <Link href="/register"
+          <Link href="/sign-up"
             style={{ height: 32, padding: '0 14px', borderRadius: 6, background: violet,
               display: 'inline-flex', alignItems: 'center', fontSize: 13, color: '#fff',
               textDecoration: 'none', fontWeight: 500 }}>
@@ -245,7 +245,7 @@ export default function LandingPage() {
             </p>
 
             <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 20 }}>
-              <Link href="/register"
+              <Link href="/sign-up"
                 style={{ height: 46, padding: '0 22px', borderRadius: 8, background: violet,
                   color: '#fff', textDecoration: 'none', fontWeight: 500, fontSize: 14,
                   display: 'inline-flex', alignItems: 'center', gap: 8,
@@ -430,7 +430,7 @@ export default function LandingPage() {
           </div>
 
           <div style={{ marginTop: 24, display: 'flex', gap: 12 }}>
-            <Link href="/register"
+            <Link href="/sign-up"
               style={{ height: 44, padding: '0 20px', borderRadius: 8, background: violet,
                 color: '#fff', textDecoration: 'none', fontWeight: 500, fontSize: 14,
                 display: 'inline-flex', alignItems: 'center', gap: 8,
@@ -524,7 +524,7 @@ export default function LandingPage() {
           </div>
 
           <div style={{ marginTop: 24, display: 'flex', gap: 12 }}>
-            <Link href="/register"
+            <Link href="/sign-up"
               style={{ height: 44, padding: '0 20px', borderRadius: 8, background: amber,
                 color: '#fff', textDecoration: 'none', fontWeight: 500, fontSize: 14,
                 display: 'inline-flex', alignItems: 'center', gap: 8,
@@ -836,7 +836,7 @@ export default function LandingPage() {
             have — or upload a PDF and let your own data decide which prompt wins.
           </p>
           <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
-            <Link href="/register"
+            <Link href="/sign-up"
               style={{ height: 48, padding: '0 28px', borderRadius: 8,
                 background: violet, color: '#fff', textDecoration: 'none',
                 fontWeight: 500, fontSize: 15, display: 'inline-flex',
@@ -867,7 +867,7 @@ export default function LandingPage() {
               review for any prompt, and an empirical domain tournament that
               tests variants against your own knowledge base.
             </p>
-            <Link href="/register"
+            <Link href="/sign-up"
               style={{ height: 36, padding: '0 16px', borderRadius: 8,
                 background: violet, color: '#fff', textDecoration: 'none',
                 fontSize: 13, fontWeight: 500, display: 'inline-flex',

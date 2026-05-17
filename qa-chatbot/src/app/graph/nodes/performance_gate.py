@@ -16,7 +16,6 @@ proceed to council. A flaky gate call must never block legitimate optimization.
 
 import asyncio
 import json
-import logging
 import time
 from typing import Any
 
@@ -25,8 +24,9 @@ from app.graph.prompts import performance_gate_messages
 from app.graph.state import GraphState
 from app.llm import LLMClient
 from app.llm.pipeline import build_gate
+from app.utils.log import get_logger
 
-logger = logging.getLogger(__name__)
+log = get_logger(__name__)
 
 _DIMENSIONS = (
     "role_persona",
@@ -99,13 +99,13 @@ async def performance_gate_node(state: GraphState) -> dict[str, Any]:
         response = await _get_gate_model().ainvoke(performance_gate_messages(raw))
         gate = _parse_response(str(response.content))
     except Exception:
-        logger.exception("performance_gate LLM call or parse failed — proceeding to council")
+        log.exception("performance_gate_failed")
         return {"already_optimized": False}
 
     scores = gate.get("scores", {})
     rationale = gate.get("rationale", "")
     if not isinstance(scores, dict) or not isinstance(rationale, str):
-        logger.warning("performance_gate unexpected types, proceeding to council: %r", gate)
+        log.warning("performance_gate_type_error", gate=repr(gate))
         return {"already_optimized": False}
 
     # Deterministic pass check — overrides any LLM verdict in the "already_optimized" field

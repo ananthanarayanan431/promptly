@@ -13,7 +13,12 @@ Key design decisions:
 import asyncio
 from typing import Any
 
+import structlog
+
+from app.utils.log import get_logger
 from app.workers.celery_app import celery_app
+
+log = get_logger(__name__)
 
 
 @celery_app.task(bind=True, max_retries=3, default_retry_delay=5)  # type: ignore[untyped-decorator]
@@ -44,6 +49,14 @@ def process_chat_async(
         started  (set here at task entry)
         completed / failed  (set here at task exit)
     """
+
+    from app.config.app import get_app_settings
+    from app.core.logging import setup_worker_logging
+
+    setup_worker_logging(debug=get_app_settings().DEBUG)
+    structlog.contextvars.clear_contextvars()
+    structlog.contextvars.bind_contextvars(job_id=job_id, user_id=user_id)
+    log.info("task_started", session_id=session_id)
 
     def _fallback_title(text: str) -> str:
         """Truncate raw_prompt to a readable title as a safe fallback (≤ 80 chars)."""
@@ -334,6 +347,7 @@ def process_chat_async(
             return result
 
         except Exception as exc:
+            log.error("task_failed", error=str(exc), exc_info=True)
             await set_job_status(job_id, "failed")
             await set_job_result(job_id, {"error": str(exc)})
             # Refund the 10 credits deducted at submission — the user got nothing.
@@ -374,18 +388,21 @@ def score_prompt_async(
     """
 
     async def _run() -> None:
-        import logging
         from uuid import UUID
 
+        from app.config.app import get_app_settings
+        from app.core.logging import setup_worker_logging
         from app.db.redis import reset_connection_pool
         from app.db.session import AsyncSessionLocal, dispose_async_engine
         from app.repositories.health_score_repo import HealthScoreRepository
         from app.services.prompt_service import PromptService
 
+        setup_worker_logging(debug=get_app_settings().DEBUG)
+        structlog.contextvars.clear_contextvars()
+        structlog.contextvars.bind_contextvars(user_id=user_id, task="score_prompt_async")
         reset_connection_pool()
         await dispose_async_engine()
 
-        log = logging.getLogger(__name__)
         try:
             async with AsyncSessionLocal() as db:
                 service = PromptService(db)
@@ -399,7 +416,7 @@ def score_prompt_async(
                 )
                 await db.commit()
         except Exception as exc:
-            log.warning("score_prompt_async failed (will retry): %s", exc)
+            log.warning("score_prompt_async_failed", error=str(exc))
             raise self.retry(exc=exc) from exc
         finally:
             await dispose_async_engine()

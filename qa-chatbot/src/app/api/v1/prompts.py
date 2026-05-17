@@ -10,8 +10,8 @@ from app.api.v1.exceptions.prompts import (
     PromptVersionNotFoundException,
 )
 from app.core.rate_limit import RateLimiter
+from app.core.user_context import UserContext
 from app.dependencies import get_current_user, get_db
-from app.models.user import User
 from app.repositories.prompt_version_repo import PromptVersionRepository
 from app.repositories.usage_event_repo import UsageEventRepository
 from app.schemas.prompt import (
@@ -27,6 +27,9 @@ from app.schemas.prompt import (
 )
 from app.services.prompt_service import PromptService, PromptVersioningService
 from app.utils.diff import compute_diff
+from app.utils.log import get_logger
+
+log = get_logger(__name__)
 
 _expensive_limiter = RateLimiter(requests=20, window_seconds=60)
 _default_limiter = RateLimiter(requests=60, window_seconds=60)
@@ -47,7 +50,7 @@ router = APIRouter(prefix="/prompts", tags=["prompts"])
 async def prompt_health_score(
     request: PromptHealthScoreRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> SuccessResponse[PromptHealthScoreResponse]:
     """
     Score a prompt across eight quality dimensions: clarity, specificity, completeness,
@@ -55,18 +58,20 @@ async def prompt_health_score(
     Returns a 1–10 score with a rationale for each dimension plus an overall score.
     """
     if current_user.credits < 5:
+        log.warning("insufficient_credits", required=5, available=current_user.credits)
         raise PromptInsufficientCreditsException()
     current_user.credits -= 5
     await db.flush()
 
+    log.info("health_score_requested")
     service = PromptService(db=db)
     result = await service.health_score(
         prompt=request.prompt,
-        user_id=str(current_user.id),
+        user_id=str(current_user.user_id),
     )
 
     usage_repo = UsageEventRepository(db)
-    await usage_repo.log(user_id=current_user.id, action="health_score", credits_spent=5)
+    await usage_repo.log(user_id=current_user.user_id, action="health_score", credits_spent=5)
     await db.commit()
 
     return SuccessResponse(data=PromptHealthScoreResponse(**result))
@@ -80,7 +85,7 @@ async def prompt_health_score(
 async def prompt_advisory(
     request: PromptAdvisoryRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> SuccessResponse[PromptAdvisoryResponse]:
     """
     Get a detailed advisory review of a prompt.
@@ -88,18 +93,20 @@ async def prompt_advisory(
     and an overall assessment of the prompt's effectiveness.
     """
     if current_user.credits < 5:
+        log.warning("insufficient_credits", required=5, available=current_user.credits)
         raise PromptInsufficientCreditsException()
     current_user.credits -= 5
     await db.flush()
 
+    log.info("advisory_requested")
     service = PromptService(db=db)
     result = await service.advisory(
         prompt=request.prompt,
-        user_id=str(current_user.id),
+        user_id=str(current_user.user_id),
     )
 
     usage_repo = UsageEventRepository(db)
-    await usage_repo.log(user_id=current_user.id, action="advisory", credits_spent=5)
+    await usage_repo.log(user_id=current_user.user_id, action="advisory", credits_spent=5)
     await db.commit()
 
     return SuccessResponse(data=PromptAdvisoryResponse(**result))
@@ -117,7 +124,7 @@ async def prompt_advisory(
 )
 async def list_prompt_families(
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> SuccessResponse[PaginatedPromptFamilyListResponse]:
@@ -127,7 +134,7 @@ async def list_prompt_families(
     """
     service = PromptVersioningService(db=db)
     result = await service.list_families(
-        user_id=str(current_user.id), page=page, page_size=page_size
+        user_id=str(current_user.user_id), page=page, page_size=page_size
     )
     return SuccessResponse(data=PaginatedPromptFamilyListResponse(**result))
 
@@ -140,7 +147,7 @@ async def list_prompt_families(
 async def create_prompt_version(
     request: PromptVersionCreateRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> SuccessResponse[PromptVersionCreateResponse]:
     """
     Register a named prompt and save it as version 1.
@@ -151,7 +158,7 @@ async def create_prompt_version(
     result = await service.create(
         name=request.name,
         content=request.prompt,
-        user_id=str(current_user.id),
+        user_id=str(current_user.user_id),
     )
     return SuccessResponse(data=PromptVersionCreateResponse(**result))
 
@@ -164,7 +171,7 @@ async def create_prompt_version(
 async def list_prompt_versions(
     prompt_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> SuccessResponse[PromptVersionListResponse]:
     """
     List all versions of a named prompt in ascending order (v1, v2, v3, …).
@@ -172,7 +179,7 @@ async def list_prompt_versions(
     service = PromptVersioningService(db=db)
     result = await service.list_versions(
         prompt_id=prompt_id,
-        user_id=str(current_user.id),
+        user_id=str(current_user.user_id),
     )
     return SuccessResponse(data=PromptVersionListResponse(**result))
 
@@ -187,7 +194,7 @@ async def diff_prompt_versions(
     from_version: int = Query(..., alias="from", ge=1),
     to_version: int = Query(..., alias="to", ge=1),
     db: Annotated[AsyncSession, Depends(get_db)] = ...,  # type: ignore[assignment]
-    current_user: Annotated[User, Depends(get_current_user)] = ...,  # type: ignore[assignment]
+    current_user: Annotated[UserContext, Depends(get_current_user)] = ...,  # type: ignore[assignment]
 ) -> SuccessResponse[PromptDiffResponse]:
     """
     Return a word-level diff between two versions of a prompt family.
@@ -195,8 +202,8 @@ async def diff_prompt_versions(
     Both versions must belong to the current user.
     """
     repo = PromptVersionRepository(db)
-    from_pv = await repo.get_by_version_number(prompt_id, from_version, current_user.id)
-    to_pv = await repo.get_by_version_number(prompt_id, to_version, current_user.id)
+    from_pv = await repo.get_by_version_number(prompt_id, from_version, current_user.user_id)
+    to_pv = await repo.get_by_version_number(prompt_id, to_version, current_user.user_id)
 
     if from_pv is None or to_pv is None:
         raise PromptVersionNotFoundException()

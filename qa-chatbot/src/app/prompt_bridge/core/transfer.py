@@ -16,12 +16,11 @@ pair skip calibration entirely (reuse_mapping flow, 1 credit).
 
 from __future__ import annotations
 
-import logging
-
 from app.llm import LLMClient
 from app.prompt_bridge.prompts.transfer import ADAPTER_SYSTEM, MAPPING_EXTRACTOR_SYSTEM
+from app.utils.log import get_logger
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 
 def _build_pairs_block(pairs: list[tuple[str, str]]) -> str:
@@ -67,19 +66,21 @@ async def extract_mapping(
     )
 
     _log.info(
-        "Extracting transfer mapping: %s → %s (%d pairs)",
-        source_model,
-        target_model,
-        len(calibrated_pairs),
+        "extracting_transfer_mapping",
+        source_model=source_model,
+        target_model=target_model,
+        pairs=len(calibrated_pairs),
     )
     response = await extractor_llm.ainvoke([{"role": "user", "content": system}])
     mapping = str(response.content).strip()
     if not mapping:
         _log.error(
-            "Mapping extractor returned empty content for %s → %s", source_model, target_model
+            "mapping_extractor_empty",
+            source_model=source_model,
+            target_model=target_model,
         )
         raise ValueError("Mapping extractor returned empty content")
-    _log.debug("Transfer mapping extracted (%d chars)", len(mapping))
+    _log.debug("transfer_mapping_extracted", chars=len(mapping))
     return mapping
 
 
@@ -117,13 +118,13 @@ async def adapt_prompt(
         n_pairs=n_pairs,
     )
 
-    _log.info("Adapting prompt: %s → %s", source_model, target_model)
+    _log.info("adapting_prompt", source_model=source_model, target_model=target_model)
     response = await adapter_llm.ainvoke([{"role": "user", "content": system}])
     adapted = str(response.content).strip()
     if not adapted:
-        _log.error("Adapter returned empty content for %s → %s", source_model, target_model)
+        _log.error("adapter_empty", source_model=source_model, target_model=target_model)
         raise ValueError("Adapter returned empty content")
-    _log.debug("Prompt adapted (%d → %d chars)", len(source_prompt), len(adapted))
+    _log.debug("prompt_adapted", source_chars=len(source_prompt), adapted_chars=len(adapted))
     return adapted
 
 
