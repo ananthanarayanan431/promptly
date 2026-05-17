@@ -2,7 +2,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from sqlalchemy import exists, func, select
+from sqlalchemy import exists, func, select, update
 from sqlalchemy.sql import Select
 
 from app.models.api_key import ApiKey
@@ -73,6 +73,20 @@ class ApiKeyRepository(BaseRepository[ApiKey]):
             )
         )
         return bool(result.scalar())
+
+    async def deactivate(self, key_id: uuid.UUID) -> None:
+        """Soft-delete an API key by setting is_active=False and recording revoked_at."""
+        await self.db.execute(
+            update(ApiKey)
+            .where(ApiKey.id == key_id)
+            .values(is_active=False, revoked_at=datetime.now(UTC))
+        )
+
+    async def update_last_used(self, key_id: uuid.UUID) -> None:
+        """Record the current timestamp as the last time this key was used."""
+        await self.db.execute(
+            update(ApiKey).where(ApiKey.id == key_id).values(last_used_at=datetime.now(UTC))
+        )
 
     async def revoke(self, key: ApiKey) -> ApiKey:
         key.is_active = False
