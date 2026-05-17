@@ -17,23 +17,25 @@ class ApiKey(Base, UUIDMixin, TimestampMixin):
     __tablename__ = "api_keys"
     __table_args__ = (
         Index(
-            "uq_api_keys_user_active_name",
-            "user_id",
+            "uq_api_keys_org_active_name",
+            "org_id",
             "name",
             unique=True,
             postgresql_where=text("is_active = true"),
         ),
     )
 
-    user_id: Mapped[uuid.UUID] = mapped_column(
+    org_id: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
+    created_by: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
     name: Mapped[str] = mapped_column(String(100))
     key_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
-    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    user: Mapped[User] = relationship(back_populates="api_keys")
+    created_by_user: Mapped[User] = relationship(back_populates="api_keys")
 
     def __repr__(self) -> str:
         return f"<ApiKey id={self.id} name={self.name} active={self.is_active}>"
