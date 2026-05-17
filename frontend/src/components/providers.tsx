@@ -10,6 +10,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
       queries: {
         staleTime: 60 * 1000,
         refetchOnWindowFocus: false,
+        // Never retry 401s — they are auth failures, not transient errors
+        retry: (failureCount, error) => {
+          if ((error as { response?: { status?: number } })?.response?.status === 401) return false;
+          return failureCount < 2;
+        },
       },
     },
   }));
