@@ -1,6 +1,7 @@
 """Clerk SDK client utilities and token verification."""
 
 import logging
+from collections.abc import Mapping
 from functools import lru_cache
 from typing import Any
 
@@ -13,6 +14,17 @@ from app.core.exceptions import UnauthorizedException
 logger = logging.getLogger(__name__)
 
 
+class _MinimalRequest:
+    """Minimal Requestish-compatible wrapper for passing an Authorization header."""
+
+    def __init__(self, auth_header: str) -> None:
+        self._auth_header = auth_header
+
+    @property
+    def headers(self) -> Mapping[str, str]:
+        return {"authorization": self._auth_header}
+
+
 @lru_cache
 def get_clerk_client() -> clerk_backend_api.Clerk:
     """Return a cached Clerk SDK instance initialized with the secret key."""
@@ -23,26 +35,10 @@ def get_clerk_client() -> clerk_backend_api.Clerk:
 def verify_clerk_token(authorization_header: str) -> dict[str, Any]:
     """Verify a Clerk JWT and return the payload.
 
-    Args:
-        authorization_header: The raw ``Authorization`` header value,
-            e.g. ``"Bearer <token>"``.
-
-    Returns:
-        The decoded JWT payload as a plain dict.
-
-    Raises:
-        UnauthorizedException: If the token is missing, malformed, or invalid.
+    Raises UnauthorizedException if the token is missing, malformed, or invalid.
     """
     client = get_clerk_client()
     settings = get_clerk_settings()
-
-    # Build a minimal Requestish-compatible object so we can pass the header
-    # without depending on a full HTTP framework request.
-    class _MinimalRequest:
-        def __init__(self, auth_header: str) -> None:
-            self.headers: dict[str, str] = {"authorization": auth_header}
-
-    request = _MinimalRequest(authorization_header)
 
     options = AuthenticateRequestOptions(
         secret_key=settings.CLERK_SECRET_KEY.get_secret_value(),
@@ -50,7 +46,7 @@ def verify_clerk_token(authorization_header: str) -> dict[str, Any]:
     )
 
     try:
-        state = client.authenticate_request(request, options)  # type: ignore[arg-type]
+        state = client.authenticate_request(_MinimalRequest(authorization_header), options)
     except Exception as exc:
         logger.warning("Clerk authenticate_request raised: %s", exc)
         raise UnauthorizedException(detail="Token verification failed") from exc
