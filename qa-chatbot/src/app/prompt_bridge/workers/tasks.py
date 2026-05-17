@@ -20,7 +20,7 @@ from app.workers.celery_app import celery_app
 _log = logging.getLogger(__name__)
 
 
-@celery_app.task(bind=True, max_retries=1, default_retry_delay=30)  # type: ignore[untyped-decorator]
+@celery_app.task(bind=True, max_retries=3, default_retry_delay=60)  # type: ignore[untyped-decorator]
 def run_prompt_transfer(
     self: Any,
     *,
@@ -279,11 +279,40 @@ def run_prompt_transfer(
             await set_pb_job_progress(job_id, {"stage": "completed"})
 
         except Exception as exc:
+            import re
+
+            error_str = str(exc)
+            is_rate_limit = "429" in error_str or "rate limit" in error_str.lower()
+
+            if is_rate_limit and self.request.retries < self.max_retries:
+                # Extract retry_after_seconds from OpenRouter error payload if present,
+                # otherwise fall back to 60 s. Re-queue immediately — worker is freed.
+                match = re.search(r"retry_after_seconds['\"\s:]+(\d+(?:\.\d+)?)", error_str)
+                retry_in = int(float(match.group(1))) + 5 if match else 60
+                _log.warning(
+                    "PromptBridge 429 for job %s — retrying in %ds (attempt %d/%d)",
+                    job_id,
+                    retry_in,
+                    self.request.retries + 1,
+                    self.max_retries,
+                )
+                await set_pb_job_status(job_id, "queued")
+                await set_pb_job_progress(
+                    job_id,
+                    {
+                        "stage": "queued",
+                        "retrying": True,
+                        "retry_in": retry_in,
+                        "attempt": self.request.retries + 1,
+                    },
+                )
+                raise self.retry(exc=exc, countdown=retry_in) from exc
+
             _log.exception("PromptBridge transfer failed: job_id=%s", job_id)
-            error_str = str(exc)[:500]
-            await set_pb_job_result(job_id, {"error": error_str})
+            short_error = error_str[:500]
+            await set_pb_job_result(job_id, {"error": short_error})
             await set_pb_job_status(job_id, "failed")
-            await set_pb_job_progress(job_id, {"stage": "failed", "error": error_str})
+            await set_pb_job_progress(job_id, {"stage": "failed", "error": short_error})
 
             try:
                 async with AsyncSessionLocal() as db:
@@ -293,10 +322,17 @@ def run_prompt_transfer(
                         await job_repo.set_status(
                             job,
                             TransferJobStatus.failed,
-                            error_message=error_str,
+                            error_message=short_error,
                         )
                     await db.commit()
             except Exception:  # noqa: BLE001
                 _log.exception("Failed to persist error state for job %s", transfer_job_id)
+
+        finally:
+            # Dispose the engine while the loop is still alive so asyncpg can
+            # close connections cleanly. Without this, SQLAlchemy tries to close
+            # them after asyncio.run() exits and the loop is already closed,
+            # producing the "Event loop is closed" RuntimeError.
+            await dispose_async_engine()
 
     asyncio.run(_run())

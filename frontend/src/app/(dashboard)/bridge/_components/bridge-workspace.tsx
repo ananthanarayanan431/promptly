@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { NewTransferModal } from '@/components/bridge/new-transfer-modal';
@@ -24,6 +24,7 @@ interface ModelDef {
   hue: string;
   short: string;
   contextLength: number | null;
+  isFree: boolean;
 }
 
 // Per-provider hue for the colored dot
@@ -50,13 +51,16 @@ function modelDefFromInfo(m: ModelInfo): ModelDef {
   const provider = m.id.split('/')[0] ?? '';
   const slug = m.id.split('/')[1] ?? m.id;
   const label = cleanName(m.name);
-  // short: first two words of cleaned name, max 12 chars
   const short = label.split(' ').slice(0, 2).join(' ').slice(0, 14);
   const vendorMap: Record<string, string> = {
     openai: 'OpenAI', anthropic: 'Anthropic', google: 'Google',
     'meta-llama': 'Meta', 'x-ai': 'xAI', mistralai: 'Mistral',
     deepseek: 'DeepSeek', qwen: 'Qwen', cohere: 'Cohere',
   };
+  const pricing = m.pricing;
+  const isFree = pricing != null
+    ? pricing.prompt_per_token === 0 && pricing.completion_per_token === 0
+    : m.id.endsWith(':free');
   return {
     id: m.id,
     label,
@@ -64,17 +68,18 @@ function modelDefFromInfo(m: ModelInfo): ModelDef {
     hue: PROVIDER_HUE[provider] ?? DEFAULT_HUE,
     short: short || slug,
     contextLength: m.context_length ?? null,
+    isFree,
   };
 }
 
 // Fallback static list shown while the API loads (keeps the UI responsive)
 const FALLBACK_MODELS: ModelDef[] = [
-  { id: 'openai/gpt-4o',               label: 'GPT-4o',            vendor: 'OpenAI',    hue: PROVIDER_HUE.openai,    short: 'GPT-4o',   contextLength: 128000 },
-  { id: 'openai/gpt-4o-mini',          label: 'GPT-4o mini',       vendor: 'OpenAI',    hue: PROVIDER_HUE.openai,    short: '4o mini',  contextLength: 128000 },
-  { id: 'anthropic/claude-3.5-haiku',  label: 'Claude 3.5 Haiku',  vendor: 'Anthropic', hue: PROVIDER_HUE.anthropic, short: 'Haiku',    contextLength: 200000 },
-  { id: 'anthropic/claude-sonnet-4-5', label: 'Claude Sonnet 4.5', vendor: 'Anthropic', hue: PROVIDER_HUE.anthropic, short: 'Sonnet',   contextLength: 200000 },
-  { id: 'google/gemini-2.5-flash',     label: 'Gemini 2.5 Flash',  vendor: 'Google',    hue: PROVIDER_HUE.google,    short: 'Flash',    contextLength: 1048576 },
-  { id: 'x-ai/grok-3-beta',            label: 'Grok 3',            vendor: 'xAI',       hue: PROVIDER_HUE['x-ai'],   short: 'Grok 3',   contextLength: 131072 },
+  { id: 'openai/gpt-4o',               label: 'GPT-4o',            vendor: 'OpenAI',    hue: PROVIDER_HUE.openai,    short: 'GPT-4o',   contextLength: 128000,  isFree: false },
+  { id: 'openai/gpt-4o-mini',          label: 'GPT-4o mini',       vendor: 'OpenAI',    hue: PROVIDER_HUE.openai,    short: '4o mini',  contextLength: 128000,  isFree: false },
+  { id: 'anthropic/claude-3.5-haiku',  label: 'Claude 3.5 Haiku',  vendor: 'Anthropic', hue: PROVIDER_HUE.anthropic, short: 'Haiku',    contextLength: 200000,  isFree: false },
+  { id: 'anthropic/claude-sonnet-4-5', label: 'Claude Sonnet 4.5', vendor: 'Anthropic', hue: PROVIDER_HUE.anthropic, short: 'Sonnet',   contextLength: 200000,  isFree: false },
+  { id: 'google/gemini-2.5-flash',     label: 'Gemini 2.5 Flash',  vendor: 'Google',    hue: PROVIDER_HUE.google,    short: 'Flash',    contextLength: 1048576, isFree: false },
+  { id: 'x-ai/grok-3-beta',            label: 'Grok 3',            vendor: 'xAI',       hue: PROVIDER_HUE['x-ai'],   short: 'Grok 3',   contextLength: 131072,  isFree: false },
 ];
 
 function useModelCatalog() {
@@ -98,6 +103,7 @@ function findModel(id: string, models: ModelDef[]): ModelDef {
     hue: PROVIDER_HUE[id.split('/')[0] ?? ''] ?? DEFAULT_HUE,
     short: (id.split('/')[1] ?? id).slice(0, 14),
     contextLength: null,
+    isFree: id.endsWith(':free'),
   };
 }
 
@@ -200,7 +206,17 @@ function ModelPicker({ value, onChange, side, excludeId, models }: {
           <div style={{ fontSize: 11, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '.08em', fontWeight: 600 }}>
             {side === 'source' ? 'From' : 'To'}
           </div>
-          <div style={{ fontSize: 14.5, fontWeight: 600, marginTop: 1, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.label}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 1 }}>
+            <span style={{ fontSize: 14.5, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.label}</span>
+            {m.isFree && (
+              <span style={{
+                fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4, flexShrink: 0,
+                background: 'color-mix(in srgb, var(--success) 12%, transparent)',
+                color: 'var(--success)', border: '1px solid color-mix(in srgb, var(--success) 30%, transparent)',
+                letterSpacing: '0.04em',
+              }}>FREE</span>
+            )}
+          </div>
           <div style={{ fontSize: 10.5, color: 'var(--text-subtle)', fontFamily: 'var(--font-geist-mono, monospace)' }}>{m.vendor}</div>
         </div>
         <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="var(--text-subtle)" strokeWidth={2} strokeLinecap="round"
@@ -315,6 +331,14 @@ function ModelPicker({ value, onChange, side, excludeId, models }: {
                           }}>
                             {opt.id}
                           </span>
+                          {opt.isFree && (
+                            <span style={{
+                              fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 4,
+                              background: 'color-mix(in srgb, var(--success) 12%, transparent)',
+                              color: 'var(--success)', border: '1px solid color-mix(in srgb, var(--success) 30%, transparent)',
+                              whiteSpace: 'nowrap', flexShrink: 0, letterSpacing: '0.04em',
+                            }}>FREE</span>
+                          )}
                           {opt.contextLength !== null && (
                             <span style={{
                               fontSize: 9.5, fontFamily: 'var(--font-geist-mono, monospace)',
@@ -363,7 +387,7 @@ function ModelPicker({ value, onChange, side, excludeId, models }: {
 }
 
 // ── Bridge Visual (SVG) ───────────────────────────────────────────────────────
-type BridgeStage = 'idle' | 'source' | 'target' | 'extract' | 'adapt' | 'done';
+type BridgeStage = 'idle' | 'source' | 'target' | 'extract' | 'adapt' | 'done' | 'failed';
 
 function BridgeVisual({ source, target, stage, sourceScore, targetScore, reused, models }: {
   source: string; target: string; stage: BridgeStage;
@@ -807,8 +831,311 @@ function BridgeResult({ original, adapted, source, target, reused, onTryAnother,
   );
 }
 
+// ── Tiny markdown renderer (headings, bold, hr, bullets) ─────────────────────
+function MiniMarkdown({ text }: { text: string }) {
+  const lines = text.split('\n');
+  const nodes: React.ReactNode[] = [];
+  let listItems: string[] = [];
+
+  function flushList() {
+    if (listItems.length === 0) return;
+    nodes.push(
+      <ul key={nodes.length} style={{ margin: '4px 0 8px', paddingLeft: 18 }}>
+        {listItems.map((item, i) => (
+          <li key={i} style={{ fontSize: 12.5, color: 'var(--text)', lineHeight: 1.65, marginBottom: 2 }}>
+            <InlineMarkdown text={item} />
+          </li>
+        ))}
+      </ul>
+    );
+    listItems = [];
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    if (trimmed === '' || trimmed === '---') {
+      flushList();
+      if (trimmed === '---') {
+        nodes.push(<hr key={nodes.length} style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '10px 0' }} />);
+      } else {
+        nodes.push(<div key={nodes.length} style={{ height: 4 }} />);
+      }
+      continue;
+    }
+
+    const h4 = trimmed.match(/^####\s+(.*)/);
+    const h3 = trimmed.match(/^###\s+(.*)/);
+    const h2 = trimmed.match(/^##\s+(.*)/);
+    const h1 = trimmed.match(/^#\s+(.*)/);
+    const bullet = trimmed.match(/^[-*]\s+(.*)/);
+
+    if (h1 || h2 || h3 || h4) {
+      flushList();
+      const match = (h1 ?? h2 ?? h3 ?? h4)!;
+      const level = h4 ? 4 : h3 ? 3 : h2 ? 2 : 1;
+      const sizes: Record<number, number> = { 1: 15, 2: 13.5, 3: 12.5, 4: 11.5 };
+      nodes.push(
+        <div key={nodes.length} style={{
+          fontSize: sizes[level], fontWeight: 700, color: 'var(--text)',
+          marginTop: level <= 2 ? 14 : 8, marginBottom: 4,
+          borderBottom: level <= 2 ? '1px solid var(--border)' : 'none',
+          paddingBottom: level <= 2 ? 4 : 0,
+        }}>
+          <InlineMarkdown text={match[1]} />
+        </div>
+      );
+    } else if (bullet) {
+      listItems.push(bullet[1]);
+    } else {
+      flushList();
+      nodes.push(
+        <p key={nodes.length} style={{ margin: '0 0 4px', fontSize: 12.5, color: 'var(--text)', lineHeight: 1.65 }}>
+          <InlineMarkdown text={trimmed} />
+        </p>
+      );
+    }
+  }
+  flushList();
+
+  return <div style={{ padding: '14px 16px' }}>{nodes}</div>;
+}
+
+function InlineMarkdown({ text }: { text: string }) {
+  // Render **bold** and `code` inline
+  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
+  return (
+    <>
+      {parts.map((part, i) => {
+        if (part.startsWith('**') && part.endsWith('**')) {
+          return <strong key={i} style={{ fontWeight: 700 }}>{part.slice(2, -2)}</strong>;
+        }
+        if (part.startsWith('`') && part.endsWith('`')) {
+          return (
+            <code key={i} style={{
+              fontFamily: 'var(--font-geist-mono, monospace)',
+              fontSize: '0.9em', padding: '1px 5px', borderRadius: 4,
+              background: 'var(--surface-2, oklch(96% 0.004 80))',
+              color: 'var(--primary)',
+            }}>{part.slice(1, -1)}</code>
+          );
+        }
+        return <span key={i}>{part}</span>;
+      })}
+    </>
+  );
+}
+
+// ── Mapping detail drawer ─────────────────────────────────────────────────────
+function MappingDetailDrawer({
+  mapping,
+  onClose,
+  onUse,
+}: {
+  mapping: PromptMappingDetail;
+  onClose: () => void;
+  onUse: (m: PromptMapping) => void;
+}) {
+  const [rulesExpanded, setRulesExpanded] = useState(false);
+
+  function shortModel(slug: string) {
+    const parts = slug.split('/');
+    return parts[parts.length - 1];
+  }
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 200,
+        background: 'rgba(0,0,0,0.35)', display: 'flex', justifyContent: 'flex-end',
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          width: 520, maxWidth: '95vw', height: '100%',
+          background: 'var(--surface)', borderLeft: '1px solid var(--border)',
+          display: 'flex', flexDirection: 'column', overflow: 'hidden',
+        }}
+      >
+        {/* Header */}
+        <div style={{
+          padding: '18px 22px', borderBottom: '1px solid var(--border)',
+          display: 'flex', alignItems: 'center', gap: 12,
+        }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>
+                {shortModel(mapping.source_model)}
+              </span>
+              <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="var(--text-subtle)" strokeWidth={2} strokeLinecap="round">
+                <path d="M5 12h14M12 5l7 7-7 7" />
+              </svg>
+              <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>
+                {shortModel(mapping.target_model)}
+              </span>
+            </div>
+            <p style={{ margin: '3px 0 0', fontSize: 11.5, color: 'var(--text-subtle)' }}>
+              {mapping.pair_count} calibrated pair{mapping.pair_count !== 1 ? 's' : ''} · saved bridge
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              width: 30, height: 30, borderRadius: 6, border: '1px solid var(--border)',
+              background: 'var(--surface)', color: 'var(--text-muted)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+            }}
+          >
+            <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Body */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+
+          {/* Stats row */}
+          <div style={{
+            display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12,
+          }}>
+            {[
+              { label: 'Pairs', value: String(mapping.pair_count) },
+              {
+                label: 'Avg lift',
+                value: mapping.avg_target_score != null
+                  ? `+${(mapping.avg_target_score * 100).toFixed(0)}%`
+                  : '—',
+              },
+              { label: 'Last updated', value: new Date(mapping.updated_at).toLocaleDateString() },
+            ].map(({ label, value }) => (
+              <div key={label} style={{
+                background: 'var(--bg)', border: '1px solid var(--border)',
+                borderRadius: 8, padding: '10px 14px',
+              }}>
+                <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>{label}</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', fontFamily: 'var(--font-geist-mono, monospace)' }}>{value}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Transfer rules */}
+          <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
+            <button
+              onClick={() => setRulesExpanded(v => !v)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+                padding: '12px 16px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
+              }}
+            >
+              <svg
+                width={11} height={11} viewBox="0 0 24 24" fill="none" stroke="var(--text-subtle)" strokeWidth={2} strokeLinecap="round"
+                style={{ transform: rulesExpanded ? 'rotate(90deg)' : 'none', transition: 'transform 180ms', flexShrink: 0 }}
+              >
+                <path d="M9 18l6-6-6-6" />
+              </svg>
+              <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text)', letterSpacing: '0.04em' }}>
+                Transfer rules
+              </span>
+              <span style={{ marginLeft: 'auto', fontSize: 10.5, color: 'var(--text-subtle)' }}>
+                {rulesExpanded ? 'Collapse' : 'Expand to view'}
+              </span>
+            </button>
+            {rulesExpanded && (
+              <div style={{ borderTop: '1px solid var(--border)', maxHeight: 360, overflowY: 'auto' }}>
+                <MiniMarkdown text={mapping.mapping_text} />
+              </div>
+            )}
+          </div>
+
+          {/* Calibrated pairs */}
+          {mapping.pairs.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                Calibrated pairs
+              </div>
+              {mapping.pairs.map((pair, i) => (
+                <div key={pair.id} style={{
+                  background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden',
+                }}>
+                  <div style={{
+                    display: 'grid', gridTemplateColumns: '1fr 1fr', borderBottom: '1px solid var(--border)',
+                  }}>
+                    <div style={{ padding: '10px 14px', borderRight: '1px solid var(--border)' }}>
+                      <div style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 6 }}>
+                        {shortModel(mapping.source_model)}
+                        {pair.source_score != null && (
+                          <span style={{ marginLeft: 6, color: 'var(--primary)', fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                            {(pair.source_score * 100).toFixed(0)}%
+                          </span>
+                        )}
+                      </div>
+                      <pre style={{ margin: 0, fontSize: 11.5, color: 'var(--text)', lineHeight: 1.55, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'var(--font-geist-mono, monospace)', maxHeight: 120, overflowY: 'auto' }}>
+                        {pair.source_optimal_prompt}
+                      </pre>
+                    </div>
+                    <div style={{ padding: '10px 14px' }}>
+                      <div style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 6 }}>
+                        {shortModel(mapping.target_model)}
+                        {pair.target_score != null && (
+                          <span style={{ marginLeft: 6, color: 'var(--success)', fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                            {(pair.target_score * 100).toFixed(0)}%
+                          </span>
+                        )}
+                      </div>
+                      <pre style={{ margin: 0, fontSize: 11.5, color: 'var(--text)', lineHeight: 1.55, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'var(--font-geist-mono, monospace)', maxHeight: 120, overflowY: 'auto' }}>
+                        {pair.target_optimal_prompt}
+                      </pre>
+                    </div>
+                  </div>
+                  <div style={{ padding: '6px 14px', fontSize: 10, color: 'var(--text-subtle)' }}>
+                    Pair {i + 1} · {new Date(pair.created_at).toLocaleDateString()}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Footer action */}
+        <div style={{
+          padding: '14px 22px', borderTop: '1px solid var(--border)',
+          display: 'flex', gap: 10,
+        }}>
+          <button
+            onClick={() => { onClose(); onUse(mapping); }}
+            style={{
+              flex: 1, padding: '10px 0', borderRadius: 9, border: 'none',
+              background: 'var(--primary)', color: '#fff', fontWeight: 600, fontSize: 13.5,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+              boxShadow: '0 2px 8px color-mix(in oklab, var(--primary) 35%, transparent)',
+            }}
+          >
+            <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round">
+              <path d="M5 12h14M12 5l7 7-7 7" />
+            </svg>
+            Use this bridge · 1 credit
+          </button>
+          <button
+            onClick={onClose}
+            style={{
+              padding: '10px 18px', borderRadius: 9, border: '1px solid var(--border)',
+              background: 'var(--surface)', color: 'var(--text-muted)', fontWeight: 500, fontSize: 13, cursor: 'pointer',
+            }}
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Saved mappings panel ──────────────────────────────────────────────────────
-function MappingsPanel({ mappings, onPick, models }: { mappings: PromptMapping[]; onPick: (m: PromptMapping) => void; models: ModelDef[] }) {
+function MappingsPanel({ mappings, onView, models }: { mappings: PromptMapping[]; onView: (m: PromptMapping) => void; models: ModelDef[] }) {
   return (
     <div style={{
       background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12,
@@ -866,8 +1193,8 @@ function MappingsPanel({ mappings, onPick, models }: { mappings: PromptMapping[]
                 {new Date(m.updated_at).toLocaleDateString()}
               </span>
               <button
-                onClick={() => onPick(m)}
-                title="Load this model pair"
+                onClick={() => onView(m)}
+                title="View bridge details"
                 style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   width: 28, height: 28, borderRadius: 6,
@@ -909,6 +1236,7 @@ export function BridgeWorkspace() {
 
   // Result state (from completed job)
   const [resultJob, setResultJob] = useState<TransferJobSummary | null>(null);
+  const [failedError, setFailedError] = useState<string | null>(null);
 
   // Modal / drawer
   const [showNewModal, setShowNewModal] = useState(false);
@@ -969,6 +1297,16 @@ export function BridgeWorkspace() {
           if (vis === 'target') setTargetScore(0.45 + (s ?? 1) / (t ?? 5) * 0.42);
         }
 
+        // Show retrying state when backend re-queued after a 429
+        if (poll.status === 'queued' && poll.progress?.retrying) {
+          const retryIn = typeof poll.progress.retry_in === 'number' ? poll.progress.retry_in as number : null;
+          const attempt = typeof poll.progress.attempt === 'number' ? poll.progress.attempt as number : null;
+          setStage('source');
+          setFailedError(
+            `Rate limited by model provider — retrying automatically${retryIn ? ` in ${retryIn}s` : ''}${attempt ? ` (attempt ${attempt}/${3})` : ''}.`
+          );
+        }
+
         if (poll.status === 'completed' || poll.status === 'failed' || poll.status === 'cancelled') {
           clearInterval(pollingRef.current!);
           setActiveJobId(null);
@@ -986,6 +1324,10 @@ export function BridgeWorkspace() {
             const newMappings = mappingsRes.data.data.mappings;
             setSavedMappings(newMappings);
             // (mapping detail loaded on demand if drawer opened)
+          } else if (poll.status === 'failed') {
+            setStage('failed');
+            setRunning(false);
+            setFailedError(poll.error ?? 'Transfer failed. Please try again.');
           } else {
             setStage('idle');
             setRunning(false);
@@ -1013,6 +1355,7 @@ export function BridgeWorkspace() {
     setResultJob(null);
     setActiveJobId(null);
     setActiveDbJobId(null);
+    setFailedError(null);
   }, []);
 
   const handleCancel = useCallback(async () => {
@@ -1050,6 +1393,18 @@ export function BridgeWorkspace() {
       reset();
     }
   }, [running, isSameModel, prompt, source, target, existingMapping, reset]);
+
+  const [viewedMapping, setViewedMapping] = useState<PromptMappingDetail | null>(null);
+
+  const handleViewMapping = useCallback(async (m: PromptMapping) => {
+    try {
+      const res = await api.get<{ data: PromptMappingDetail }>(`/api/v1/prompt-bridge/mappings/${m.id}`);
+      setViewedMapping(res.data.data);
+    } catch {
+      // fall back to the list-level data without pairs
+      setViewedMapping({ ...m, pairs: [] });
+    }
+  }, []);
 
   const handlePickMapping = (m: PromptMapping) => {
     setSource(m.source_model);
@@ -1270,6 +1625,75 @@ export function BridgeWorkspace() {
         />
       )}
 
+      {/* ── Error card ── */}
+      {stage === 'failed' && failedError && (
+        <div style={{
+          background: 'var(--surface)', border: '1px solid color-mix(in srgb, var(--danger) 35%, transparent)',
+          borderRadius: 14, padding: '20px 24px', display: 'flex', gap: 16, alignItems: 'flex-start',
+        }}>
+          <div style={{
+            width: 38, height: 38, borderRadius: '50%', flexShrink: 0,
+            background: 'color-mix(in srgb, var(--danger) 10%, transparent)',
+            border: '1px solid color-mix(in srgb, var(--danger) 25%, transparent)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <svg width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="var(--danger)" strokeWidth={2} strokeLinecap="round">
+              <circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" />
+            </svg>
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text)', marginBottom: 6 }}>
+              Transfer failed
+            </div>
+            {/* Parse out the human-readable reason from the error string */}
+            {(() => {
+              const is429 = failedError.includes('429') || failedError.includes('rate') || failedError.toLowerCase().includes('temporarily');
+              const isRateLimit = is429 || failedError.includes('retry_after');
+              if (isRateLimit) {
+                const retryMatch = failedError.match(/retry_after_seconds['":\s]+(\d+)/);
+                const seconds = retryMatch ? parseInt(retryMatch[1]) : null;
+                return (
+                  <div style={{ fontSize: 12.5, color: 'var(--text-subtle)', lineHeight: 1.6 }}>
+                    <strong style={{ color: 'var(--warning)' }}>Rate limit hit</strong> — the free model you selected has a usage cap.
+                    {seconds && <span> OpenRouter suggests waiting <strong>{seconds}s</strong> before retrying.</span>}
+                    <div style={{ marginTop: 6, fontSize: 11.5, color: 'var(--text-subtle)' }}>
+                      Tip: switch to a paid model or wait a minute and try again.
+                    </div>
+                  </div>
+                );
+              }
+              return (
+                <div style={{ fontSize: 12.5, color: 'var(--text-subtle)', lineHeight: 1.6 }}>
+                  {failedError.length > 200 ? failedError.slice(0, 200) + '…' : failedError}
+                </div>
+              );
+            })()}
+            <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
+              <button
+                onClick={() => { reset(); }}
+                style={{
+                  padding: '7px 16px', borderRadius: 8, border: 'none',
+                  background: 'var(--primary)', color: '#fff',
+                  fontWeight: 600, fontSize: 12.5, cursor: 'pointer',
+                }}
+              >
+                Try again
+              </button>
+              <button
+                onClick={() => { reset(); setModalPrefill({ sourceModel: source, targetModel: target }); setShowNewModal(true); }}
+                style={{
+                  padding: '7px 16px', borderRadius: 8,
+                  border: '1px solid var(--border)', background: 'var(--surface)',
+                  color: 'var(--text-muted)', fontWeight: 500, fontSize: 12.5, cursor: 'pointer',
+                }}
+              >
+                Change models
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Result card ── */}
       {resultJob?.adapted_prompt && (
         <BridgeResult
@@ -1286,7 +1710,7 @@ export function BridgeWorkspace() {
       )}
 
       {/* ── Saved bridges panel ── */}
-      <MappingsPanel mappings={savedMappings} onPick={handlePickMapping} models={models} />
+      <MappingsPanel mappings={savedMappings} onView={handleViewMapping} models={models} />
 
       {/* ── Modals / drawers ── */}
       {showNewModal && (
@@ -1323,6 +1747,14 @@ export function BridgeWorkspace() {
           }}
           onCancelled={() => { setSelectedJob(null); setSelectedMapping(null); reset(); }}
           onDeleted={() => { setSelectedJob(null); setSelectedMapping(null); }}
+        />
+      )}
+
+      {viewedMapping && (
+        <MappingDetailDrawer
+          mapping={viewedMapping}
+          onClose={() => setViewedMapping(null)}
+          onUse={handlePickMapping}
         />
       )}
 

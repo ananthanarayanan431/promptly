@@ -19,7 +19,7 @@ Rules:
 - Output must be valid JSON parseable by json.loads().
 """
 
-_USER = "Original prompt:\n{{original}}\n\n" "Optimized prompt:\n{{optimized}}"
+_USER = "Original prompt:\n{{original}}\n\nOptimized prompt:\n{{optimized}}"
 
 
 def reasoning_messages(original: str, optimized: str) -> list[dict[str, str]]:

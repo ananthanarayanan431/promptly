@@ -1114,6 +1114,18 @@ export function DomainWorkspace() {
     } catch { /* ignore */ }
   }, [selected, qc]);
 
+  const [stopping, setStopping] = useState(false);
+  const handleStop = useCallback(async () => {
+    if (!selected) return;
+    setStopping(true);
+    try {
+      await api.post(`/api/v1/domain-prompts/${selected.id}/stop`);
+      void qc.invalidateQueries({ queryKey: ['domain-prompts'] });
+    } catch { /* ignore */ } finally {
+      setStopping(false);
+    }
+  }, [selected, qc]);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
 
@@ -1150,8 +1162,20 @@ export function DomainWorkspace() {
             )}
           </div>
 
-          {/* Right: delete + new domain */}
+          {/* Right: force-stop + delete + new domain */}
           <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+            {selected && ['optimizing', 'preparing_dataset'].includes(selected.status) && (
+              <button
+                className="ply-btn ply-btn-sm"
+                onClick={handleStop}
+                disabled={stopping}
+                title="Worker crashed? Force-stop the stuck tournament and reset this domain."
+                style={{ color: 'var(--warning)', borderColor: 'color-mix(in srgb, var(--warning) 40%, transparent)' }}
+              >
+                {stopping ? <span className="ply-dot ply-dot-pulse" style={{ width: 7, height: 7, background: 'var(--warning)' }} /> : <Icon name="stop" size={13} />}
+                {stopping ? 'Stopping…' : 'Force stop'}
+              </button>
+            )}
             <button className="ply-btn ply-btn-sm" aria-label="Delete domain" onClick={handleDelete} title="Delete domain">
               <Icon name="trash" size={13} />
             </button>
