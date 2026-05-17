@@ -130,7 +130,7 @@ async def test_create_domain_success(client: AsyncClient, db_session: AsyncSessi
     with (
         _minio_patch(),
         patch("app.domain_prompt.api.router.prepare_domain_dataset.apply_async"),
-        patch("anyio.to_thread.run_sync", side_effect=lambda fn: None),
+        patch("anyio.to_thread.run_sync", side_effect=lambda fn, *args, **kwargs: None),
     ):
         res = await client.post("/api/v1/domain-prompts/", files=files, data=data, headers=headers)
 
@@ -149,7 +149,7 @@ async def test_create_domain_appears_in_list(client: AsyncClient, db_session: As
     with (
         _minio_patch(),
         patch("app.domain_prompt.api.router.prepare_domain_dataset.apply_async"),
-        patch("anyio.to_thread.run_sync", side_effect=lambda fn: None),
+        patch("anyio.to_thread.run_sync", side_effect=lambda fn, *args, **kwargs: None),
     ):
         await client.post("/api/v1/domain-prompts/", files=files, data=data, headers=headers)
 
@@ -168,7 +168,7 @@ async def test_get_domain_after_create(client: AsyncClient, db_session: AsyncSes
     with (
         _minio_patch(),
         patch("app.domain_prompt.api.router.prepare_domain_dataset.apply_async"),
-        patch("anyio.to_thread.run_sync", side_effect=lambda fn: None),
+        patch("anyio.to_thread.run_sync", side_effect=lambda fn, *args, **kwargs: None),
     ):
         create_res = await client.post(
             "/api/v1/domain-prompts/", files=files, data=data, headers=headers
@@ -192,7 +192,7 @@ async def test_get_domain_other_user_not_found(
     with (
         _minio_patch(),
         patch("app.domain_prompt.api.router.prepare_domain_dataset.apply_async"),
-        patch("anyio.to_thread.run_sync", side_effect=lambda fn: None),
+        patch("anyio.to_thread.run_sync", side_effect=lambda fn, *args, **kwargs: None),
     ):
         create_res = await client.post(
             "/api/v1/domain-prompts/", files=files, data=data, headers=h1
@@ -219,7 +219,7 @@ async def test_poll_domain_job_queued(client: AsyncClient, db_session: AsyncSess
     with (
         _minio_patch(),
         patch("app.domain_prompt.api.router.prepare_domain_dataset.apply_async"),
-        patch("anyio.to_thread.run_sync", side_effect=lambda fn: None),
+        patch("anyio.to_thread.run_sync", side_effect=lambda fn, *args, **kwargs: None),
     ):
         create_res = await client.post(
             "/api/v1/domain-prompts/", files=files, data=data, headers=headers
@@ -240,14 +240,14 @@ async def test_delete_domain_success(client: AsyncClient, db_session: AsyncSessi
     with (
         _minio_patch(),
         patch("app.domain_prompt.api.router.prepare_domain_dataset.apply_async"),
-        patch("anyio.to_thread.run_sync", side_effect=lambda fn: None),
+        patch("anyio.to_thread.run_sync", side_effect=lambda fn, *args, **kwargs: None),
     ):
         create_res = await client.post(
             "/api/v1/domain-prompts/", files=files, data=data, headers=headers
         )
     domain_id = create_res.json()["data"]["domain_id"]
 
-    with patch("anyio.to_thread.run_sync", side_effect=lambda fn: None):
+    with patch("anyio.to_thread.run_sync", side_effect=lambda fn, *args, **kwargs: None):
         res = await client.delete(f"/api/v1/domain-prompts/{domain_id}", headers=headers)
     assert res.status_code == 200
 
@@ -274,7 +274,7 @@ async def test_domain_runs_empty_after_create(
     with (
         _minio_patch(),
         patch("app.domain_prompt.api.router.prepare_domain_dataset.apply_async"),
-        patch("anyio.to_thread.run_sync", side_effect=lambda fn: None),
+        patch("anyio.to_thread.run_sync", side_effect=lambda fn, *args, **kwargs: None),
     ):
         create_res = await client.post(
             "/api/v1/domain-prompts/", files=files, data=data, headers=headers
@@ -303,7 +303,7 @@ async def _create_domain_with_dataset(
     with (
         _minio_patch(),
         patch("app.domain_prompt.api.router.prepare_domain_dataset.apply_async"),
-        patch("anyio.to_thread.run_sync", side_effect=lambda fn: None),
+        patch("anyio.to_thread.run_sync", side_effect=lambda fn, *args, **kwargs: None),
     ):
         res = await client.post("/api/v1/domain-prompts/", files=files, data=data, headers=headers)
     assert res.status_code == 202
