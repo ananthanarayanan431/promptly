@@ -1,5 +1,5 @@
 import hashlib
-from collections.abc import AsyncGenerator, Callable
+from collections.abc import AsyncGenerator, Callable, Coroutine
 from typing import Annotated, Any
 
 import structlog
@@ -95,7 +95,7 @@ async def get_current_user(
     )
 
 
-def require_role(*roles: str) -> Callable[..., UserContext]:
+def require_role(*roles: str) -> Callable[..., Coroutine[Any, Any, UserContext]]:
     """Return a FastAPI dependency that enforces org role membership."""
 
     async def _check(
@@ -108,7 +108,7 @@ def require_role(*roles: str) -> Callable[..., UserContext]:
     return _check
 
 
-def require_permission(permission: str) -> Callable[..., UserContext]:
+def require_permission(permission: str) -> Callable[..., Coroutine[Any, Any, UserContext]]:
     """Return a FastAPI dependency that enforces a specific org permission."""
 
     async def _check(
