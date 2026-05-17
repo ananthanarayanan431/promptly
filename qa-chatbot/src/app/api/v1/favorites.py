@@ -10,9 +10,9 @@ from app.api.v1.exceptions.favorites import (
     FavoriteVersionNotFoundException,
 )
 from app.core.rate_limit import RateLimiter
+from app.core.user_context import UserContext
 from app.dependencies import get_current_user, get_db
 from app.models.favorite_prompt import FavoritePrompt
-from app.models.user import User
 from app.schemas.favorite import (
     FavoriteCreateRequest,
     FavoriteListResponse,
@@ -58,17 +58,17 @@ async def like(
     request: FavoriteCreateRequest,
     response: Response,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> SuccessResponse[FavoriteResponse]:
     service = FavoriteService(db)
     try:
         fav, created = await service.like(
-            user_id=current_user.id, prompt_version_id=request.prompt_version_id
+            user_id=current_user.user_id, prompt_version_id=request.prompt_version_id
         )
     except LookupError as exc:
         raise FavoriteVersionNotFoundException() from exc
 
-    fav = await service.repo.get_for_user(favorite_id=fav.id, user_id=current_user.id)  # type: ignore[assignment]
+    fav = await service.repo.get_for_user(favorite_id=fav.id, user_id=current_user.user_id)  # type: ignore[assignment]
     if fav is None:
         raise FavoriteNotFoundException()
     await db.commit()
@@ -91,10 +91,12 @@ async def like(
 async def status_endpoint(
     prompt_version_id: Annotated[uuid.UUID, Query()],
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> SuccessResponse[FavoriteStatusResponse]:
     service = FavoriteService(db)
-    is_fav, pid = await service.status(user_id=current_user.id, prompt_version_id=prompt_version_id)
+    is_fav, pid = await service.status(
+        user_id=current_user.user_id, prompt_version_id=prompt_version_id
+    )
     return SuccessResponse(data=FavoriteStatusResponse(is_favorited=is_fav, prompt_store_id=pid))
 
 
@@ -105,7 +107,7 @@ async def status_endpoint(
 )
 async def list_favorites(
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
     q: str | None = Query(default=None),
     category: str | None = Query(default=None),
     tag: list[str] | None = Query(default=None),
@@ -115,7 +117,7 @@ async def list_favorites(
 ) -> SuccessResponse[FavoriteListResponse]:
     service = FavoriteService(db)
     rows, total = await service.repo.list_for_user(
-        user_id=current_user.id,
+        user_id=current_user.user_id,
         q=q,
         category=category,
         tags=tag,
@@ -140,10 +142,10 @@ async def list_favorites(
 )
 async def list_tags(
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> SuccessResponse[FavoriteTagsResponse]:
     service = FavoriteService(db)
-    tags = await service.repo.distinct_tags(user_id=current_user.id)
+    tags = await service.repo.distinct_tags(user_id=current_user.user_id)
     return SuccessResponse(data=FavoriteTagsResponse(tags=tags))
 
 
@@ -155,11 +157,11 @@ async def list_tags(
 async def unlike_by_version(
     prompt_version_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> Response:
     service = FavoriteService(db)
     deleted = await service.unlike_by_version(
-        user_id=current_user.id, prompt_version_id=prompt_version_id
+        user_id=current_user.user_id, prompt_version_id=prompt_version_id
     )
     if not deleted:
         raise FavoriteNotFoundException()
@@ -176,10 +178,10 @@ async def unlike_by_version(
 async def get_favorite(
     favorite_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> SuccessResponse[FavoriteResponse]:
     service = FavoriteService(db)
-    fav = await service.repo.get_for_user(favorite_id=favorite_id, user_id=current_user.id)
+    fav = await service.repo.get_for_user(favorite_id=favorite_id, user_id=current_user.user_id)
     if fav is None:
         raise FavoriteNotFoundException()
     return SuccessResponse(data=_to_response(fav))
@@ -194,7 +196,7 @@ async def update_favorite(
     favorite_id: uuid.UUID,
     request: FavoriteUpdateRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> SuccessResponse[FavoriteResponse]:
     update_fields: dict[str, object] = {}
     if request.note is not None:
@@ -208,12 +210,12 @@ async def update_favorite(
 
     service = FavoriteService(db)
     fav = await service.update(
-        user_id=current_user.id, favorite_id=favorite_id, fields=update_fields
+        user_id=current_user.user_id, favorite_id=favorite_id, fields=update_fields
     )
     if fav is None:
         raise FavoriteNotFoundException()
 
-    fav = await service.repo.get_for_user(favorite_id=favorite_id, user_id=current_user.id)
+    fav = await service.repo.get_for_user(favorite_id=favorite_id, user_id=current_user.user_id)
     if fav is None:
         raise FavoriteNotFoundException()
     await db.commit()
@@ -228,10 +230,10 @@ async def update_favorite(
 async def use_favorite(
     favorite_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> Response:
     service = FavoriteService(db)
-    ok = await service.increment_use(user_id=current_user.id, favorite_id=favorite_id)
+    ok = await service.increment_use(user_id=current_user.user_id, favorite_id=favorite_id)
     if not ok:
         raise FavoriteNotFoundException()
     await db.commit()
@@ -246,10 +248,10 @@ async def use_favorite(
 async def unlike(
     favorite_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> Response:
     service = FavoriteService(db)
-    deleted = await service.unlike(user_id=current_user.id, favorite_id=favorite_id)
+    deleted = await service.unlike(user_id=current_user.user_id, favorite_id=favorite_id)
     if not deleted:
         raise FavoriteNotFoundException()
     await db.commit()

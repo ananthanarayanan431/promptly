@@ -6,7 +6,7 @@ import structlog
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.clerk import get_org_permissions_for_api_key, verify_clerk_token
+from app.core.clerk import get_clerk_client, get_org_permissions_for_api_key, verify_clerk_token
 from app.core.exceptions import ForbiddenException, UnauthorizedException
 from app.core.user_context import UserContext
 from app.db.session import get_async_session
@@ -24,6 +24,42 @@ async def get_graph(request: Request) -> Any:  # noqa: ANN401
     return request.app.state.graph
 
 
+async def _provision_user(user_repo: UserRepository, clerk_user_id: str) -> Any:  # noqa: ANN401
+    """Fetch the Clerk user profile and create the local DB record on first login.
+
+    This is the fallback when the webhook hasn't fired yet (e.g., local dev
+    without a public webhook URL). Idempotent — if a concurrent request already
+    created the row, get_by_clerk_id returns it on the next call.
+    """
+    log = structlog.get_logger()
+    try:
+        client = get_clerk_client()
+        clerk_user = await client.users.get_async(user_id=clerk_user_id)
+        email_addresses = getattr(clerk_user, "email_addresses", []) or []
+        email: str = email_addresses[0].email_address if email_addresses else ""
+        first_name: str = str(getattr(clerk_user, "first_name", "") or "")
+        last_name: str = str(getattr(clerk_user, "last_name", "") or "")
+        full_name: str = f"{first_name} {last_name}".strip()
+    except Exception as exc:  # noqa: BLE001
+        log.warning("clerk_user_fetch_failed", clerk_user_id=clerk_user_id, error=str(exc))
+        raise UnauthorizedException(detail="User not found and could not be provisioned") from exc
+
+    try:
+        user = await user_repo.create(
+            clerk_user_id=clerk_user_id,
+            email=email,
+            full_name=full_name or None,
+        )
+        log.info("user_auto_provisioned", clerk_user_id=clerk_user_id, email=email)
+        return user
+    except Exception:  # noqa: BLE001
+        # Race condition: another request created the row; just re-fetch.
+        existing = await user_repo.get_by_clerk_id(clerk_user_id)
+        if existing is None:
+            raise UnauthorizedException(detail="User provisioning failed") from None
+        return existing
+
+
 async def get_current_user(
     request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -35,8 +71,10 @@ async def get_current_user(
     API key path: hashes the raw key and looks up via key_hash, then fetches org permissions.
     """
     authorization = request.headers.get("Authorization", "")
+    log = structlog.get_logger()
 
     if not authorization or not authorization.startswith("Bearer "):
+        log.warning("auth_header_missing", path=request.url.path, has_auth=bool(authorization))
         raise UnauthorizedException(detail="Missing or invalid Authorization header")
 
     user_repo = UserRepository(db)
@@ -79,7 +117,9 @@ async def get_current_user(
 
     user = await user_repo.get_by_clerk_id(clerk_user_id)
     if user is None:
-        raise UnauthorizedException(detail="User not found — register via webhook")
+        # Auto-provision: user signed in via Clerk but webhook hasn't synced yet.
+        # Fetch their profile from Clerk and create the local record on-the-fly.
+        user = await _provision_user(user_repo, clerk_user_id)
     if not user.is_active:
         raise UnauthorizedException(detail="User account is inactive")
 

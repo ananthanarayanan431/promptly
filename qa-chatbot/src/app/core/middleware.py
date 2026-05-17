@@ -28,15 +28,13 @@ class CorrelationIdMiddleware(BaseHTTPMiddleware):
             return JSONResponse(status_code=e.error.code, content={"detail": e.error.message})
 
 
-_HEALTH_PATHS = {"/api/v1/health", "/api/v1/ready"}
-_AUTH_PATHS = {"/api/v1/auth/login", "/api/v1/auth/register"}
+_SKIP_PATHS = {"/api/v1/health", "/api/v1/ready"}
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
     """Redis-backed fixed-window rate limiter keyed by client IP.
 
-    - /api/v1/health and /api/v1/ready are bypassed entirely.
-    - Auth endpoints use a tight per-IP bucket (RATE_LIMIT_AUTH_REQUESTS / window).
+    - Health/ready endpoints and OPTIONS preflight requests are bypassed.
     - All other routes share the global per-IP bucket (RATE_LIMIT_REQUESTS / window).
     - Reads X-Forwarded-For so the real client IP is used behind a reverse proxy.
     """
@@ -44,7 +42,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Any) -> Any:
         path = request.url.path
 
-        if path in _HEALTH_PATHS:
+        # Skip health checks and CORS preflight requests entirely
+        if path in _SKIP_PATHS or request.method == "OPTIONS":
             return await call_next(request)
 
         settings = get_rate_limit_settings()
@@ -56,14 +55,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         else:
             return await call_next(request)
 
-        if path in _AUTH_PATHS:
-            limit = settings.RATE_LIMIT_AUTH_REQUESTS
-            window = settings.RATE_LIMIT_AUTH_WINDOW_SECONDS
-            key = f"rl:auth:{client_ip}"
-        else:
-            limit = settings.RATE_LIMIT_REQUESTS
-            window = settings.RATE_LIMIT_WINDOW_SECONDS
-            key = f"rl:{client_ip}"
+        limit = settings.RATE_LIMIT_REQUESTS
+        window = settings.RATE_LIMIT_WINDOW_SECONDS
+        key = f"rl:{client_ip}"
 
         redis = await get_redis_client()
         pipe = redis.pipeline()

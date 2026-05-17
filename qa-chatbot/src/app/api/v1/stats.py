@@ -8,11 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.types.response import SuccessResponse
 from app.core.rate_limit import RateLimiter
+from app.core.user_context import UserContext
 from app.dependencies import get_current_user, get_db
 from app.models.message import Message
 from app.models.prompt_version import PromptVersion
 from app.models.session import ChatSession
-from app.models.user import User
 from app.repositories.health_score_repo import HealthScoreRepository
 from app.repositories.usage_event_repo import UsageEventRepository, month_start_utc
 from app.schemas.stats import (
@@ -49,10 +49,10 @@ _MODEL_DISPLAY: dict[str, str] = {
 )
 async def get_dashboard_stats(
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> SuccessResponse[DashboardStats]:
     """Return aggregated dashboard statistics for the current user."""
-    user_id = current_user.id
+    user_id = current_user.user_id
     has_response = Message.response.isnot(None)
 
     # ── 1. Total prompts optimized ────────────────────────────────────────────

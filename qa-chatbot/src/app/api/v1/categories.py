@@ -10,9 +10,9 @@ from app.api.v1.exceptions.categories import (
     PredefinedCategoryReadOnlyException,
 )
 from app.core.rate_limit import RateLimiter
+from app.core.user_context import UserContext
 from app.dependencies import get_current_user, get_db
 from app.models.prompt_category import PromptCategory
-from app.models.user import User
 from app.schemas.category import (
     CategoryCreateRequest,
     CategoryCreateResponse,
@@ -61,11 +61,11 @@ def _sort_categories(cats: list[PromptCategory]) -> list[PromptCategory]:
 )
 async def list_categories(
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> SuccessResponse[CategoryListResponse]:
     """List predefined categories plus this user's custom categories."""
     service = CategoryService(db)
-    cats = await service.list_for_user(user_id=current_user.id)
+    cats = await service.list_for_user(user_id=current_user.user_id)
     sorted_cats = _sort_categories(cats)
     return SuccessResponse(
         data=CategoryListResponse(categories=[_to_response(c) for c in sorted_cats])
@@ -81,13 +81,13 @@ async def list_categories(
 async def create_category(
     request: CategoryCreateRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> SuccessResponse[CategoryCreateResponse]:
     """Create a new custom category for the current user."""
     service = CategoryService(db)
     try:
         cat = await service.create_custom(
-            user_id=current_user.id,
+            user_id=current_user.user_id,
             name=request.name,
             description=request.description,
         )
@@ -107,17 +107,17 @@ async def create_category(
 async def delete_category(
     slug: str,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> Response:
     """Delete a user's custom category. Predefined categories cannot be deleted."""
     service = CategoryService(db)
     # Differentiate "predefined (forbidden)" from "not found".
-    visible = await service.repo.get_by_slug_for_user(slug=slug, user_id=current_user.id)
+    visible = await service.repo.get_by_slug_for_user(slug=slug, user_id=current_user.user_id)
     if visible is not None and visible.is_predefined:
         log.warning("predefined_category_delete_blocked", slug=slug)
         raise PredefinedCategoryReadOnlyException()
 
-    deleted = await service.delete_custom(user_id=current_user.id, slug=slug)
+    deleted = await service.delete_custom(user_id=current_user.user_id, slug=slug)
     if not deleted:
         raise CategoryNotFoundException()
     await db.commit()
