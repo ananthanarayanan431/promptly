@@ -95,10 +95,10 @@ async def get_current_user(
     )
 
 
-def require_role(*roles: str) -> Callable[[UserContext], UserContext]:
+def require_role(*roles: str) -> Callable[..., UserContext]:
     """Return a FastAPI dependency that enforces org role membership."""
 
-    def _check(
+    async def _check(
         current_user: Annotated[UserContext, Depends(get_current_user)],
     ) -> UserContext:
         if current_user.org_role not in roles:
@@ -108,10 +108,10 @@ def require_role(*roles: str) -> Callable[[UserContext], UserContext]:
     return _check
 
 
-def require_permission(permission: str) -> Callable[[UserContext], UserContext]:
+def require_permission(permission: str) -> Callable[..., UserContext]:
     """Return a FastAPI dependency that enforces a specific org permission."""
 
-    def _check(
+    async def _check(
         current_user: Annotated[UserContext, Depends(get_current_user)],
     ) -> UserContext:
         if permission not in current_user.permissions:

@@ -276,7 +276,8 @@ async def test_get_current_user_non_bearer_header_raises_unauthorized() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_require_role_passes_when_role_matches() -> None:
+@pytest.mark.asyncio
+async def test_require_role_passes_when_role_matches() -> None:
     """require_role allows through when the user's org_role is in the allowed set."""
     from app.dependencies import require_role
 
@@ -290,24 +291,15 @@ def test_require_role_passes_when_role_matches() -> None:
         permissions=[],
     )
 
-    checker = require_role("org:admin", "org:owner")
-
-    # Manually call the inner dependency with the user context already resolved
-    # by wrapping: the factory returns a _check function whose first param is
-    # current_user (resolved by DI in production, but we supply it directly here).
-    result = checker.__wrapped__(user_ctx) if hasattr(checker, "__wrapped__") else None
-
-    # Since the inner _check function uses Depends, we test via direct invocation
-    # by inspecting the closure — extract _check and call with a plain user_ctx.
-    inner = checker  # require_role returns _check itself
-
-    # Call _check bypassing Depends by passing user_ctx directly
-    # (mimicking what FastAPI DI would do at runtime)
-    result = inner(user_ctx)  # type: ignore[call-arg]
+    # require_role returns an async _check function; call it directly with user_ctx
+    # bypassing FastAPI DI (mimicking what DI would resolve and pass at runtime).
+    inner = require_role("org:admin", "org:owner")
+    result = await inner(user_ctx)  # type: ignore[call-arg]
     assert result is user_ctx
 
 
-def test_require_role_raises_forbidden_when_role_not_in_set() -> None:
+@pytest.mark.asyncio
+async def test_require_role_raises_forbidden_when_role_not_in_set() -> None:
     """require_role raises ForbiddenException when user's org_role is not allowed."""
     from app.dependencies import require_role
 
@@ -324,12 +316,13 @@ def test_require_role_raises_forbidden_when_role_not_in_set() -> None:
     inner = require_role("org:admin", "org:owner")
 
     with pytest.raises(ForbiddenException) as exc_info:
-        inner(user_ctx)  # type: ignore[call-arg]
+        await inner(user_ctx)  # type: ignore[call-arg]
 
     assert "Required role" in exc_info.value.detail
 
 
-def test_require_permission_passes_when_permission_present() -> None:
+@pytest.mark.asyncio
+async def test_require_permission_passes_when_permission_present() -> None:
     """require_permission allows through when the permission is in user's list."""
     from app.dependencies import require_permission
 
@@ -344,11 +337,12 @@ def test_require_permission_passes_when_permission_present() -> None:
     )
 
     inner = require_permission("org:optimize:general")
-    result = inner(user_ctx)  # type: ignore[call-arg]
+    result = await inner(user_ctx)  # type: ignore[call-arg]
     assert result is user_ctx
 
 
-def test_require_permission_raises_forbidden_when_permission_missing() -> None:
+@pytest.mark.asyncio
+async def test_require_permission_raises_forbidden_when_permission_missing() -> None:
     """require_permission raises ForbiddenException when permission not in user's list."""
     from app.dependencies import require_permission
 
@@ -365,7 +359,7 @@ def test_require_permission_raises_forbidden_when_permission_missing() -> None:
     inner = require_permission("org:optimize:pdo")
 
     with pytest.raises(ForbiddenException) as exc_info:
-        inner(user_ctx)  # type: ignore[call-arg]
+        await inner(user_ctx)  # type: ignore[call-arg]
 
     assert "Missing permission" in exc_info.value.detail
     assert "org:optimize:pdo" in exc_info.value.detail
