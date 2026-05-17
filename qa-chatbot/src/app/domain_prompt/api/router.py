@@ -9,7 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.types.response import SuccessResponse
 from app.config.env import get_minio_settings
 from app.core.rate_limit import RateLimiter
-from app.dependencies import get_current_user, get_db
+from app.core.user_context import UserContext
+from app.dependencies import get_current_user, get_db, require_permission
 from app.domain_prompt.api.exceptions import (
     DomainAlreadyRunningException,
     DomainInsufficientCreditsException,
@@ -58,7 +59,6 @@ from app.domain_prompt.workers.tasks import (
     prepare_domain_dataset,
     run_domain_optimization,
 )
-from app.models.user import User
 from app.repositories.user_repo import UserRepository
 from app.utils.log import get_logger
 
@@ -81,11 +81,11 @@ def _to_response(domain: DomainPrompt) -> DomainPromptResponse:
 )
 async def list_domains(
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> SuccessResponse[DomainListResponse]:
     """List all domain prompts for the current user."""
     repo = DomainPromptRepository(db)
-    domains = await repo.get_by_user(current_user.id)
+    domains = await repo.get_by_user(current_user.user_id)
     return SuccessResponse(data=DomainListResponse(domains=[_to_response(d) for d in domains]))
 
 
@@ -97,7 +97,7 @@ async def list_domains(
 )
 async def create_domain(
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(require_permission("org:optimize:pdo"))],
     name: Annotated[str, Form(min_length=1, max_length=120)],
     file: Annotated[UploadFile, File()],
     description: Annotated[str | None, Form(max_length=500)] = None,
@@ -126,13 +126,13 @@ async def create_domain(
         raise InvalidPDFException(detail="Uploaded file does not appear to be a valid PDF.")
 
     user_repo = UserRepository(db)
-    deducted = await user_repo.deduct_credits(current_user.id, 10)
+    deducted = await user_repo.deduct_credits(current_user.user_id, 10)
     if not deducted:
         raise DomainInsufficientCreditsException()
 
     domain_repo = DomainPromptRepository(db)
     domain = await domain_repo.create(
-        user_id=current_user.id,
+        user_id=current_user.user_id,
         name=name.strip(),
         description=description.strip() if description else None,
         status=DomainPromptStatus.pending,
@@ -143,14 +143,14 @@ async def create_domain(
 
     minio_cfg = get_minio_settings()
     bucket = minio_cfg.MINIO_BUCKET_NAME
-    pdf_key = object_key(str(current_user.id), str(domain.id), "source.pdf")
+    pdf_key = object_key(str(current_user.user_id), str(domain.id), "source.pdf")
     await anyio.to_thread.run_sync(
         lambda: upload_bytes(bucket, pdf_key, pdf_bytes, content_type="application/pdf")
     )
 
     await domain_repo.save_dataset(
         domain_id=domain.id,
-        user_id=current_user.id,
+        user_id=current_user.user_id,
         bucket=bucket,
         pdf_key=pdf_key,
     )
@@ -158,13 +158,13 @@ async def create_domain(
 
     job_id = str(uuid.uuid4())
     await set_dp_job_status(job_id, "queued")
-    await set_dp_job_owner(job_id, str(current_user.id))
+    await set_dp_job_owner(job_id, str(current_user.user_id))
 
     prepare_domain_dataset.apply_async(
         kwargs={
             "job_id": job_id,
             "domain_id": str(domain.id),
-            "user_id": str(current_user.id),
+            "user_id": str(current_user.user_id),
         }
     )
     log.info("domain_dataset_job_queued", job_id=job_id, domain_id=str(domain.id))
@@ -179,11 +179,11 @@ async def create_domain(
 )
 async def poll_domain_job(
     job_id: str,
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> SuccessResponse[DomainJobPollResponse]:
     """Poll for domain optimization job status."""
     owner = await get_dp_job_owner(job_id)
-    if owner is None or owner != str(current_user.id):
+    if owner is None or owner != str(current_user.user_id):
         raise DomainJobNotFoundException()
 
     job_status = await get_dp_job_status(job_id)
@@ -220,11 +220,11 @@ async def poll_domain_job(
 async def get_domain(
     domain_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> SuccessResponse[DomainPromptResponse]:
     """Get a specific domain prompt with its optimized result."""
     repo = DomainPromptRepository(db)
-    domain = await repo.get_by_id_and_user(domain_id, current_user.id)
+    domain = await repo.get_by_id_and_user(domain_id, current_user.user_id)
     if domain is None:
         raise DomainNotFoundException()
     return SuccessResponse(data=_to_response(domain))
@@ -238,13 +238,13 @@ async def get_domain(
 async def get_dataset_rows(
     domain_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> SuccessResponse[DatasetRowsResponse]:
     """Return the Q&A rows stored for this domain's dataset."""
     import json
 
     repo = DomainPromptRepository(db)
-    domain = await repo.get_by_id_and_user(domain_id, current_user.id)
+    domain = await repo.get_by_id_and_user(domain_id, current_user.user_id)
     if domain is None:
         raise DomainNotFoundException()
     if domain.dataset is None or domain.dataset.dataset_key is None:
@@ -277,13 +277,13 @@ async def update_dataset_rows(
     domain_id: uuid.UUID,
     body: UpdateDatasetRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> SuccessResponse[DatasetRowsResponse]:
     """Replace the dataset with the supplied rows."""
     import json
 
     repo = DomainPromptRepository(db)
-    domain = await repo.get_by_id_and_user(domain_id, current_user.id)
+    domain = await repo.get_by_id_and_user(domain_id, current_user.user_id)
     if domain is None:
         raise DomainNotFoundException()
     if domain.dataset is None:
@@ -295,7 +295,7 @@ async def update_dataset_rows(
         for r in body.rows
     )
     dataset_key = domain.dataset.dataset_key or object_key(
-        str(current_user.id), str(domain_id), "dataset.jsonl"
+        str(current_user.user_id), str(domain_id), "dataset.jsonl"
     )
     upload_text(minio_cfg.MINIO_BUCKET_NAME, dataset_key, jsonl)
     await repo.update_dataset(domain.dataset, dataset_key=dataset_key, row_count=len(body.rows))
@@ -314,11 +314,11 @@ async def augment_dataset(
     domain_id: uuid.UUID,
     body: AugmentDatasetRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> SuccessResponse[CreateDomainJobResponse]:
     """Generate and append N additional Q&A rows using LLM. Cost: free."""
     repo = DomainPromptRepository(db)
-    domain = await repo.get_by_id_and_user(domain_id, current_user.id)
+    domain = await repo.get_by_id_and_user(domain_id, current_user.user_id)
     if domain is None:
         raise DomainNotFoundException()
     if domain.dataset is None or domain.dataset.dataset_key is None:
@@ -326,13 +326,13 @@ async def augment_dataset(
 
     job_id = str(uuid.uuid4())
     await set_dp_job_status(job_id, "queued")
-    await set_dp_job_owner(job_id, str(current_user.id))
+    await set_dp_job_owner(job_id, str(current_user.user_id))
 
     augment_domain_dataset.apply_async(
         kwargs={
             "job_id": job_id,
             "domain_id": str(domain_id),
-            "user_id": str(current_user.id),
+            "user_id": str(current_user.user_id),
             "count": body.count,
         }
     )
@@ -349,11 +349,11 @@ async def augment_dataset(
 async def get_tournament_state(
     domain_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> SuccessResponse[TournamentStateResponse]:
     """Return live tournament state written by the optimizer during a running PDO job."""
     repo = DomainPromptRepository(db)
-    domain = await repo.get_by_id_and_user(domain_id, current_user.id)
+    domain = await repo.get_by_id_and_user(domain_id, current_user.user_id)
     if domain is None:
         raise DomainNotFoundException()
 
@@ -374,7 +374,7 @@ async def reoptimize_domain(
     domain_id: uuid.UUID,
     body: OptimizeDomainRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(require_permission("org:optimize:pdo"))],
 ) -> SuccessResponse[CreateDomainJobResponse]:
     """
     Optimize a prompt against this domain's knowledge base. Cost: 10 credits.
@@ -384,7 +384,7 @@ async def reoptimize_domain(
     prompts — the domain dataset is reused each time.
     """
     repo = DomainPromptRepository(db)
-    domain = await repo.get_by_id_and_user(domain_id, current_user.id)
+    domain = await repo.get_by_id_and_user(domain_id, current_user.user_id)
     if domain is None:
         raise DomainNotFoundException()
 
@@ -399,7 +399,7 @@ async def reoptimize_domain(
         raise DomainInsufficientCreditsException()
 
     user_repo = UserRepository(db)
-    deducted = await user_repo.deduct_credits(current_user.id, 10)
+    deducted = await user_repo.deduct_credits(current_user.user_id, 10)
     if not deducted:
         raise DomainInsufficientCreditsException()
 
@@ -408,13 +408,13 @@ async def reoptimize_domain(
 
     job_id = str(uuid.uuid4())
     await set_dp_job_status(job_id, "queued")
-    await set_dp_job_owner(job_id, str(current_user.id))
+    await set_dp_job_owner(job_id, str(current_user.user_id))
 
     run_domain_optimization.apply_async(
         kwargs={
             "job_id": job_id,
             "domain_id": str(domain_id),
-            "user_id": str(current_user.id),
+            "user_id": str(current_user.user_id),
             "prompt_to_optimize": body.prompt.strip(),
         }
     )
@@ -431,11 +431,11 @@ async def reoptimize_domain(
 async def list_domain_runs(
     domain_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> SuccessResponse[RunListResponse]:
     """Return optimization run history for a domain (newest first, max 50)."""
     domain_repo = DomainPromptRepository(db)
-    domain = await domain_repo.get_by_id_and_user(domain_id, current_user.id)
+    domain = await domain_repo.get_by_id_and_user(domain_id, current_user.user_id)
     if domain is None:
         raise DomainNotFoundException()
 
@@ -454,7 +454,7 @@ async def list_domain_runs(
 async def stop_domain_tournament(
     domain_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> SuccessResponse[DomainPromptResponse]:
     """
     Force-stop a stuck tournament.
@@ -464,7 +464,7 @@ async def stop_domain_tournament(
     dataset exists) or 'failed' so the user can try again.
     """
     repo = DomainPromptRepository(db)
-    domain = await repo.get_by_id_and_user(domain_id, current_user.id)
+    domain = await repo.get_by_id_and_user(domain_id, current_user.user_id)
     if domain is None:
         raise DomainNotFoundException()
 
@@ -498,20 +498,20 @@ async def stop_domain_tournament(
 async def delete_domain(
     domain_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> SuccessResponse[DeleteDomainResponse]:
     """Delete a domain and its associated dataset records."""
     import anyio
 
     repo = DomainPromptRepository(db)
-    domain = await repo.get_by_id_and_user(domain_id, current_user.id)
+    domain = await repo.get_by_id_and_user(domain_id, current_user.user_id)
     if domain is None:
         raise DomainNotFoundException()
     await repo.delete(domain)
     await db.commit()
 
     minio_cfg = get_minio_settings()
-    prefix = f"users/{current_user.id}/domains/{domain_id}/"
+    prefix = f"users/{current_user.user_id}/domains/{domain_id}/"
     await anyio.to_thread.run_sync(
         lambda: delete_objects_with_prefix(minio_cfg.MINIO_BUCKET_NAME, prefix)
     )

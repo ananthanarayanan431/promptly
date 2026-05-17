@@ -21,8 +21,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.types.response import SuccessResponse
 from app.core.rate_limit import RateLimiter
-from app.dependencies import get_current_user, get_db
-from app.models.user import User
+from app.core.user_context import UserContext
+from app.dependencies import get_current_user, get_db, require_permission
 from app.prompt_bridge.api.exceptions import (
     PBInsufficientCreditsException,
     PBJobNotCancellableException,
@@ -83,7 +83,7 @@ _REUSE_TRANSFER_COST = 1
 async def submit_transfer(
     body: TransferRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(require_permission("org:optimize:bridge"))],
 ) -> SuccessResponse[TransferJobCreatedResponse]:
     """
     Submit a prompt transfer request.
@@ -102,7 +102,7 @@ async def submit_transfer(
 
     mapping_repo = PromptMappingRepository(db)
     existing_mapping = await mapping_repo.find_by_model_pair(
-        current_user.id, body.source_model, body.target_model
+        current_user.user_id, body.source_model, body.target_model
     )
 
     reused = existing_mapping is not None
@@ -113,7 +113,7 @@ async def submit_transfer(
         raise PBInsufficientCreditsException(required=cost)
 
     user_repo = UserRepository(db)
-    deducted = await user_repo.deduct_credits(current_user.id, cost)
+    deducted = await user_repo.deduct_credits(current_user.user_id, cost)
     if not deducted:
         raise PBInsufficientCreditsException(required=cost)
 
@@ -121,7 +121,7 @@ async def submit_transfer(
 
     job_repo = TransferJobRepository(db)
     job = await job_repo.create(
-        user_id=current_user.id,
+        user_id=current_user.user_id,
         source_prompt=body.source_prompt,
         source_model=body.source_model,
         target_model=body.target_model,
@@ -132,13 +132,13 @@ async def submit_transfer(
         redis_job_id=job_id,
     )
     await set_pb_job_status(job_id, "queued")
-    await set_pb_job_owner(job_id, str(current_user.id))
+    await set_pb_job_owner(job_id, str(current_user.user_id))
 
     celery_result = run_prompt_transfer.apply_async(
         kwargs={
             "job_id": job_id,
             "transfer_job_id": str(job.id),
-            "user_id": str(current_user.id),
+            "user_id": str(current_user.user_id),
             "source_prompt": body.source_prompt,
             "source_model": body.source_model,
             "target_model": body.target_model,
@@ -178,11 +178,11 @@ async def submit_transfer(
 )
 async def poll_transfer_job(
     job_id: str,
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> SuccessResponse[TransferJobPollResponse]:
     """Poll a transfer job for status, progress, and result."""
     owner = await get_pb_job_owner(job_id)
-    if owner is None or owner != str(current_user.id):
+    if owner is None or owner != str(current_user.user_id):
         raise PBJobNotFoundException()
 
     job_status = await get_pb_job_status(job_id)
@@ -223,7 +223,7 @@ async def poll_transfer_job(
 async def cancel_transfer_job_by_db_id(
     db_job_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> SuccessResponse[CancelJobResponse]:
     """
     Cancel a job using its DB UUID (usable after page reload when Redis job_id is unknown).
@@ -232,7 +232,7 @@ async def cancel_transfer_job_by_db_id(
     two-pronged cancellation logic as the Redis-key-based cancel endpoint.
     """
     job_repo = TransferJobRepository(db)
-    job = await job_repo.get_by_id_and_user(db_job_id, current_user.id)
+    job = await job_repo.get_by_id_and_user(db_job_id, current_user.user_id)
     if job is None:
         raise PBJobNotFoundException()
     terminal = (TransferJobStatus.completed, TransferJobStatus.failed, TransferJobStatus.cancelled)
@@ -246,7 +246,7 @@ async def cancel_transfer_job_by_db_id(
             job, TransferJobStatus.cancelled, error_message="Cancelled by user."
         )
         user_repo = UserRepository(db)
-        await user_repo.refund_credits(current_user.id, job.credits_charged)
+        await user_repo.refund_credits(current_user.user_id, job.credits_charged)
         await db.commit()
         log.info("transfer_job_cancelled", job_id=str(db_job_id))
         return SuccessResponse(data=CancelJobResponse(job_id=str(db_job_id), cancelled=True))
@@ -265,7 +265,7 @@ async def cancel_transfer_job_by_db_id(
 
     await job_repo.set_status(job, TransferJobStatus.cancelled, error_message="Cancelled by user.")
     user_repo = UserRepository(db)
-    await user_repo.refund_credits(current_user.id, job.credits_charged)
+    await user_repo.refund_credits(current_user.user_id, job.credits_charged)
     await db.commit()
     log.info("transfer_job_cancelled", job_id=str(db_job_id))
 
@@ -280,7 +280,7 @@ async def cancel_transfer_job_by_db_id(
 async def delete_transfer_job(
     job_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> SuccessResponse[DeleteJobResponse]:
     """
     Delete a completed or failed transfer job record.
@@ -289,7 +289,7 @@ async def delete_transfer_job(
     Running jobs must be cancelled first via POST /jobs/{job_id}/cancel.
     """
     job_repo = TransferJobRepository(db)
-    job = await job_repo.get_by_id_and_user(job_id, current_user.id)
+    job = await job_repo.get_by_id_and_user(job_id, current_user.user_id)
     if job is None:
         raise PBJobNotFoundException()
     if job.status not in (
@@ -298,7 +298,7 @@ async def delete_transfer_job(
         TransferJobStatus.cancelled,
     ):
         raise PBJobNotCancellableException()
-    deleted = await job_repo.delete_by_id_and_user(job_id, current_user.id)
+    deleted = await job_repo.delete_by_id_and_user(job_id, current_user.user_id)
     await db.commit()
     return SuccessResponse(data=DeleteJobResponse(job_id=job_id, deleted=deleted))
 
@@ -310,11 +310,11 @@ async def delete_transfer_job(
 )
 async def list_transfer_jobs(
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> SuccessResponse[TransferJobListResponse]:
     """List the current user's transfer jobs (newest first, max 50)."""
     repo = TransferJobRepository(db)
-    jobs: list[TransferJob] = await repo.get_by_user(current_user.id)
+    jobs: list[TransferJob] = await repo.get_by_user(current_user.user_id)
     return SuccessResponse(
         data=TransferJobListResponse(jobs=[TransferJobSummary.model_validate(j) for j in jobs])
     )
@@ -327,11 +327,11 @@ async def list_transfer_jobs(
 )
 async def list_mappings(
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> SuccessResponse[MappingListResponse]:
     """List all saved source→target transfer mappings for the current user."""
     repo = PromptMappingRepository(db)
-    mappings = await repo.get_by_user(current_user.id)
+    mappings = await repo.get_by_user(current_user.user_id)
     return SuccessResponse(
         data=MappingListResponse(
             mappings=[PromptMappingResponse.model_validate(m) for m in mappings]
@@ -347,11 +347,11 @@ async def list_mappings(
 async def get_mapping(
     mapping_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> SuccessResponse[PromptMappingDetailResponse]:
     """Get a specific mapping including all calibrated prompt pairs."""
     repo = PromptMappingRepository(db)
-    mapping = await repo.get_by_id_and_user(mapping_id, current_user.id)
+    mapping = await repo.get_by_id_and_user(mapping_id, current_user.user_id)
     if mapping is None:
         raise PBMappingNotFoundException()
     return SuccessResponse(data=PromptMappingDetailResponse.model_validate(mapping))
@@ -365,11 +365,11 @@ async def get_mapping(
 async def delete_mapping(
     mapping_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> SuccessResponse[DeleteMappingResponse]:
     """Delete a saved mapping and all its calibrated prompt pairs."""
     repo = PromptMappingRepository(db)
-    deleted = await repo.delete_by_id_and_user(mapping_id, current_user.id)
+    deleted = await repo.delete_by_id_and_user(mapping_id, current_user.user_id)
     if not deleted:
         raise PBMappingNotFoundException()
     await db.commit()
@@ -385,7 +385,7 @@ async def delete_mapping(
 async def cancel_transfer_job(
     job_id: str,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> SuccessResponse[CancelJobResponse]:
     """
     Cancel a queued or in-progress transfer job.
@@ -400,7 +400,7 @@ async def cancel_transfer_job(
     Returns 409 if the job is already completed, failed, or cancelled.
     """
     owner = await get_pb_job_owner(job_id)
-    if owner is None or owner != str(current_user.id):
+    if owner is None or owner != str(current_user.user_id):
         raise PBJobNotFoundException()
 
     current_status = await get_pb_job_status(job_id)
@@ -430,7 +430,7 @@ async def cancel_transfer_job(
 
     # ── 4. Persist cancellation + refund credits in DB ─────────────────────
     job_repo = TransferJobRepository(db)
-    matching = await job_repo.get_by_redis_job_id(job_id, current_user.id)
+    matching = await job_repo.get_by_redis_job_id(job_id, current_user.user_id)
     if matching is not None:
         await job_repo.set_status(
             matching,
@@ -438,7 +438,7 @@ async def cancel_transfer_job(
             error_message="Cancelled by user.",
         )
         user_repo = UserRepository(db)
-        await user_repo.refund_credits(current_user.id, matching.credits_charged)
+        await user_repo.refund_credits(current_user.user_id, matching.credits_charged)
         await db.commit()
 
     log.info("transfer_job_cancelled", job_id=job_id)
