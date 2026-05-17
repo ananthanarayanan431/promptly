@@ -12,14 +12,13 @@ from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
 from app.api.router import api_router
 from app.api.types.response import ResponseError
 from app.config.app import AppSettings, get_app_settings
-from app.config.env import get_env_settings
 from app.core.logging import RequestLoggingMiddleware, setup_logging
 from app.core.middleware import CorrelationIdMiddleware, RateLimitMiddleware, RequestLimitMiddleware
 from app.db.session import AsyncSessionLocal
-from app.dependencies import _ANONYMOUS_USER
 from app.graph.builder import compile_graph
 from app.graph.checkpointer import get_checkpointer
 from app.seeds.templates import seed_templates
+from app.utils.log import get_logger
 
 app_settings = get_app_settings()
 
@@ -40,41 +39,18 @@ def _init_sentry(settings: AppSettings) -> None:
     )
 
 
-async def _seed_anonymous_user() -> None:
-    """
-    Ensure the anonymous dev user exists in the DB.
-    Called on startup only when AUTH_ENABLED=False so that FK constraints
-    (e.g. prompt_versions.user_id → users.id) are satisfied without a real login.
-    """
-    async with AsyncSessionLocal() as session:
-        from sqlalchemy import select
-
-        from app.models.user import User
-
-        existing = await session.execute(select(User).where(User.id == _ANONYMOUS_USER.id))
-        if existing.scalar_one_or_none() is None:
-            session.add(
-                User(
-                    id=_ANONYMOUS_USER.id,
-                    clerk_user_id=_ANONYMOUS_USER.clerk_user_id,
-                    email=_ANONYMOUS_USER.email,
-                    credits=_ANONYMOUS_USER.credits,
-                    is_active=True,
-                )
-            )
-            await session.commit()
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     setup_logging(debug=app_settings.DEBUG)
-    if not get_env_settings().AUTH_ENABLED:
-        await _seed_anonymous_user()
+    log = get_logger(__name__)
+    log.info("app_starting", environment=app_settings.ENVIRONMENT, debug=app_settings.DEBUG)
     async with AsyncSessionLocal() as session:
         await seed_templates(session)
     async with get_checkpointer() as checkpointer:
         app.state.graph = await compile_graph(checkpointer)
+        log.info("app_started")
         yield
+    log.info("app_shutdown")
 
 
 def create_app() -> FastAPI:

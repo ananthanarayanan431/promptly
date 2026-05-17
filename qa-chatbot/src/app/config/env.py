@@ -12,11 +12,6 @@ class EnvSettings(BaseSettings):
         extra="ignore",
     )
 
-    # Set to True in production to enforce JWT / API-key authentication on every
-    # protected endpoint.  False (default) lets all requests through without a token —
-    # useful for local development and integration testing.
-    AUTH_ENABLED: bool = False
-
 
 class MinioSettings(BaseSettings):
     model_config = SettingsConfigDict(
