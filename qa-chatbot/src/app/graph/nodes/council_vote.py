@@ -12,7 +12,6 @@ On refinement iterations (iteration_count > 0) additionally receives:
 """
 
 import asyncio
-import logging
 import time
 from typing import Any
 
@@ -21,8 +20,9 @@ from app.graph.prompts import category_guidance_block, council_optimizer_message
 from app.graph.state import GraphState
 from app.llm import LLMClient
 from app.llm.pipeline import build_council_models
+from app.utils.log import get_logger
 
-logger = logging.getLogger(__name__)
+log = get_logger(__name__)
 
 _council_loop_id: int | None = None
 _council_models: list[LLMClient] | None = None
@@ -136,12 +136,12 @@ async def council_vote_node(state: GraphState) -> dict[str, Any]:
         if isinstance(r, dict):
             valid.append(r)
         else:
-            logger.error(
-                "Council model %d failed (iteration %d): %s: %s",
-                i,
-                iteration,
-                type(r).__name__,
-                r,
+            log.error(
+                "council_model_failed",
+                model_index=i,
+                iteration=iteration,
+                error_type=type(r).__name__,
+                error=str(r),
             )
 
     return {"council_responses": valid}

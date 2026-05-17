@@ -20,6 +20,9 @@ from app.schemas.category import (
     CategoryResponse,
 )
 from app.services.category_service import CategoryService, SlugConflictError
+from app.utils.log import get_logger
+
+log = get_logger(__name__)
 
 router = APIRouter(prefix="/categories", tags=["categories"])
 _default_limiter = RateLimiter(requests=60, window_seconds=60)
@@ -89,8 +92,10 @@ async def create_category(
             description=request.description,
         )
     except SlugConflictError as exc:
+        log.warning("category_slug_conflict", name=request.name)
         raise CategorySlugConflictException() from exc
     await db.commit()
+    log.info("category_created", slug=cat.slug, name=cat.name)
     return SuccessResponse(data=CategoryCreateResponse(category=_to_response(cat)))
 
 
@@ -109,10 +114,12 @@ async def delete_category(
     # Differentiate "predefined (forbidden)" from "not found".
     visible = await service.repo.get_by_slug_for_user(slug=slug, user_id=current_user.id)
     if visible is not None and visible.is_predefined:
+        log.warning("predefined_category_delete_blocked", slug=slug)
         raise PredefinedCategoryReadOnlyException()
 
     deleted = await service.delete_custom(user_id=current_user.id, slug=slug)
     if not deleted:
         raise CategoryNotFoundException()
     await db.commit()
+    log.info("category_deleted", slug=slug)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

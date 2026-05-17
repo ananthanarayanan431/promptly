@@ -8,7 +8,6 @@ weaknesses, and produce the single definitive optimized prompt.
 
 import asyncio
 import json
-import logging
 import time
 from typing import Any
 
@@ -17,8 +16,9 @@ from app.graph.prompts import category_guidance_block, reasoning_messages, synth
 from app.graph.state import GraphState
 from app.llm import LLMClient
 from app.llm.pipeline import build_synthesizer
+from app.utils.log import get_logger
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 _loop_id: int | None = None
 _synthesizer: LLMClient | None = None
@@ -168,12 +168,12 @@ async def synthesize_node(state: GraphState) -> dict[str, Any]:
         if isinstance(parsed, dict):
             reasoning = parsed
             _log.info(
-                "reasoning generated: summary=%r changes=%d",
-                reasoning.get("summary", "")[:60],
-                len(reasoning.get("changes", [])),
+                "reasoning_generated",
+                summary=reasoning.get("summary", "")[:60],
+                changes=len(reasoning.get("changes", [])),
             )
     except Exception as exc:
-        _log.warning("reasoning generation failed (non-critical): %s", exc)
+        _log.warning("reasoning_generation_failed", error=str(exc))
 
     return {
         "final_response": synthesized,

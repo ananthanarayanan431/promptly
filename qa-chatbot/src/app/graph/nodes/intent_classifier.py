@@ -20,6 +20,9 @@ from app.graph.prompts import intent_classifier_messages
 from app.graph.state import GraphState
 from app.llm import LLMClient
 from app.llm.pipeline import build_classifier
+from app.utils.log import get_logger
+
+log = get_logger(__name__)
 
 _REJECTION_IRRELEVANT = (
     "Your input doesn't look like an existing prompt to optimize.\n\n"
@@ -66,10 +69,12 @@ async def intent_classifier_node(state: GraphState) -> dict[str, Any]:
         await push_job_progress(job_id, {"step": "intent", "ts": time.time()})
 
     if verdict == "IRRELEVANT":
+        log.warning("intent_rejected", prompt_length=len(raw))
         return {
             "intent": "irrelevant",
             "error": _REJECTION_IRRELEVANT,
             "final_response": _REJECTION_IRRELEVANT,
         }
 
+    log.info("intent_classified", intent="optimize", prompt_length=len(raw))
     return {"intent": "optimize"}

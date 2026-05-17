@@ -1,6 +1,5 @@
 """Clerk SDK client utilities and token verification."""
 
-import logging
 from collections.abc import Mapping
 from functools import lru_cache
 from typing import Any
@@ -10,8 +9,9 @@ from clerk_backend_api.security.types import AuthenticateRequestOptions
 
 from app.config.clerk import get_clerk_settings
 from app.core.exceptions import UnauthorizedException
+from app.utils.log import get_logger
 
-logger = logging.getLogger(__name__)
+log = get_logger(__name__)
 
 
 class _MinimalRequest:
@@ -48,7 +48,7 @@ def verify_clerk_token(authorization_header: str) -> dict[str, Any]:
     try:
         state = client.authenticate_request(_MinimalRequest(authorization_header), options)
     except Exception as exc:
-        logger.warning("Clerk authenticate_request raised: %s", exc)
+        log.warning("clerk_token_verification_failed", error=str(exc))
         raise UnauthorizedException(detail="Token verification failed") from exc
 
     if not state.is_signed_in or state.payload is None:
@@ -86,5 +86,5 @@ async def get_org_permissions_for_api_key(org_id: str) -> list[str]:
 
         return permissions
     except Exception as exc:  # noqa: BLE001
-        logger.warning("Could not fetch org permissions for %s: %s", org_id, exc)
+        log.warning("clerk_org_permissions_failed", org_id=org_id, error=str(exc))
         return []

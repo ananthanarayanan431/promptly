@@ -27,6 +27,9 @@ from app.schemas.prompt import (
 )
 from app.services.prompt_service import PromptService, PromptVersioningService
 from app.utils.diff import compute_diff
+from app.utils.log import get_logger
+
+log = get_logger(__name__)
 
 _expensive_limiter = RateLimiter(requests=20, window_seconds=60)
 _default_limiter = RateLimiter(requests=60, window_seconds=60)
@@ -55,10 +58,12 @@ async def prompt_health_score(
     Returns a 1–10 score with a rationale for each dimension plus an overall score.
     """
     if current_user.credits < 5:
+        log.warning("insufficient_credits", required=5, available=current_user.credits)
         raise PromptInsufficientCreditsException()
     current_user.credits -= 5
     await db.flush()
 
+    log.info("health_score_requested")
     service = PromptService(db=db)
     result = await service.health_score(
         prompt=request.prompt,
@@ -88,10 +93,12 @@ async def prompt_advisory(
     and an overall assessment of the prompt's effectiveness.
     """
     if current_user.credits < 5:
+        log.warning("insufficient_credits", required=5, available=current_user.credits)
         raise PromptInsufficientCreditsException()
     current_user.credits -= 5
     await db.flush()
 
+    log.info("advisory_requested")
     service = PromptService(db=db)
     result = await service.advisory(
         prompt=request.prompt,

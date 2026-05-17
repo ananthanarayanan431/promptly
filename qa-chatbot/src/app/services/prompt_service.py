@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import logging
 import math
 import re
 import uuid
@@ -21,8 +20,9 @@ from app.llm.analysis import build_analyser
 from app.models.favorite_prompt import FavoritePrompt
 from app.models.prompt_version import PromptVersion
 from app.repositories.prompt_version_repo import PromptVersionRepository
+from app.utils.log import get_logger
 
-logger = logging.getLogger(__name__)
+log = get_logger(__name__)
 
 _analyser: LLMClient | None = None
 
@@ -132,11 +132,12 @@ class PromptService:
         try:
             response = await _get_analyser().ainvoke(prompt_health_score_messages(prompt))
         except OpenAIAPIError as exc:
-            logger.error(
-                "OpenRouter API error in health_score: status=%s body=%s",
-                exc.status_code,
-                exc.body,
-            )
+            log.error(
+                "openrouter_api_error",
+                operation="health_score",
+                status=exc.status_code,
+                body=str(exc.body),
+            )  # noqa: E501
             raise LLMException(detail=f"OpenRouter error {exc.status_code}: {exc.message}") from exc
 
         raw = _get_text_content(response.content).strip()
@@ -151,14 +152,9 @@ class PromptService:
         try:
             scores = json.loads(extracted)
         except json.JSONDecodeError as exc:
-            logger.error(
-                "health_score JSON parse failed: %s\n"
-                "--- raw (%d chars) ---\n%s\n--- extracted ---\n%s",
-                exc,
-                len(raw),
-                raw,
-                extracted,
-            )
+            log.error(
+                "llm_json_parse_failed", operation="health_score", error=str(exc), raw_len=len(raw)
+            )  # noqa: E501
             raise LLMException(detail=f"LLM response was not valid JSON: {exc}") from exc
         return {"prompt": prompt, **scores}
 
@@ -168,19 +164,18 @@ class PromptService:
         try:
             response = await _get_analyser().ainvoke(prompt_advisory_messages(prompt))
         except OpenAIAPIError as exc:
-            logger.error(
-                "OpenRouter API error in advisory: status=%s body=%s",
-                exc.status_code,
-                exc.body,
-            )
+            log.error(
+                "openrouter_api_error",
+                operation="advisory",
+                status=exc.status_code,
+                body=str(exc.body),
+            )  # noqa: E501
             raise LLMException(detail=f"OpenRouter error {exc.status_code}: {exc.message}") from exc
 
         raw = _get_text_content(response.content).strip()
-        logger.debug(
-            "advisory raw content type=%s len=%d",
-            type(response.content).__name__,
-            len(raw),
-        )
+        log.debug(
+            "advisory_raw_content", content_type=type(response.content).__name__, len=len(raw)
+        )  # noqa: E501
         if not raw:
             raise LLMException(
                 detail=(

@@ -57,7 +57,10 @@ from app.schemas.chat import (
     SuggestNameResponse,
 )
 from app.services.category_service import CategoryService
+from app.utils.log import get_logger
 from app.workers.tasks import process_chat_async
+
+log = get_logger(__name__)
 
 _chat_limiter = RateLimiter(requests=10, window_seconds=60)
 _llm_limiter = RateLimiter(requests=20, window_seconds=60)
@@ -103,6 +106,12 @@ async def create_chat(
     Cost: 10 credits, deducted on submission.
     """
     if current_user.credits < 10:
+        log.warning(
+            "insufficient_credits",
+            user_id=str(current_user.id),
+            available=current_user.credits,
+            required=10,
+        )
         raise ChatInsufficientCreditsException()
 
     # Resolve category — defaults to "general" if omitted; 422 if slug unknown.
@@ -135,7 +144,9 @@ async def create_chat(
     user_repo = UserRepository(db)
     deducted = await user_repo.deduct_credits(current_user.id, 10)
     if not deducted:
+        log.warning("credit_deduction_failed", user_id=str(current_user.id), required=10)
         raise ChatInsufficientCreditsException()
+    log.info("credits_deducted", user_id=str(current_user.id), amount=10)
 
     # Ensure session exists BEFORE worker
     session_repo = SessionRepository(db)
@@ -163,10 +174,20 @@ async def create_chat(
             },
         )
     except Exception as exc:
-        # Enqueue failed — refund the credits so the user is not charged
+        log.error("job_enqueue_failed", job_id=job_id, user_id=str(current_user.id), error=str(exc))
         await user_repo.refund_credits(current_user.id, 10)
+        log.info(
+            "credits_refunded", user_id=str(current_user.id), amount=10, reason="enqueue_failed"
+        )  # noqa: E501
         raise LLMTimeoutException() from exc
 
+    log.info(
+        "chat_job_queued",
+        job_id=job_id,
+        session_id=session_id,
+        category=resolved_category_slug,
+        user_id=str(current_user.id),
+    )
     return SuccessResponse(
         data=ChatJobAcceptedResponse(
             job_id=job_id,

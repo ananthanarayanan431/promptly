@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 import re
 from typing import Any
 from uuid import UUID
@@ -15,8 +14,9 @@ from app.llm.tagging import build_tagger
 from app.models.favorite_prompt import FavoritePrompt
 from app.models.prompt_version import PromptVersion
 from app.repositories.favorite_repo import FavoriteRepository
+from app.utils.log import get_logger
 
-logger = logging.getLogger(__name__)
+log = get_logger(__name__)
 _VALID_CATEGORIES = {"Writing", "Coding", "Analysis", "Other"}
 _LLM_TIMEOUT_SECONDS = 2.0
 
@@ -49,7 +49,7 @@ class FavoriteService:
             tag_set, category = await self._generate_tags(version.content)
             tags = sorted(tag_set)
         except Exception as exc:  # noqa: BLE001
-            logger.info("favorite auto-tag failed; using defaults: %s", exc)
+            log.warning("favorite_auto_tag_failed", error=str(exc))
 
         fav = await self.repo.create(
             user_id=user_id,

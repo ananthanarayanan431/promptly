@@ -60,7 +60,10 @@ from app.prompt_bridge.infrastructure.cache import (
 )
 from app.prompt_bridge.workers.tasks import run_prompt_transfer
 from app.repositories.user_repo import UserRepository
+from app.utils.log import get_logger
 from app.workers.celery_app import celery_app
+
+log = get_logger(__name__)
 
 router = APIRouter(prefix="/prompt-bridge", tags=["prompt-bridge"])
 
@@ -106,6 +109,7 @@ async def submit_transfer(
     cost = _REUSE_TRANSFER_COST if reused else _FULL_TRANSFER_COST
 
     if current_user.credits < cost:
+        log.warning("insufficient_credits", required=cost, available=current_user.credits)
         raise PBInsufficientCreditsException(required=cost)
 
     user_repo = UserRepository(db)
@@ -143,6 +147,14 @@ async def submit_transfer(
     )
     await db.commit()
     await set_pb_celery_task_id(job_id, celery_result.id)
+    log.info(
+        "transfer_job_queued",
+        job_id=job_id,
+        source_model=body.source_model,
+        target_model=body.target_model,
+        reused=reused,
+        credits=cost,
+    )
 
     msg = (
         "Reusing existing mapping — adapter-only run (1 credit)."
@@ -236,6 +248,7 @@ async def cancel_transfer_job_by_db_id(
         user_repo = UserRepository(db)
         await user_repo.refund_credits(current_user.id, job.credits_charged)
         await db.commit()
+        log.info("transfer_job_cancelled", job_id=str(db_job_id))
         return SuccessResponse(data=CancelJobResponse(job_id=str(db_job_id), cancelled=True))
 
     # Revoke from broker
@@ -254,6 +267,7 @@ async def cancel_transfer_job_by_db_id(
     user_repo = UserRepository(db)
     await user_repo.refund_credits(current_user.id, job.credits_charged)
     await db.commit()
+    log.info("transfer_job_cancelled", job_id=str(db_job_id))
 
     return SuccessResponse(data=CancelJobResponse(job_id=str(db_job_id), cancelled=True))
 
@@ -359,6 +373,7 @@ async def delete_mapping(
     if not deleted:
         raise PBMappingNotFoundException()
     await db.commit()
+    log.info("mapping_deleted", mapping_id=str(mapping_id))
     return SuccessResponse(data=DeleteMappingResponse(mapping_id=mapping_id, deleted=True))
 
 
@@ -426,4 +441,5 @@ async def cancel_transfer_job(
         await user_repo.refund_credits(current_user.id, matching.credits_charged)
         await db.commit()
 
+    log.info("transfer_job_cancelled", job_id=job_id)
     return SuccessResponse(data=CancelJobResponse(job_id=job_id, cancelled=True))

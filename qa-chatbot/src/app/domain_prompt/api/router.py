@@ -60,6 +60,9 @@ from app.domain_prompt.workers.tasks import (
 )
 from app.models.user import User
 from app.repositories.user_repo import UserRepository
+from app.utils.log import get_logger
+
+log = get_logger(__name__)
 
 router = APIRouter(prefix="/domain-prompts", tags=["domain-prompts"])
 
@@ -109,6 +112,7 @@ async def create_domain(
     Returns HTTP 202 with a job_id to poll for progress.
     """
     if current_user.credits < 10:
+        log.warning("insufficient_credits", required=10, available=current_user.credits)
         raise DomainInsufficientCreditsException()
 
     if not file.filename or not file.filename.lower().endswith(".pdf"):
@@ -163,6 +167,7 @@ async def create_domain(
             "user_id": str(current_user.id),
         }
     )
+    log.info("domain_dataset_job_queued", job_id=job_id, domain_id=str(domain.id))
 
     return SuccessResponse(data=CreateDomainJobResponse(job_id=job_id, domain_id=domain.id))
 
@@ -331,6 +336,7 @@ async def augment_dataset(
             "count": body.count,
         }
     )
+    log.info("domain_augment_job_queued", job_id=job_id, domain_id=str(domain_id), count=body.count)
 
     return SuccessResponse(data=CreateDomainJobResponse(job_id=job_id, domain_id=domain_id))
 
@@ -389,6 +395,7 @@ async def reoptimize_domain(
         raise DomainNotReadyException()
 
     if current_user.credits < 10:
+        log.warning("insufficient_credits", required=10, available=current_user.credits)
         raise DomainInsufficientCreditsException()
 
     user_repo = UserRepository(db)
@@ -411,6 +418,7 @@ async def reoptimize_domain(
             "prompt_to_optimize": body.prompt.strip(),
         }
     )
+    log.info("domain_optimize_job_queued", job_id=job_id, domain_id=str(domain_id))
 
     return SuccessResponse(data=CreateDomainJobResponse(job_id=job_id, domain_id=domain_id))
 
@@ -473,6 +481,11 @@ async def stop_domain_tournament(
     await repo.set_status(domain, new_status)
     await db.commit()
     await db.refresh(domain)
+    log.warning(
+        "domain_tournament_force_stopped",
+        domain_id=str(domain_id),
+        new_status=new_status.value,
+    )
 
     return SuccessResponse(data=DomainPromptResponse.model_validate(domain))
 
@@ -502,5 +515,6 @@ async def delete_domain(
     await anyio.to_thread.run_sync(
         lambda: delete_objects_with_prefix(minio_cfg.MINIO_BUCKET_NAME, prefix)
     )
+    log.info("domain_deleted", domain_id=str(domain_id))
 
     return SuccessResponse(data=DeleteDomainResponse(domain_id=domain_id))

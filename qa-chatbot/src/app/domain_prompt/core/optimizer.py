@@ -27,7 +27,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 import math
 import random
 from dataclasses import dataclass, field
@@ -61,8 +60,9 @@ from app.domain_prompt.prompts.optimizer import (
 )
 from app.llm import LLMClient
 from app.llm.optimizer import build_duel_answerer, build_duel_judge, build_variant_generator
+from app.utils.log import get_logger
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 
 # ── Data structures ───────────────────────────────────────────────────────────
@@ -261,13 +261,11 @@ async def _generate_one_variant(
         )
         variant = _strip_fences(str(response.content).strip())
         if not variant or _is_placeholder_variant(variant, base_prompt):
-            _log.warning(
-                "Variant tip '%s' produced placeholder or empty output — discarding", tip_name
-            )
+            _log.warning("variant_placeholder_discarded", tip=tip_name)
             return None
         return variant
     except Exception as exc:  # noqa: BLE001
-        _log.warning("Variant generation failed for tip '%s': %s", tip_name, exc)
+        _log.warning("variant_generation_failed", tip=tip_name, error=str(exc))
         return None
 
 
@@ -288,9 +286,9 @@ async def _generate_variants(
     results = await asyncio.gather(*tasks)
     variants = [v for v in results if v is not None and v != base_prompt]
     if variants:
-        _log.info("Generated %d/%d variants successfully", len(variants), len(tips))
+        _log.info("variants_generated", count=len(variants), total=len(tips))
         return variants
-    _log.error("All variant generation calls failed — falling back to base prompt only")
+    _log.error("all_variants_failed")
     return [base_prompt]
 
 
@@ -326,9 +324,9 @@ async def _generate_one_mutation(
         if mutated and mutated != source_prompt and not_placeholder:
             return mutated
         if mutated and _is_placeholder_variant(mutated, source_prompt):
-            _log.warning("Mutation tip '%s' produced placeholder text — discarding", tip_name)
+            _log.warning("mutation_placeholder_discarded", tip=tip_name)
     except Exception as exc:  # noqa: BLE001
-        _log.warning("Mutation tip '%s' failed: %s", tip_name, exc)
+        _log.warning("mutation_failed", tip=tip_name, error=str(exc))
     return None
 
 
@@ -362,7 +360,7 @@ async def _get_answer(prompt: str, question: str, llm: LLMClient) -> str:
         )
         return str(response.content).strip()
     except Exception as exc:  # noqa: BLE001
-        _log.warning("Inference failed: %s", exc)
+        _log.warning("inference_failed", error=str(exc))
         return ""
 
 
@@ -437,7 +435,7 @@ async def _duel(
             winner_original = 0 if winner_is_first else 1
         return winner_original, gamma
     except Exception as exc:  # noqa: BLE001
-        _log.warning("Duel judge failed: %s — random tiebreak", exc)
+        _log.warning("duel_judge_failed", error=str(exc))
         return rng.randint(0, 1), GAMMA_REASONING  # noqa: S311
 
 
@@ -467,7 +465,7 @@ async def _score_one(
         obj: Any = json.loads(raw)
         return max(0.0, min(1.0, float(obj.get("score", 0.0))))
     except Exception as exc:  # noqa: BLE001
-        _log.warning("Score judge failed: %s", exc)
+        _log.warning("score_judge_failed", error=str(exc))
         return 0.0
 
 
@@ -614,7 +612,7 @@ async def _emit_tournament_state(
         }
         await set_dp_tournament_state(domain_id, state)
     except Exception as exc:  # noqa: BLE001
-        _log.warning("Failed to emit tournament state: %s", exc)
+        _log.warning("tournament_state_emit_failed", error=str(exc))
 
 
 # ── Main entry point ──────────────────────────────────────────────────────────
@@ -643,7 +641,7 @@ async def optimize_domain_prompt(
         try:
             pairs.append(json.loads(line))
         except Exception as exc:  # noqa: BLE001
-            _log.warning("JSONL parse failed: %s", exc)
+            _log.warning("jsonl_parse_failed", error=str(exc))
 
     if not pairs:
         return {"optimized_prompt": base_prompt, "score_before": 0.0, "score_after": 0.0}
@@ -688,7 +686,7 @@ async def optimize_domain_prompt(
     wm = _WinMatrix(size=len(candidates))
 
     if len(candidates) < 2:
-        _log.error("Only 1 candidate generated — returning base prompt unchanged.")
+        _log.error("insufficient_candidates")
         score_after = await _score_prompt(
             base_prompt, val_split[:MAX_VAL_EXAMPLES], fast_llm, judge_llm
         )
@@ -699,7 +697,9 @@ async def optimize_domain_prompt(
         }
 
     _log.info(
-        "Starting PDO tournament with %d candidates, %d rounds", len(candidates), TOURNAMENT_ROUNDS
+        "tournament_starting",
+        candidates=len(candidates),
+        rounds=TOURNAMENT_ROUNDS,
     )
 
     # ── PDO tournament (D-TS) ─────────────────────────────────────────────────
@@ -731,7 +731,7 @@ async def optimize_domain_prompt(
             for idx in sorted(to_prune, reverse=True):
                 candidates.pop(idx)
                 wm.remove_candidate(idx)
-                _log.debug("Round %d: pruned candidate C%d", t, idx)
+                _log.debug("candidate_pruned", round=t, candidate_idx=idx)
 
             # Re-rank after pruning
             ranking = _copeland_ranking(wm, t)
@@ -752,11 +752,11 @@ async def optimize_domain_prompt(
                     existing_texts.add(text)
                     added += 1
             _log.info(
-                "Round %d: pruned %d, added %d mutations (pool=%d)",
-                t,
-                min(PRUNE_COUNT, len(to_prune)),
-                added,
-                len(candidates),
+                "mutation_round_complete",
+                round=t,
+                pruned=min(PRUNE_COUNT, len(to_prune)),
+                added=added,
+                pool=len(candidates),
             )
 
     # ── Copeland winner (paper §2) ────────────────────────────────────────────
@@ -775,12 +775,12 @@ async def optimize_domain_prompt(
     win_rate = round(winner_wins / winner_total, 4) if winner_total > 0 else 0.0
 
     _log.info(
-        "PDO complete: %d candidates, %d rounds, win_rate=%.2f, score %.3f → %.3f",
-        len(candidates),
-        TOURNAMENT_ROUNDS,
-        win_rate,
-        score_before,
-        score_after,
+        "tournament_complete",
+        candidates=len(candidates),
+        rounds=TOURNAMENT_ROUNDS,
+        win_rate=win_rate,
+        score_before=score_before,
+        score_after=score_after,
     )
 
     return {

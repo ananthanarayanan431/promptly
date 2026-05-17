@@ -7,6 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.graph.state import GraphState
 from app.repositories.message_repo import MessageRepository
 from app.repositories.session_repo import SessionRepository
+from app.utils.log import get_logger
+
+log = get_logger(__name__)
 
 
 class ChatService:
@@ -69,6 +72,16 @@ class ChatService:
         }
 
         result = await self.graph.ainvoke(initial_state, config=config)
+
+        already_optimized = result.get("already_optimized", False)
+        if already_optimized:
+            log.info("pipeline_short_circuited", reason="performance_gate", session_id=session_id)
+        else:
+            log.info(
+                "pipeline_complete",
+                session_id=session_id,
+                iterations=result.get("iteration_count", 0),
+            )
 
         # Build token_usage dict — piggyback gate fields so they survive session reload
         # without a schema migration. On reload: read _already_optimized, _gate_* keys back.

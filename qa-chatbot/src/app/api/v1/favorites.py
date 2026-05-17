@@ -22,6 +22,9 @@ from app.schemas.favorite import (
     FavoriteUpdateRequest,
 )
 from app.services.favorite_service import FavoriteService
+from app.utils.log import get_logger
+
+log = get_logger(__name__)
 
 router = APIRouter(prefix="/favorites", tags=["favorites"])
 _default_limiter = RateLimiter(requests=60, window_seconds=60)
@@ -71,6 +74,12 @@ async def like(
     await db.commit()
 
     response.status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
+    if created:
+        log.info(
+            "favorite_added",
+            favorite_id=str(fav.id),
+            prompt_version_id=str(fav.prompt_version_id),
+        )
     return SuccessResponse(data=_to_response(fav))
 
 
@@ -155,6 +164,7 @@ async def unlike_by_version(
     if not deleted:
         raise FavoriteNotFoundException()
     await db.commit()
+    log.info("favorite_removed", prompt_version_id=str(prompt_version_id))
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -243,4 +253,5 @@ async def unlike(
     if not deleted:
         raise FavoriteNotFoundException()
     await db.commit()
+    log.info("favorite_removed", favorite_id=str(favorite_id))
     return Response(status_code=status.HTTP_204_NO_CONTENT)

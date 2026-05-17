@@ -8,6 +8,9 @@ from app.core.rate_limit import RateLimiter
 from app.dependencies import get_current_user, get_db
 from app.models.user import User
 from app.schemas.user import AddCreditRequest, CreditResponse, UserResponse
+from app.utils.log import get_logger
+
+log = get_logger(__name__)
 
 router = APIRouter(prefix="/users", tags=["users"])
 _default_limiter = RateLimiter(requests=60, window_seconds=60)
@@ -47,4 +50,5 @@ async def add_credits(
 ) -> SuccessResponse[CreditResponse]:
     """Add more credits to the current user."""
     current_user.credits += request.amount
+    log.info("credits_added", amount=request.amount, balance=current_user.credits)
     return SuccessResponse(data=CreditResponse(credits=current_user.credits))

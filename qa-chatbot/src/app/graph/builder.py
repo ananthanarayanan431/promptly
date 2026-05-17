@@ -30,6 +30,9 @@ from app.graph.nodes.quality_gate import quality_gate_node
 from app.graph.nodes.synthesize import synthesize_node
 from app.graph.state import GraphState
 from app.llm import get_llm_settings
+from app.utils.log import get_logger
+
+log = get_logger(__name__)
 
 
 def _route_intent(state: GraphState) -> str:
@@ -138,4 +141,10 @@ async def compile_graph(checkpointer: AsyncPostgresSaver) -> Any:  # noqa: ANN40
     else:
         builder.add_edge("synthesize", END)
 
-    return builder.compile(checkpointer=checkpointer)
+    graph = builder.compile(checkpointer=checkpointer)
+    log.info(
+        "graph_compiled",
+        performance_gate=performance_gate_enabled,
+        quality_gate=quality_gate_enabled,
+    )
+    return graph

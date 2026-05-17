@@ -2,6 +2,7 @@ import asyncio
 import uuid
 from typing import Any
 
+import structlog
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -16,6 +17,9 @@ class CorrelationIdMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Any) -> Any:
         correlation_id = request.headers.get("X-Correlation-ID", str(uuid.uuid4()))
         request.state.correlation_id = correlation_id
+        # Bind to structlog contextvars so every log in this request includes it
+        structlog.contextvars.clear_contextvars()
+        structlog.contextvars.bind_contextvars(correlation_id=correlation_id)
         try:
             response = await call_next(request)
             response.headers["X-Correlation-ID"] = correlation_id

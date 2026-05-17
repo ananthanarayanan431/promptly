@@ -24,6 +24,9 @@ from app.schemas.api_key import (
     ApiKeyResponse,
     PaginatedApiKeyListResponse,
 )
+from app.utils.log import get_logger
+
+log = get_logger(__name__)
 
 router = APIRouter(
     prefix="/users/api-keys",
@@ -51,6 +54,7 @@ async def create_api_key(
     org_id = current_user.clerk_user_id
     repo = ApiKeyRepository(db)
     if await repo.has_active_org_name(org_id, request.name):
+        log.warning("api_key_name_conflict", name=request.name)
         raise ApiKeyNameConflictException()
 
     raw_key, key_hash = generate_api_key()
@@ -63,7 +67,9 @@ async def create_api_key(
         )
         await db.flush()
     except IntegrityError:
+        log.warning("api_key_name_conflict", name=request.name)
         raise ApiKeyNameConflictException() from None
+    log.info("api_key_created", key_id=str(key.id), name=key.name)
     return SuccessResponse(
         data=ApiKeyCreatedResponse(
             id=key.id,
@@ -152,4 +158,5 @@ async def revoke_api_key(
         raise ApiKeyAlreadyRevokedException()
     key = await repo.revoke(key)
     await db.flush()
+    log.info("api_key_revoked", key_id=str(key_id))
     return SuccessResponse(data=ApiKeyResponse.model_validate(key))
