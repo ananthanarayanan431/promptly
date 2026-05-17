@@ -22,8 +22,15 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     """Upgrade schema."""
     # ── users table ────────────────────────────────────────────────────────────
-    # Add clerk_user_id as nullable first (will be backfilled before making NOT NULL)
+    # Add clerk_user_id as nullable first, backfill any legacy rows with a unique sentinel
+    # per row (using gen_random_uuid()), then make NOT NULL to match the ORM (Mapped[str]).
+    # On a fresh install the table is empty so the UPDATE is a no-op.
     op.add_column("users", sa.Column("clerk_user_id", sa.String(length=255), nullable=True))
+    op.execute(
+        "UPDATE users SET clerk_user_id = '__pending__' || gen_random_uuid()::text "
+        "WHERE clerk_user_id IS NULL"
+    )
+    op.alter_column("users", "clerk_user_id", nullable=False)
     op.create_index(op.f("ix_users_clerk_user_id"), "users", ["clerk_user_id"], unique=True)
 
     # Drop columns removed by Clerk migration (order: indexes before columns)
@@ -43,10 +50,15 @@ def upgrade() -> None:
     # Add new columns (nullable first so we can populate from existing data)
     op.add_column("api_keys", sa.Column("org_id", sa.String(length=255), nullable=True))
     op.add_column("api_keys", sa.Column("created_by", sa.Uuid(), nullable=True))
-    op.add_column("api_keys", sa.Column("last_used_at", sa.DateTime(timezone=False), nullable=True))
+    op.add_column("api_keys", sa.Column("last_used_at", sa.DateTime(timezone=True), nullable=True))
 
-    # Populate created_by from the existing user_id column (before we drop it)
-    op.execute("UPDATE api_keys SET created_by = user_id, org_id = '' WHERE created_by IS NULL")
+    # Populate created_by from the existing user_id column (before we drop it).
+    # NOTE: This is a fresh-start migration — the table is expected to be empty.
+    # The UPDATE is a safety net only; org_id uses '__no_org__' as a sentinel so
+    # any legacy rows are clearly distinguishable from properly-migrated ones.
+    op.execute(
+        "UPDATE api_keys SET created_by = user_id, org_id = '__no_org__' WHERE created_by IS NULL"
+    )
 
     # Drop old FK + index on user_id
     op.drop_constraint("api_keys_user_id_fkey", "api_keys", type_="foreignkey")

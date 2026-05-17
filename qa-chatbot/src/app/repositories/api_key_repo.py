@@ -21,35 +21,35 @@ class ApiKeyRepository(BaseRepository[ApiKey]):
             return query.where(ApiKey.is_active == False)  # noqa: E712
         return query
 
-    async def list_by_user(
+    async def list_by_org(
         self,
-        user_id: uuid.UUID,
+        org_id: str,
         *,
         status: Literal["active", "revoked", "all"] = "all",
         limit: int = 20,
         offset: int = 0,
     ) -> list[ApiKey]:
-        q = self._status_filter(select(ApiKey).where(ApiKey.user_id == user_id), status)
+        q = self._status_filter(select(ApiKey).where(ApiKey.org_id == org_id), status)
         q = q.order_by(ApiKey.created_at.desc()).limit(limit).offset(offset)
         result = await self.db.execute(q)
         return list(result.scalars().all())
 
-    async def count_by_user(
+    async def count_by_org(
         self,
-        user_id: uuid.UUID,
+        org_id: str,
         *,
         status: Literal["active", "revoked", "all"] = "all",
     ) -> int:
         q = self._status_filter(
-            select(func.count()).select_from(ApiKey).where(ApiKey.user_id == user_id),
+            select(func.count()).select_from(ApiKey).where(ApiKey.org_id == org_id),
             status,
         )
         result = await self.db.execute(q)
         return int(result.scalar_one())
 
-    async def get_by_id_and_user(self, key_id: uuid.UUID, user_id: uuid.UUID) -> ApiKey | None:
+    async def get_by_id_and_org(self, key_id: uuid.UUID, org_id: str) -> ApiKey | None:
         result = await self.db.execute(
-            select(ApiKey).where(ApiKey.id == key_id, ApiKey.user_id == user_id)
+            select(ApiKey).where(ApiKey.id == key_id, ApiKey.org_id == org_id)
         )
         return result.scalar_one_or_none()
 
@@ -62,11 +62,11 @@ class ApiKeyRepository(BaseRepository[ApiKey]):
         )
         return result.scalar_one_or_none()
 
-    async def has_active_name(self, user_id: uuid.UUID, name: str) -> bool:
+    async def has_active_org_name(self, org_id: str, name: str) -> bool:
         result = await self.db.execute(
             select(
                 exists().where(
-                    ApiKey.user_id == user_id,
+                    ApiKey.org_id == org_id,
                     ApiKey.name == name,
                     ApiKey.is_active == True,  # noqa: E712
                 )
