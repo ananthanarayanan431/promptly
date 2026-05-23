@@ -29,7 +29,6 @@ def _make_user_context(
     user: User,
     *,
     credits: int = 100,
-    permissions: list[str] | None = None,
 ) -> UserContext:
     return UserContext(
         user_id=user.id,
@@ -37,8 +36,6 @@ def _make_user_context(
         email=user.email,
         credits=credits,
         org_id=_ORG_ID,
-        org_role="org:admin",
-        permissions=permissions if permissions is not None else ["org:optimize:pdo"],
     )
 
 

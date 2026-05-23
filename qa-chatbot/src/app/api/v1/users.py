@@ -29,7 +29,6 @@ async def get_me(
             email=current_user.email,
             credits=current_user.credits,
             org_id=current_user.org_id,
-            org_role=current_user.org_role,
         )
     )
 

@@ -10,7 +10,7 @@ from app.api.types.response import SuccessResponse
 from app.config.env import get_minio_settings
 from app.core.rate_limit import RateLimiter
 from app.core.user_context import UserContext
-from app.dependencies import get_current_user, get_db, require_permission
+from app.dependencies import get_current_user, get_db
 from app.domain_prompt.api.exceptions import (
     DomainAlreadyRunningException,
     DomainInsufficientCreditsException,
@@ -97,7 +97,7 @@ async def list_domains(
 )
 async def create_domain(
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[UserContext, Depends(require_permission("org:optimize:pdo"))],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
     name: Annotated[str, Form(min_length=1, max_length=120)],
     file: Annotated[UploadFile, File()],
     description: Annotated[str | None, Form(max_length=500)] = None,
@@ -374,7 +374,7 @@ async def reoptimize_domain(
     domain_id: uuid.UUID,
     body: OptimizeDomainRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[UserContext, Depends(require_permission("org:optimize:pdo"))],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> SuccessResponse[CreateDomainJobResponse]:
     """
     Optimize a prompt against this domain's knowledge base. Cost: 10 credits.

@@ -23,7 +23,6 @@ _OTHER_ORG_ID = "org_other"
 
 
 def _make_user_context(
-    org_role: str = "org:admin",
     org_id: str = _ORG_ID,
     user_id: uuid.UUID | None = None,
 ) -> UserContext:
@@ -33,8 +32,6 @@ def _make_user_context(
         email="test@example.com",
         credits=100,
         org_id=org_id,
-        org_role=org_role,
-        permissions=[],
     )
 
 
@@ -55,35 +52,14 @@ async def _test_user(db_session: AsyncSession) -> User:
 async def orgs_client(
     db_session: AsyncSession, _test_user: User
 ) -> AsyncGenerator[AsyncClient, None]:
-    """AsyncClient with get_current_user overridden to return an org:admin context."""
+    """AsyncClient with get_current_user overridden to return an authenticated user context."""
     app = create_app()
 
     async def _override_db() -> AsyncGenerator[AsyncSession, None]:
         yield db_session
 
     def _override_current_user() -> UserContext:
-        return _make_user_context(org_role="org:admin", user_id=_test_user.id)
-
-    app.dependency_overrides[get_db] = _override_db
-    app.dependency_overrides[get_async_session] = _override_db
-    app.dependency_overrides[get_current_user] = _override_current_user
-
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        yield ac
-
-
-@pytest_asyncio.fixture(loop_scope="session")
-async def member_client(
-    db_session: AsyncSession, _test_user: User
-) -> AsyncGenerator[AsyncClient, None]:
-    """AsyncClient with get_current_user overridden to return an org:member context."""
-    app = create_app()
-
-    async def _override_db() -> AsyncGenerator[AsyncSession, None]:
-        yield db_session
-
-    def _override_current_user() -> UserContext:
-        return _make_user_context(org_role="org:member", user_id=_test_user.id)
+        return _make_user_context(user_id=_test_user.id)
 
     app.dependency_overrides[get_db] = _override_db
     app.dependency_overrides[get_async_session] = _override_db
@@ -97,14 +73,14 @@ async def member_client(
 async def other_org_client(
     db_session: AsyncSession, _test_user: User
 ) -> AsyncGenerator[AsyncClient, None]:
-    """AsyncClient with get_current_user overridden to return an org:admin from a different org."""
+    """AsyncClient with get_current_user overridden to return a user from a different org."""
     app = create_app()
 
     async def _override_db() -> AsyncGenerator[AsyncSession, None]:
         yield db_session
 
     def _override_current_user() -> UserContext:
-        return _make_user_context(org_role="org:admin", org_id=_OTHER_ORG_ID, user_id=_test_user.id)
+        return _make_user_context(org_id=_OTHER_ORG_ID, user_id=_test_user.id)
 
     app.dependency_overrides[get_db] = _override_db
     app.dependency_overrides[get_async_session] = _override_db
@@ -120,10 +96,10 @@ async def other_org_client(
 
 
 @pytest.mark.asyncio
-async def test_create_org_api_key_admin_returns_201_with_key(
+async def test_create_org_api_key_returns_201_with_key(
     orgs_client: AsyncClient,
 ) -> None:
-    """Admin role can create an org API key; response includes the raw qac_ key."""
+    """Authenticated user can create an org API key; response includes the raw qac_ key."""
     res = await orgs_client.post("/api/v1/orgs/api-keys", json={"name": "ci-key"})
     assert res.status_code == 201, res.text
     data = res.json()
@@ -133,7 +109,6 @@ async def test_create_org_api_key_admin_returns_201_with_key(
     assert data["is_active"] is True
     assert "id" in data
     assert "created_at" in data
-    assert "key" in data  # raw key exposed only on creation
 
 
 @pytest.mark.asyncio
@@ -147,15 +122,6 @@ async def test_create_org_api_key_duplicate_name_returns_409(
     assert "already exists" in res.json()["detail"]
 
 
-@pytest.mark.asyncio
-async def test_create_org_api_key_member_role_returns_403(
-    member_client: AsyncClient,
-) -> None:
-    """A user with org:member role cannot create org API keys (403 Forbidden)."""
-    res = await member_client.post("/api/v1/orgs/api-keys", json={"name": "member-key"})
-    assert res.status_code == 403, res.text
-
-
 # ---------------------------------------------------------------------------
 # GET /api/v1/orgs/api-keys — List
 # ---------------------------------------------------------------------------
@@ -166,7 +132,6 @@ async def test_list_org_api_keys_returns_200_list(
     orgs_client: AsyncClient,
 ) -> None:
     """GET returns a list of keys; no 'key' field exposed."""
-    # Create a key first
     create_res = await orgs_client.post("/api/v1/orgs/api-keys", json={"name": "list-key"})
     assert create_res.status_code == 201
 
@@ -175,22 +140,12 @@ async def test_list_org_api_keys_returns_200_list(
     data = res.json()
     assert isinstance(data, list)
     assert len(data) >= 1
-    # Verify the 'key' field is NOT present in list responses
     for item in data:
         assert "key" not in item
         assert "id" in item
         assert "name" in item
         assert "org_id" in item
         assert "is_active" in item
-
-
-@pytest.mark.asyncio
-async def test_list_org_api_keys_member_role_returns_403(
-    member_client: AsyncClient,
-) -> None:
-    """A user with org:member role cannot list org API keys (403 Forbidden)."""
-    res = await member_client.get("/api/v1/orgs/api-keys")
-    assert res.status_code == 403, res.text
 
 
 # ---------------------------------------------------------------------------
@@ -209,7 +164,7 @@ async def test_revoke_org_api_key_returns_204(
 
     res = await orgs_client.delete(f"/api/v1/orgs/api-keys/{key_id}")
     assert res.status_code == 204, res.text
-    assert res.content == b""  # no body
+    assert res.content == b""
 
 
 @pytest.mark.asyncio
@@ -222,7 +177,6 @@ async def test_revoke_org_api_key_wrong_org_returns_404(
     assert create_res.status_code == 201
     key_id = create_res.json()["id"]
 
-    # Attempt to revoke with a different org's client
     res = await other_org_client.delete(f"/api/v1/orgs/api-keys/{key_id}")
     assert res.status_code == 404, res.text
 

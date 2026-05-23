@@ -26,8 +26,6 @@ def _make_user() -> UserContext:
         email="test@test.com",
         credits=100,
         org_id="org_test",
-        org_role="org:admin",
-        permissions=[],
     )
 
 

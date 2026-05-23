@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundException
 from app.core.user_context import UserContext
-from app.dependencies import get_db, require_role
+from app.dependencies import get_current_user, get_db
 from app.repositories.api_key_repo import ApiKeyRepository
 from app.schemas.org import ApiKeyCreate, ApiKeyCreatedResponse, ApiKeyResponse
 
@@ -23,7 +23,7 @@ router = APIRouter(tags=["orgs"])
 )
 async def create_org_api_key(
     body: ApiKeyCreate,
-    current_user: Annotated[UserContext, Depends(require_role("org:admin", "org:owner"))],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> ApiKeyCreatedResponse:
     """Create a new org-level API key. The raw key is returned once and never stored."""
@@ -63,7 +63,7 @@ async def create_org_api_key(
     response_model=list[ApiKeyResponse],
 )
 async def list_org_api_keys(
-    current_user: Annotated[UserContext, Depends(require_role("org:admin", "org:owner"))],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> list[ApiKeyResponse]:
     """List all API keys for the current user's organisation."""
@@ -78,7 +78,7 @@ async def list_org_api_keys(
 )
 async def revoke_org_api_key(
     key_id: UUID,
-    current_user: Annotated[UserContext, Depends(require_role("org:admin", "org:owner"))],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> None:
     """Revoke an org API key (soft delete)."""

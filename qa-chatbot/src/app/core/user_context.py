@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from uuid import UUID
 
 
@@ -9,5 +9,3 @@ class UserContext:
     email: str
     credits: int
     org_id: str
-    org_role: str
-    permissions: list[str] = field(default_factory=list)

@@ -30,7 +30,7 @@ from app.core.cache import (
 )
 from app.core.rate_limit import RateLimiter
 from app.core.user_context import UserContext
-from app.dependencies import get_current_user, get_db, require_permission
+from app.dependencies import get_current_user, get_db
 from app.llm.naming import build_naming_llm
 from app.models.message import Message
 from app.models.session import ChatSession
@@ -81,7 +81,7 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 async def create_chat(
     request: ChatRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[UserContext, Depends(require_permission("org:optimize:general"))],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> SuccessResponse[ChatJobAcceptedResponse]:
     """
     Submit a prompt for optimization.

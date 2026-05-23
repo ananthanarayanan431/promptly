@@ -9,8 +9,6 @@ def test_verify_clerk_token_returns_payload_on_success() -> None:
     fake_payload = {
         "sub": "user_abc",
         "org_id": "org_xyz",
-        "org_role": "org:admin",
-        "org_permissions": ["org:optimize:general", "org:analyze"],
     }
     with (
         patch("app.core.clerk.get_clerk_client") as mock_get_client,
@@ -32,7 +30,7 @@ def test_verify_clerk_token_returns_payload_on_success() -> None:
         result = verify_clerk_token("Bearer valid.jwt.token")
 
     assert result["sub"] == "user_abc"
-    assert result["org_role"] == "org:admin"
+    assert result["org_id"] == "org_xyz"
 
 
 def test_verify_clerk_token_raises_on_invalid() -> None:

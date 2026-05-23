@@ -413,12 +413,6 @@ export interface FavoriteUpdateRequest {
   is_pinned?: boolean;
 }
 
-export interface OrgPermissions {
-  org_id: string;
-  org_role: 'org:owner' | 'org:admin' | 'org:collaborator';
-  permissions: string[];
-}
-
 export interface ApiKeyResponse {
   id: string;
   name: string;

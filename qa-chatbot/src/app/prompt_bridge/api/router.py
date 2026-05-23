@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.types.response import SuccessResponse
 from app.core.rate_limit import RateLimiter
 from app.core.user_context import UserContext
-from app.dependencies import get_current_user, get_db, require_permission
+from app.dependencies import get_current_user, get_db
 from app.prompt_bridge.api.exceptions import (
     PBInsufficientCreditsException,
     PBJobNotCancellableException,
@@ -83,7 +83,7 @@ _REUSE_TRANSFER_COST = 1
 async def submit_transfer(
     body: TransferRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[UserContext, Depends(require_permission("org:optimize:bridge"))],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> SuccessResponse[TransferJobCreatedResponse]:
     """
     Submit a prompt transfer request.

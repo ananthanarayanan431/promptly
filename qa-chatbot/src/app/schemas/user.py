@@ -16,6 +16,5 @@ class UserResponse(BaseModel):
     email: str
     credits: int
     org_id: str
-    org_role: str
 
     model_config = ConfigDict(from_attributes=True)

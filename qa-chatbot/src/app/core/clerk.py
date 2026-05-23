@@ -55,36 +55,3 @@ def verify_clerk_token(authorization_header: str) -> dict[str, Any]:
         raise UnauthorizedException(detail="Invalid or expired token")
 
     return dict(state.payload)
-
-
-async def get_org_permissions_for_api_key(org_id: str) -> list[str]:
-    """Return the permission keys for the owner role of an organization.
-
-    Fetches the org's memberships from Clerk and returns the permission
-    strings attached to members with owner-like roles (``org:admin`` /
-    ``org:owner``). Falls back to an empty list on any error so the caller
-    can degrade gracefully.
-
-    Args:
-        org_id: The Clerk organization ID (e.g. ``"org_..."``).
-
-    Returns:
-        A list of permission key strings, or an empty list on error.
-    """
-    client = get_clerk_client()
-    try:
-        memberships = await client.organization_memberships.list_async(
-            organization_id=org_id, limit=500
-        )
-        owner_role_keys = {"org:admin", "org:owner", "admin", "owner"}
-        permissions: list[str] = []
-        for member in memberships.data or []:
-            role_key: str = getattr(member, "role", "") or ""
-            if role_key in owner_role_keys:
-                member_permissions = getattr(member, "permissions", None) or []
-                permissions.extend(member_permissions)
-
-        return permissions
-    except Exception as exc:  # noqa: BLE001
-        log.warning("clerk_org_permissions_failed", org_id=org_id, error=str(exc))
-        return []

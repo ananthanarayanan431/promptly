@@ -1,13 +1,13 @@
 import hashlib
-from collections.abc import AsyncGenerator, Callable, Coroutine
+from collections.abc import AsyncGenerator
 from typing import Annotated, Any
 
 import structlog
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.clerk import get_clerk_client, get_org_permissions_for_api_key, verify_clerk_token
-from app.core.exceptions import ForbiddenException, UnauthorizedException
+from app.core.clerk import get_clerk_client, verify_clerk_token
+from app.core.exceptions import UnauthorizedException
 from app.core.user_context import UserContext
 from app.db.session import get_async_session
 from app.repositories.api_key_repo import ApiKeyRepository
@@ -66,9 +66,6 @@ async def get_current_user(
 ) -> UserContext:
     """
     Resolves the current user from a Clerk JWT Bearer token or a qac_-prefixed API key.
-
-    JWT path: verifies via Clerk SDK and looks up user by clerk_user_id.
-    API key path: hashes the raw key and looks up via key_hash, then fetches org permissions.
     """
     authorization = request.headers.get("Authorization", "")
     log = structlog.get_logger()
@@ -80,7 +77,6 @@ async def get_current_user(
     user_repo = UserRepository(db)
     api_key_repo = ApiKeyRepository(db)
 
-    # API key path — bearer value starts with qac_
     if authorization.startswith("Bearer qac_"):
         raw_key = authorization.removeprefix("Bearer ")
         key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
@@ -95,8 +91,6 @@ async def get_current_user(
         if user is None or not user.is_active:
             raise UnauthorizedException(detail="Invalid API key")
 
-        api_key_permissions = await get_org_permissions_for_api_key(api_key.org_id)
-
         structlog.contextvars.bind_contextvars(user_id=str(user.id))
         return UserContext(
             user_id=user.id,
@@ -104,21 +98,14 @@ async def get_current_user(
             email=user.email,
             credits=user.credits,
             org_id=api_key.org_id,
-            org_role="org:admin",
-            permissions=api_key_permissions,
         )
 
-    # JWT path — standard Clerk Bearer token
     payload = verify_clerk_token(authorization)
     clerk_user_id: str = payload["sub"]
     org_id: str = payload.get("org_id", "")
-    org_role: str = payload.get("org_role", "")
-    jwt_permissions: list[str] = payload.get("org_permissions", [])
 
     user = await user_repo.get_by_clerk_id(clerk_user_id)
     if user is None:
-        # Auto-provision: user signed in via Clerk but webhook hasn't synced yet.
-        # Fetch their profile from Clerk and create the local record on-the-fly.
         user = await _provision_user(user_repo, clerk_user_id)
     if not user.is_active:
         raise UnauthorizedException(detail="User account is inactive")
@@ -130,32 +117,4 @@ async def get_current_user(
         email=user.email,
         credits=user.credits,
         org_id=org_id,
-        org_role=org_role,
-        permissions=jwt_permissions,
     )
-
-
-def require_role(*roles: str) -> Callable[..., Coroutine[Any, Any, UserContext]]:
-    """Return a FastAPI dependency that enforces org role membership."""
-
-    async def _check(
-        current_user: Annotated[UserContext, Depends(get_current_user)],
-    ) -> UserContext:
-        if current_user.org_role not in roles:
-            raise ForbiddenException(detail=f"Required role: one of {roles}")
-        return current_user
-
-    return _check
-
-
-def require_permission(permission: str) -> Callable[..., Coroutine[Any, Any, UserContext]]:
-    """Return a FastAPI dependency that enforces a specific org permission."""
-
-    async def _check(
-        current_user: Annotated[UserContext, Depends(get_current_user)],
-    ) -> UserContext:
-        if permission not in current_user.permissions:
-            raise ForbiddenException(detail=f"Missing permission: {permission}")
-        return current_user
-
-    return _check
