@@ -5,6 +5,7 @@ import './globals.css';
 import { Providers } from '@/components/providers';
 import { Toaster } from '@/components/ui/sonner';
 import { ClerkProvider } from '@clerk/nextjs';
+import { ClerkTokenSync } from '@/components/clerk-token-sync';
 
 const geist = localFont({
   src: './fonts/GeistVF.woff',
@@ -43,6 +44,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <body className={`${geist.variable} ${geistMono.variable} ${instrumentSerif.variable}`}
               style={{ fontFamily: 'var(--font-geist), ui-sans-serif, system-ui, sans-serif' }}>
           <Providers>
+            <ClerkTokenSync />
             {children}
             <Toaster />
           </Providers>
