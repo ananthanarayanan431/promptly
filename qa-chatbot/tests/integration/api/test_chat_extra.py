@@ -6,19 +6,8 @@ import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from faker import Faker
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
-
-fake = Faker()
-
-
-async def _make_user_headers(client: AsyncClient, db: AsyncSession) -> dict[str, str]:
-    email = fake.unique.email()
-    password = "Pass123!"  # noqa: S105
-    await client.post("/api/v1/auth/register", json={"email": email, "password": password})
-    login = await client.post("/api/v1/auth/login", data={"username": email, "password": password})
-    return {"Authorization": f"Bearer {login.json()['data']['access_token']}"}
 
 
 def _mock_naming_llm(name: str = "TEST PROMPT") -> MagicMock:
@@ -30,8 +19,8 @@ def _mock_naming_llm(name: str = "TEST PROMPT") -> MagicMock:
 
 
 @pytest.mark.asyncio
-async def test_suggest_name_returns_name(client: AsyncClient, db_session: AsyncSession) -> None:
-    headers = await _make_user_headers(client, db_session)
+async def test_suggest_name_returns_name(client: AsyncClient, make_user) -> None:
+    _, headers = await make_user()
     with patch("app.api.v1.chat.build_naming_llm", return_value=_mock_naming_llm("CODE REVIEWER")):
         res = await client.post(
             "/api/v1/chat/suggest-name",
@@ -52,10 +41,8 @@ async def test_suggest_name_unauthenticated(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_suggest_name_timeout_raises_503(
-    client: AsyncClient, db_session: AsyncSession
-) -> None:
-    headers = await _make_user_headers(client, db_session)
+async def test_suggest_name_timeout_raises_503(client: AsyncClient, make_user) -> None:
+    _, headers = await make_user()
     mock_llm = MagicMock()
     mock_llm.ainvoke = AsyncMock(side_effect=TimeoutError)
     with patch("app.api.v1.chat.build_naming_llm", return_value=mock_llm):
@@ -68,10 +55,8 @@ async def test_suggest_name_timeout_raises_503(
 
 
 @pytest.mark.asyncio
-async def test_save_version_creates_prompt_family(
-    client: AsyncClient, db_session: AsyncSession
-) -> None:
-    headers = await _make_user_headers(client, db_session)
+async def test_save_version_creates_prompt_family(client: AsyncClient, make_user) -> None:
+    _, headers = await make_user()
     with patch("app.api.v1.chat.build_naming_llm", return_value=_mock_naming_llm("EMAIL WRITER")):
         res = await client.post(
             "/api/v1/chat/save-version",
@@ -103,10 +88,8 @@ async def test_save_version_unauthenticated(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_save_version_timeout_raises_503(
-    client: AsyncClient, db_session: AsyncSession
-) -> None:
-    headers = await _make_user_headers(client, db_session)
+async def test_save_version_timeout_raises_503(client: AsyncClient, make_user) -> None:
+    _, headers = await make_user()
     mock_llm = MagicMock()
     mock_llm.ainvoke = AsyncMock(side_effect=TimeoutError)
     with patch("app.api.v1.chat.build_naming_llm", return_value=mock_llm):
@@ -124,9 +107,9 @@ async def test_save_version_timeout_raises_503(
 
 
 @pytest.mark.asyncio
-async def test_create_chat_with_prompt_id(client: AsyncClient, db_session: AsyncSession) -> None:
+async def test_create_chat_with_prompt_id(client: AsyncClient, make_user) -> None:
     """Using prompt_id to look up the latest version and submit for optimization."""
-    headers = await _make_user_headers(client, db_session)
+    _, headers = await make_user()
 
     # First create a prompt version
     with patch("app.api.v1.chat.build_naming_llm", return_value=_mock_naming_llm("MY PROMPT")):
@@ -153,11 +136,9 @@ async def test_create_chat_with_prompt_id(client: AsyncClient, db_session: Async
 
 
 @pytest.mark.asyncio
-async def test_create_chat_with_invalid_prompt_id(
-    client: AsyncClient, db_session: AsyncSession
-) -> None:
+async def test_create_chat_with_invalid_prompt_id(client: AsyncClient, make_user) -> None:
     """Passing a prompt_id that doesn't exist should return 404."""
-    headers = await _make_user_headers(client, db_session)
+    _, headers = await make_user()
     res = await client.post(
         "/api/v1/chat/",
         json={"prompt_id": str(uuid.uuid4())},
@@ -168,21 +149,10 @@ async def test_create_chat_with_invalid_prompt_id(
 
 @pytest.mark.asyncio
 async def test_create_chat_celery_failure_refunds_credits(
-    client: AsyncClient, db_session: AsyncSession
+    client: AsyncClient, db_session: AsyncSession, make_user
 ) -> None:
     """If Celery dispatch raises, credits are refunded and 503 returned."""
-    from sqlalchemy import select
-
-    from app.models.user import User
-
-    email = fake.unique.email()
-    password = "Pass123!"  # noqa: S105
-    await client.post("/api/v1/auth/register", json={"email": email, "password": password})
-    login = await client.post("/api/v1/auth/login", data={"username": email, "password": password})
-    headers = {"Authorization": f"Bearer {login.json()['data']['access_token']}"}
-
-    result = await db_session.execute(select(User).where(User.email == email))
-    user = result.scalar_one()
+    user, headers = await make_user()
     initial_credits = user.credits
 
     with patch("app.api.v1.chat.process_chat_async") as mock_task:
@@ -201,10 +171,8 @@ async def test_create_chat_celery_failure_refunds_credits(
 
 
 @pytest.mark.asyncio
-async def test_create_chat_with_category_slug(
-    client: AsyncClient, db_session: AsyncSession
-) -> None:
-    headers = await _make_user_headers(client, db_session)
+async def test_create_chat_with_category_slug(client: AsyncClient, make_user) -> None:
+    _, headers = await make_user()
     with patch("app.api.v1.chat.process_chat_async") as mock_task:
         mock_task.apply_async.return_value = MagicMock(id="fake-celery-id")
         res = await client.post(
@@ -219,10 +187,8 @@ async def test_create_chat_with_category_slug(
 
 
 @pytest.mark.asyncio
-async def test_create_chat_with_invalid_category_slug(
-    client: AsyncClient, db_session: AsyncSession
-) -> None:
-    headers = await _make_user_headers(client, db_session)
+async def test_create_chat_with_invalid_category_slug(client: AsyncClient, make_user) -> None:
+    _, headers = await make_user()
     res = await client.post(
         "/api/v1/chat/",
         json={
@@ -235,10 +201,8 @@ async def test_create_chat_with_invalid_category_slug(
 
 
 @pytest.mark.asyncio
-async def test_create_chat_with_name_and_feedback(
-    client: AsyncClient, db_session: AsyncSession
-) -> None:
-    headers = await _make_user_headers(client, db_session)
+async def test_create_chat_with_name_and_feedback(client: AsyncClient, make_user) -> None:
+    _, headers = await make_user()
     with patch("app.api.v1.chat.process_chat_async") as mock_task:
         mock_task.apply_async.return_value = MagicMock(id="fake-celery-id")
         res = await client.post(
@@ -254,8 +218,8 @@ async def test_create_chat_with_name_and_feedback(
 
 
 @pytest.mark.asyncio
-async def test_grouped_sessions_structure(client: AsyncClient, db_session: AsyncSession) -> None:
-    headers = await _make_user_headers(client, db_session)
+async def test_grouped_sessions_structure(client: AsyncClient, make_user) -> None:
+    _, headers = await make_user()
     res = await client.get("/api/v1/chat/sessions", headers=headers)
     assert res.status_code == 200
     data = res.json()["data"]
@@ -266,8 +230,8 @@ async def test_grouped_sessions_structure(client: AsyncClient, db_session: Async
 
 
 @pytest.mark.asyncio
-async def test_recent_sessions_empty(client: AsyncClient, db_session: AsyncSession) -> None:
-    headers = await _make_user_headers(client, db_session)
+async def test_recent_sessions_empty(client: AsyncClient, make_user) -> None:
+    _, headers = await make_user()
     res = await client.get("/api/v1/chat/sessions/recent", headers=headers)
     assert res.status_code == 200
     assert res.json()["data"]["sessions"] == []

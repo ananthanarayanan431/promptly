@@ -7,7 +7,7 @@ from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.clerk import get_clerk_client, verify_clerk_token
-from app.core.exceptions import UnauthorizedException, UserAlreadyExistException
+from app.core.exceptions import UnauthorizedException
 from app.core.user_context import UserContext
 from app.db.session import get_async_session
 from app.repositories.api_key_repo import ApiKeyRepository
@@ -53,29 +53,28 @@ async def _provision_user(user_repo: UserRepository, clerk_user_id: str) -> Any:
         log.info("user_auto_provisioned", clerk_user_id=clerk_user_id, email=email)
         return user
     except Exception as exc:  # noqa: BLE001
-        # Two reasons create() can fail:
-        # 1. Same clerk_user_id was just created by a concurrent request → return that row.
+        # The failed INSERT flush leaves the session in a rolled-back-pending state;
+        # any further query raises PendingRollbackError until we roll back explicitly.
+        await user_repo.db.rollback()
+
+        # 1. A concurrent first-login request won the race and already inserted this
+        #    Clerk user. Because Postgres blocks the losing INSERT until the winner
+        #    commits, the row is guaranteed visible now.
         existing = await user_repo.get_by_clerk_id(clerk_user_id)
         if existing is not None:
             return existing
-        # 2. Email collides with an existing row owned by a different clerk_user_id
-        #    (legacy/seeded data). Surface a clear 409 so the user knows to use a
-        #    different email or contact support, rather than a misleading 401.
+
+        # 2. A row already exists for this (Clerk-verified) email under a different
+        #    clerk_user_id — e.g. a pre-Clerk account backfilled with a '__pending__'
+        #    placeholder by the auth migration. Claim it for this Clerk identity so
+        #    the user keeps their existing account and credits.
         if email:
             by_email = await user_repo.get_by_email(email)
             if by_email is not None:
-                log.warning(
-                    "user_provision_email_conflict",
-                    clerk_user_id=clerk_user_id,
-                    email=email,
-                    existing_clerk_user_id=by_email.clerk_user_id,
-                )
-                raise UserAlreadyExistException(
-                    detail=(
-                        "An account with this email already exists. "
-                        "Please sign in with the original account or contact support."
-                    )
-                ) from exc
+                claimed = await user_repo.update(by_email, clerk_user_id=clerk_user_id)
+                log.info("user_claimed_existing_by_email", clerk_user_id=clerk_user_id, email=email)
+                return claimed
+
         raise UnauthorizedException(detail="User provisioning failed") from exc
 
 

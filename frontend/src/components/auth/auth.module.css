@@ -1,0 +1,216 @@
+/* Custom auth UI — tuned for the white left panel of the (auth) layout.
+   Colours are hard-coded (not theme tokens) because that panel is always light. */
+
+.shell {
+  width: 100%;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+}
+
+.heading {
+  font-family: var(--font-instrument-serif, Georgia, serif);
+  font-size: 34px;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: #141414;
+  margin: 0;
+}
+
+.subhead {
+  margin: 8px 0 26px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: #6b6b6b;
+}
+
+/* ── Social buttons ─────────────────────────────────────────── */
+.social {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.socialBtn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 44px;
+  border: 1px solid #e5e5e1;
+  border-radius: 9px;
+  background: #ffffff;
+  color: #141414;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.05s ease;
+}
+.socialBtn:hover:not(:disabled) {
+  background: #fafafa;
+  border-color: #d7d7d2;
+}
+.socialBtn:active:not(:disabled) {
+  transform: translateY(0.5px);
+}
+.socialBtn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.socialIcon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+/* ── Divider ────────────────────────────────────────────────── */
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 20px 0;
+  color: #a3a3a3;
+  font-size: 12px;
+}
+.divider::before,
+.divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: #ececec;
+}
+
+/* ── Fields ─────────────────────────────────────────────────── */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.label {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: #404040;
+}
+.input {
+  height: 44px;
+  padding: 0 13px;
+  border: 1px solid #e5e5e1;
+  border-radius: 9px;
+  background: #ffffff;
+  color: #141414;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.input::placeholder {
+  color: #b0b0b0;
+}
+.input:focus {
+  border-color: #7c5cff;
+  box-shadow: 0 0 0 3px rgba(124, 92, 255, 0.16);
+}
+.input:disabled {
+  background: #f6f6f4;
+  cursor: default;
+}
+
+.labelRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+.linkBtn {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 12px;
+  color: #7c5cff;
+  cursor: pointer;
+}
+.linkBtn:hover {
+  text-decoration: underline;
+}
+
+/* ── Primary submit ─────────────────────────────────────────── */
+.submit {
+  height: 44px;
+  margin-top: 4px;
+  border: none;
+  border-radius: 9px;
+  background: #141414;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: background 0.15s ease, transform 0.05s ease;
+}
+.submit:hover:not(:disabled) {
+  background: #2a2a2a;
+}
+.submit:active:not(:disabled) {
+  transform: translateY(0.5px);
+}
+.submit:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.spinner {
+  width: 15px;
+  height: 15px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: authspin 0.6s linear infinite;
+}
+@keyframes authspin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Error / footer ─────────────────────────────────────────── */
+.error {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #fdf0f0;
+  border: 1px solid #f4d4d4;
+  color: #b3261e;
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.footer {
+  margin-top: 22px;
+  font-size: 13px;
+  color: #6b6b6b;
+  text-align: center;
+}
+.footerLink {
+  color: #7c5cff;
+  font-weight: 500;
+  text-decoration: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+}
+.footerLink:hover {
+  text-decoration: underline;
+}
+
+.hint {
+  margin: -4px 0 0;
+  font-size: 12px;
+  color: #8a8a8a;
+  line-height: 1.45;
+}

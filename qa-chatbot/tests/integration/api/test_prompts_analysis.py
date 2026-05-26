@@ -8,14 +8,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from faker import Faker
 from httpx import AsyncClient
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.models.user import User
-
-fake = Faker()
 
 _TEST_PROMPT = "You are a helpful assistant. Answer questions clearly and concisely."
 
@@ -58,14 +51,6 @@ _ADVISORY_JSON: dict[str, Any] = {
 }
 
 
-async def _make_user_headers(client: AsyncClient) -> dict[str, str]:
-    email = fake.unique.email()
-    password = "Pass123!"  # noqa: S105
-    await client.post("/api/v1/auth/register", json={"email": email, "password": password})
-    login = await client.post("/api/v1/auth/login", data={"username": email, "password": password})
-    return {"Authorization": f"Bearer {login.json()['data']['access_token']}"}
-
-
 def _make_analyser_mock(content: str) -> MagicMock:
     mock = MagicMock()
     resp = MagicMock()
@@ -81,19 +66,8 @@ async def test_health_score_unauthenticated(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_health_score_insufficient_credits(
-    client: AsyncClient, db_session: AsyncSession
-) -> None:
-    email = fake.unique.email()
-    password = "Pass123!"  # noqa: S105
-    await client.post("/api/v1/auth/register", json={"email": email, "password": password})
-    login = await client.post("/api/v1/auth/login", data={"username": email, "password": password})
-    headers = {"Authorization": f"Bearer {login.json()['data']['access_token']}"}
-
-    result = await db_session.execute(select(User).where(User.email == email))
-    user = result.scalar_one()
-    user.credits = 0
-    await db_session.commit()
+async def test_health_score_insufficient_credits(client: AsyncClient, make_user) -> None:
+    _, headers = await make_user(credits=0)
 
     res = await client.post(
         "/api/v1/prompts/health-score", json={"prompt": _TEST_PROMPT}, headers=headers
@@ -102,8 +76,8 @@ async def test_health_score_insufficient_credits(
 
 
 @pytest.mark.asyncio
-async def test_health_score_success(client: AsyncClient, db_session: AsyncSession) -> None:
-    headers = await _make_user_headers(client)
+async def test_health_score_success(client: AsyncClient, make_user) -> None:
+    _, headers = await make_user()
     mock = _make_analyser_mock(json.dumps(_HEALTH_SCORE_JSON))
 
     with (
@@ -130,17 +104,8 @@ async def test_advisory_unauthenticated(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_advisory_insufficient_credits(client: AsyncClient, db_session: AsyncSession) -> None:
-    email = fake.unique.email()
-    password = "Pass123!"  # noqa: S105
-    await client.post("/api/v1/auth/register", json={"email": email, "password": password})
-    login = await client.post("/api/v1/auth/login", data={"username": email, "password": password})
-    headers = {"Authorization": f"Bearer {login.json()['data']['access_token']}"}
-
-    result = await db_session.execute(select(User).where(User.email == email))
-    user = result.scalar_one()
-    user.credits = 0
-    await db_session.commit()
+async def test_advisory_insufficient_credits(client: AsyncClient, make_user) -> None:
+    _, headers = await make_user(credits=0)
 
     res = await client.post(
         "/api/v1/prompts/advisory", json={"prompt": _TEST_PROMPT}, headers=headers
@@ -149,8 +114,8 @@ async def test_advisory_insufficient_credits(client: AsyncClient, db_session: As
 
 
 @pytest.mark.asyncio
-async def test_advisory_success(client: AsyncClient, db_session: AsyncSession) -> None:
-    headers = await _make_user_headers(client)
+async def test_advisory_success(client: AsyncClient, make_user) -> None:
+    _, headers = await make_user()
     mock = _make_analyser_mock(json.dumps(_ADVISORY_JSON))
 
     with (
@@ -171,8 +136,8 @@ async def test_advisory_success(client: AsyncClient, db_session: AsyncSession) -
 
 
 @pytest.mark.asyncio
-async def test_diff_not_found_returns_404(client: AsyncClient, db_session: AsyncSession) -> None:
-    headers = await _make_user_headers(client)
+async def test_diff_not_found_returns_404(client: AsyncClient, make_user) -> None:
+    _, headers = await make_user()
     res = await client.get(
         f"/api/v1/prompts/versions/{uuid.uuid4()!s}/diff?from=1&to=2", headers=headers
     )
@@ -180,8 +145,8 @@ async def test_diff_not_found_returns_404(client: AsyncClient, db_session: Async
 
 
 @pytest.mark.asyncio
-async def test_diff_returns_hunks(client: AsyncClient, db_session: AsyncSession) -> None:
-    headers = await _make_user_headers(client)
+async def test_diff_returns_hunks(client: AsyncClient, make_user) -> None:
+    _, headers = await make_user()
 
     # Create a prompt family with two versions
     res = await client.post(
@@ -201,16 +166,7 @@ async def test_diff_returns_hunks(client: AsyncClient, db_session: AsyncSession)
             headers=headers,
         )
 
-    # Get the second version manually
-    from sqlalchemy import select
-
-    from app.models.prompt_version import PromptVersion
-
-    await db_session.execute(
-        select(PromptVersion).where(PromptVersion.prompt_id == uuid.UUID(prompt_id))
-    )
-
-    # Just test with v1 to v1 (same content — equal hunks)
+    # Test with v1 to v1 (same content — equal hunks)
     res = await client.get(
         f"/api/v1/prompts/versions/{prompt_id}/diff?from=1&to=1", headers=headers
     )
@@ -221,8 +177,8 @@ async def test_diff_returns_hunks(client: AsyncClient, db_session: AsyncSession)
 
 
 @pytest.mark.asyncio
-async def test_list_prompt_families_empty(client: AsyncClient, db_session: AsyncSession) -> None:
-    headers = await _make_user_headers(client)
+async def test_list_prompt_families_empty(client: AsyncClient, make_user) -> None:
+    _, headers = await make_user()
     res = await client.get("/api/v1/prompts/versions", headers=headers)
     assert res.status_code == 200
     data = res.json()["data"]
@@ -231,10 +187,8 @@ async def test_list_prompt_families_empty(client: AsyncClient, db_session: Async
 
 
 @pytest.mark.asyncio
-async def test_list_prompt_families_after_create(
-    client: AsyncClient, db_session: AsyncSession
-) -> None:
-    headers = await _make_user_headers(client)
+async def test_list_prompt_families_after_create(client: AsyncClient, make_user) -> None:
+    _, headers = await make_user()
     await client.post(
         "/api/v1/prompts/versions",
         json={"name": "FAMILY TEST", "prompt": "You are a helpful assistant."},

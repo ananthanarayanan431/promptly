@@ -4,22 +4,9 @@ import uuid
 from unittest.mock import MagicMock, patch
 
 import pytest
-from faker import Faker
 from httpx import AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.cache import set_job_owner, set_job_result, set_job_status
-
-fake = Faker()
-
-
-async def _make_user(client: AsyncClient, db: AsyncSession) -> dict[str, str]:
-    email = fake.unique.email()
-    password = "Pass123!"  # noqa: S105
-    await client.post("/api/v1/auth/register", json={"email": email, "password": password})
-    login = await client.post("/api/v1/auth/login", data={"username": email, "password": password})
-    token = login.json()["data"]["access_token"]
-    return {"Authorization": f"Bearer {token}"}
 
 
 async def _submit_chat(
@@ -41,8 +28,8 @@ async def _submit_chat(
 
 
 @pytest.mark.asyncio
-async def test_list_sessions_empty(client: AsyncClient, db_session: AsyncSession) -> None:
-    headers = await _make_user(client, db_session)
+async def test_list_sessions_empty(client: AsyncClient, make_user) -> None:
+    _, headers = await make_user()
     res = await client.get("/api/v1/chat/sessions", headers=headers)
     assert res.status_code == 200
     data = res.json()["data"]
@@ -53,8 +40,8 @@ async def test_list_sessions_empty(client: AsyncClient, db_session: AsyncSession
 
 
 @pytest.mark.asyncio
-async def test_list_sessions_after_submit(client: AsyncClient, db_session: AsyncSession) -> None:
-    headers = await _make_user(client, db_session)
+async def test_list_sessions_after_submit(client: AsyncClient, make_user) -> None:
+    _, headers = await make_user()
     await _submit_chat(client, headers)
     res = await client.get("/api/v1/chat/sessions", headers=headers)
     assert res.status_code == 200
@@ -70,8 +57,8 @@ async def test_list_sessions_unauthenticated(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_session_exists(client: AsyncClient, db_session: AsyncSession) -> None:
-    headers = await _make_user(client, db_session)
+async def test_get_session_exists(client: AsyncClient, make_user) -> None:
+    _, headers = await make_user()
     session_id = await _submit_chat(client, headers)
     res = await client.get(f"/api/v1/chat/sessions/{session_id}", headers=headers)
     assert res.status_code == 200
@@ -81,25 +68,23 @@ async def test_get_session_exists(client: AsyncClient, db_session: AsyncSession)
 
 
 @pytest.mark.asyncio
-async def test_get_session_not_found(client: AsyncClient, db_session: AsyncSession) -> None:
-    headers = await _make_user(client, db_session)
+async def test_get_session_not_found(client: AsyncClient, make_user) -> None:
+    _, headers = await make_user()
     res = await client.get(f"/api/v1/chat/sessions/{uuid.uuid4()}", headers=headers)
     assert res.status_code == 404
 
 
 @pytest.mark.asyncio
-async def test_get_session_invalid_id(client: AsyncClient, db_session: AsyncSession) -> None:
-    headers = await _make_user(client, db_session)
+async def test_get_session_invalid_id(client: AsyncClient, make_user) -> None:
+    _, headers = await make_user()
     res = await client.get("/api/v1/chat/sessions/not-a-uuid", headers=headers)
     assert res.status_code == 400
 
 
 @pytest.mark.asyncio
-async def test_get_session_other_users_session(
-    client: AsyncClient, db_session: AsyncSession
-) -> None:
-    headers_a = await _make_user(client, db_session)
-    headers_b = await _make_user(client, db_session)
+async def test_get_session_other_users_session(client: AsyncClient, make_user) -> None:
+    _, headers_a = await make_user()
+    _, headers_b = await make_user()
     session_id = await _submit_chat(client, headers_a)
     # user B cannot access user A's session
     res = await client.get(f"/api/v1/chat/sessions/{session_id}", headers=headers_b)
@@ -107,8 +92,8 @@ async def test_get_session_other_users_session(
 
 
 @pytest.mark.asyncio
-async def test_rename_session(client: AsyncClient, db_session: AsyncSession) -> None:
-    headers = await _make_user(client, db_session)
+async def test_rename_session(client: AsyncClient, make_user) -> None:
+    _, headers = await make_user()
     session_id = await _submit_chat(client, headers)
     res = await client.patch(
         f"/api/v1/chat/sessions/{session_id}",
@@ -120,8 +105,8 @@ async def test_rename_session(client: AsyncClient, db_session: AsyncSession) -> 
 
 
 @pytest.mark.asyncio
-async def test_rename_session_not_found(client: AsyncClient, db_session: AsyncSession) -> None:
-    headers = await _make_user(client, db_session)
+async def test_rename_session_not_found(client: AsyncClient, make_user) -> None:
+    _, headers = await make_user()
     res = await client.patch(
         f"/api/v1/chat/sessions/{uuid.uuid4()}",
         json={"title": "New title"},
@@ -131,8 +116,8 @@ async def test_rename_session_not_found(client: AsyncClient, db_session: AsyncSe
 
 
 @pytest.mark.asyncio
-async def test_rename_session_invalid_id(client: AsyncClient, db_session: AsyncSession) -> None:
-    headers = await _make_user(client, db_session)
+async def test_rename_session_invalid_id(client: AsyncClient, make_user) -> None:
+    _, headers = await make_user()
     res = await client.patch(
         "/api/v1/chat/sessions/not-a-uuid",
         json={"title": "Anything"},
@@ -142,8 +127,8 @@ async def test_rename_session_invalid_id(client: AsyncClient, db_session: AsyncS
 
 
 @pytest.mark.asyncio
-async def test_delete_session(client: AsyncClient, db_session: AsyncSession) -> None:
-    headers = await _make_user(client, db_session)
+async def test_delete_session(client: AsyncClient, make_user) -> None:
+    _, headers = await make_user()
     session_id = await _submit_chat(client, headers)
 
     res = await client.delete(f"/api/v1/chat/sessions/{session_id}", headers=headers)
@@ -156,37 +141,35 @@ async def test_delete_session(client: AsyncClient, db_session: AsyncSession) -> 
 
 
 @pytest.mark.asyncio
-async def test_delete_session_not_found(client: AsyncClient, db_session: AsyncSession) -> None:
-    headers = await _make_user(client, db_session)
+async def test_delete_session_not_found(client: AsyncClient, make_user) -> None:
+    _, headers = await make_user()
     res = await client.delete(f"/api/v1/chat/sessions/{uuid.uuid4()}", headers=headers)
     assert res.status_code == 404
 
 
 @pytest.mark.asyncio
-async def test_delete_session_invalid_id(client: AsyncClient, db_session: AsyncSession) -> None:
-    headers = await _make_user(client, db_session)
+async def test_delete_session_invalid_id(client: AsyncClient, make_user) -> None:
+    _, headers = await make_user()
     res = await client.delete("/api/v1/chat/sessions/not-a-uuid", headers=headers)
     assert res.status_code == 400
 
 
 @pytest.mark.asyncio
-async def test_delete_other_users_session(client: AsyncClient, db_session: AsyncSession) -> None:
-    headers_a = await _make_user(client, db_session)
-    headers_b = await _make_user(client, db_session)
+async def test_delete_other_users_session(client: AsyncClient, make_user) -> None:
+    _, headers_a = await make_user()
+    _, headers_b = await make_user()
     session_id = await _submit_chat(client, headers_a)
     res = await client.delete(f"/api/v1/chat/sessions/{session_id}", headers=headers_b)
     assert res.status_code == 404
 
 
 @pytest.mark.asyncio
-async def test_poll_job_queued_status(client: AsyncClient, db_session: AsyncSession) -> None:
-    headers = await _make_user(client, db_session)
-    me = await client.get("/api/v1/users/me", headers=headers)
-    user_id = me.json()["data"]["id"]
+async def test_poll_job_queued_status(client: AsyncClient, make_user) -> None:
+    user, headers = await make_user()
 
     job_id = str(uuid.uuid4())
     await set_job_status(job_id, "queued")
-    await set_job_owner(job_id, user_id)
+    await set_job_owner(job_id, str(user.id))
 
     res = await client.get(f"/api/v1/chat/jobs/{job_id}", headers=headers)
     assert res.status_code == 200
@@ -195,14 +178,12 @@ async def test_poll_job_queued_status(client: AsyncClient, db_session: AsyncSess
 
 
 @pytest.mark.asyncio
-async def test_poll_job_failed_status(client: AsyncClient, db_session: AsyncSession) -> None:
-    headers = await _make_user(client, db_session)
-    me = await client.get("/api/v1/users/me", headers=headers)
-    user_id = me.json()["data"]["id"]
+async def test_poll_job_failed_status(client: AsyncClient, make_user) -> None:
+    user, headers = await make_user()
 
     job_id = str(uuid.uuid4())
     await set_job_status(job_id, "failed")
-    await set_job_owner(job_id, user_id)
+    await set_job_owner(job_id, str(user.id))
     await set_job_result(job_id, {"error": "LLM timeout"})
 
     res = await client.get(f"/api/v1/chat/jobs/{job_id}", headers=headers)
@@ -213,25 +194,22 @@ async def test_poll_job_failed_status(client: AsyncClient, db_session: AsyncSess
 
 
 @pytest.mark.asyncio
-async def test_poll_job_other_users_job(client: AsyncClient, db_session: AsyncSession) -> None:
+async def test_poll_job_other_users_job(client: AsyncClient, make_user) -> None:
     """A user cannot poll another user's job."""
-    headers_a = await _make_user(client, db_session)
-    headers_b = await _make_user(client, db_session)
-
-    me_a = await client.get("/api/v1/users/me", headers=headers_a)
-    user_a_id = me_a.json()["data"]["id"]
+    user_a, _ = await make_user()
+    _, headers_b = await make_user()
 
     job_id = str(uuid.uuid4())
     await set_job_status(job_id, "queued")
-    await set_job_owner(job_id, user_a_id)
+    await set_job_owner(job_id, str(user_a.id))
 
     res = await client.get(f"/api/v1/chat/jobs/{job_id}", headers=headers_b)
     assert res.status_code == 404
 
 
 @pytest.mark.asyncio
-async def test_recent_sessions_empty(client: AsyncClient, db_session: AsyncSession) -> None:
-    headers = await _make_user(client, db_session)
+async def test_recent_sessions_empty(client: AsyncClient, make_user) -> None:
+    _, headers = await make_user()
     res = await client.get("/api/v1/chat/sessions/recent", headers=headers)
     assert res.status_code == 200
     assert res.json()["data"]["sessions"] == []

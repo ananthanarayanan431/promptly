@@ -5,8 +5,8 @@ export default function OrgSelectPage() {
     <div className="flex min-h-screen items-center justify-center">
       <OrganizationList
         hidePersonal
-        afterSelectOrganizationUrl="/dashboard"
-        afterCreateOrganizationUrl="/dashboard"
+        afterSelectOrganizationUrl="/optimize"
+        afterCreateOrganizationUrl="/optimize"
       />
     </div>
   );

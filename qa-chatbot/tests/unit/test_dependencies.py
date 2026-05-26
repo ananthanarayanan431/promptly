@@ -122,6 +122,77 @@ async def test_get_current_user_inactive_user_raises_unauthorized() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Tests: first-login provisioning race (concurrent inserts)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_provision_user_recovers_after_concurrent_insert() -> None:
+    """A concurrent request inserts the same Clerk user first; our create() hits a
+    unique violation which poisons the session. _provision_user must roll the
+    session back and return the row the winner created — not 500 with
+    PendingRollbackError.
+    """
+    user = _make_user(clerk_user_id="user_race")
+
+    mock_db = AsyncMock()
+    mock_user_repo = AsyncMock()
+    mock_user_repo.db = mock_db
+    # create() raises the integrity error (lost the race)
+    mock_user_repo.create.side_effect = Exception("duplicate key value")
+    # after rollback, the winner's committed row is visible by clerk_user_id
+    mock_user_repo.get_by_clerk_id.return_value = user
+
+    mock_clerk_user = MagicMock()
+    mock_clerk_user.email_addresses = [MagicMock(email_address=user.email)]
+    mock_clerk_user.first_name = "Test"
+    mock_clerk_user.last_name = "User"
+    mock_client = MagicMock()
+    mock_client.users.get_async = AsyncMock(return_value=mock_clerk_user)
+
+    with patch("app.dependencies.get_clerk_client", return_value=mock_client):
+        from app.dependencies import _provision_user
+
+        result = await _provision_user(mock_user_repo, "user_race")
+
+    mock_db.rollback.assert_awaited_once()
+    assert result is user
+
+
+@pytest.mark.asyncio
+async def test_provision_user_claims_existing_row_by_email() -> None:
+    """A row already exists for this email under a different (placeholder)
+    clerk_user_id — e.g. a pre-Clerk account backfilled by the migration. On
+    first Clerk login it must be claimed (clerk_user_id updated), not duplicated.
+    """
+    legacy = _make_user(clerk_user_id="__pending__xyz", email="legacy@example.com")
+
+    mock_db = AsyncMock()
+    mock_user_repo = AsyncMock()
+    mock_user_repo.db = mock_db
+    mock_user_repo.create.side_effect = Exception("duplicate key value")
+    mock_user_repo.get_by_clerk_id.return_value = None  # real id not present yet
+    mock_user_repo.get_by_email.return_value = legacy
+    mock_user_repo.update.return_value = legacy
+
+    mock_clerk_user = MagicMock()
+    mock_clerk_user.email_addresses = [MagicMock(email_address="legacy@example.com")]
+    mock_clerk_user.first_name = ""
+    mock_clerk_user.last_name = ""
+    mock_client = MagicMock()
+    mock_client.users.get_async = AsyncMock(return_value=mock_clerk_user)
+
+    with patch("app.dependencies.get_clerk_client", return_value=mock_client):
+        from app.dependencies import _provision_user
+
+        result = await _provision_user(mock_user_repo, "user_real")
+
+    mock_db.rollback.assert_awaited_once()
+    mock_user_repo.update.assert_awaited_once_with(legacy, clerk_user_id="user_real")
+    assert result is legacy
+
+
+# ---------------------------------------------------------------------------
 # Tests: API key path
 # ---------------------------------------------------------------------------
 

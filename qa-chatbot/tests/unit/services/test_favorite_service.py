@@ -10,7 +10,10 @@ from app.services.favorite_service import FavoriteService
 
 
 async def _seed(db: AsyncSession) -> tuple[User, PromptVersion]:
-    user = User(email=f"u-{uuid.uuid4().hex[:6]}@test.com", clerk_user_id=f"user_{uuid.uuid4().hex}")
+    user = User(
+        email=f"u-{uuid.uuid4().hex[:6]}@test.com",
+        clerk_user_id=f"user_{uuid.uuid4().hex}",
+    )
     db.add(user)
     await db.flush()
     pv = PromptVersion(
