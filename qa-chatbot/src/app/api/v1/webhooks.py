@@ -97,7 +97,7 @@ async def _handle_user_created(user_repo: UserRepository, data: dict[str, object
             email=email,
             full_name=full_name or None,
         )
-        log.info("user_created_from_webhook", clerk_user_id=clerk_user_id, email=email)
+        log.info("user_created_from_webhook", clerk_user_id=clerk_user_id)
     except IntegrityError:
         # Duplicate — webhook delivered more than once; treat as idempotent.
         log.warning("user_already_exists_webhook", clerk_user_id=clerk_user_id)

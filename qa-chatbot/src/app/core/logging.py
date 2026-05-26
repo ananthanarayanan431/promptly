@@ -28,7 +28,7 @@ def setup_logging(debug: bool = False) -> None:
         ]
 
     structlog.configure(
-        processors=processors,  # type: ignore[arg-type]
+        processors=processors,
         wrapper_class=structlog.make_filtering_bound_logger(log_level),
         context_class=dict,
         logger_factory=structlog.PrintLoggerFactory(sys.stdout),

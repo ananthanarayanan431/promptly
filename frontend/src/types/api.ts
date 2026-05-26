@@ -200,6 +200,10 @@ export interface UsageBucket {
   health_score_credits: number;
   advisory_calls: number;
   advisory_credits: number;
+  domain_pdo_calls: number;
+  domain_pdo_credits: number;
+  bridge_calls: number;
+  bridge_credits: number;
 }
 
 export interface UsageStats {

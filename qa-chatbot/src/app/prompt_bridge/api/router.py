@@ -59,6 +59,7 @@ from app.prompt_bridge.infrastructure.cache import (
     set_pb_job_status,
 )
 from app.prompt_bridge.workers.tasks import run_prompt_transfer
+from app.repositories.usage_event_repo import UsageEventRepository
 from app.repositories.user_repo import UserRepository
 from app.utils.log import get_logger
 from app.workers.celery_app import celery_app
@@ -145,6 +146,8 @@ async def submit_transfer(
             "existing_mapping_id": str(existing_mapping.id) if existing_mapping else None,
         }
     )
+    usage_repo = UsageEventRepository(db)
+    await usage_repo.log(user_id=current_user.user_id, action="bridge", credits_spent=cost)
     await db.commit()
     await set_pb_celery_task_id(job_id, celery_result.id)
     log.info(

@@ -1429,9 +1429,10 @@ export function BridgeWorkspace() {
           </h1>
           <span style={{
             display: 'flex', alignItems: 'center', gap: 5,
-            fontSize: 11.5, fontWeight: 500, padding: '3px 10px', borderRadius: 6,
-            border: '1px solid var(--border)', background: 'var(--surface-2, oklch(98% 0.004 80))',
-            color: 'var(--text-muted)',
+            fontSize: 11.5, fontWeight: 500, padding: '3px 10px', borderRadius: 20,
+            border: '1px solid oklch(78% 0.12 200 / 0.5)',
+            background: 'oklch(94% 0.06 200 / 0.5)',
+            color: 'oklch(42% 0.13 200)',
           }}>
             <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
               <path d="M8 3L4 7l4 4M16 21l4-4-4-4M4 7h16M20 17H4" />

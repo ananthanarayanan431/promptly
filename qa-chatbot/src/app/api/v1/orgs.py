@@ -3,8 +3,9 @@ import secrets
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi import status as http_status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundException
@@ -30,8 +31,6 @@ async def create_org_api_key(
     api_key_repo = ApiKeyRepository(db)
 
     if await api_key_repo.has_active_org_name(current_user.org_id, body.name):
-        from fastapi import HTTPException
-
         raise HTTPException(
             status_code=http_status.HTTP_409_CONFLICT,
             detail="An active API key with this name already exists",
@@ -40,12 +39,18 @@ async def create_org_api_key(
     raw_key = f"qac_{secrets.token_urlsafe(32)}"
     key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
 
-    key = await api_key_repo.create(
-        org_id=current_user.org_id,
-        name=body.name,
-        key_hash=key_hash,
-        created_by=current_user.user_id,
-    )
+    try:
+        key = await api_key_repo.create(
+            org_id=current_user.org_id,
+            name=body.name,
+            key_hash=key_hash,
+            created_by=current_user.user_id,
+        )
+    except IntegrityError:
+        raise HTTPException(
+            status_code=http_status.HTTP_409_CONFLICT,
+            detail="An active API key with this name already exists",
+        ) from None
 
     return ApiKeyCreatedResponse(
         id=key.id,

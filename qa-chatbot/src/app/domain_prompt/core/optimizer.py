@@ -29,6 +29,7 @@ import asyncio
 import json
 import math
 import random
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -622,6 +623,7 @@ async def optimize_domain_prompt(
     api_key: str,
     num_candidates: int = NUM_CANDIDATES,
     domain_id: str | None = None,
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> dict[str, object]:
     """
     Run the PDO algorithm (arXiv:2510.13907) and return the best domain-specific system prompt.
@@ -720,6 +722,9 @@ async def optimize_domain_prompt(
         )
         winner_idx, loser_idx = (i, j) if duel_result == 0 else (j, i)
         wm.record_win(winner_idx, loser_idx, gamma)
+
+        if cancel_check is not None and await cancel_check():
+            raise InterruptedError("Optimization cancelled by user.")
 
         # Top-performer guided mutation + pruning every M rounds (paper §3.2)
         if t % MUTATION_INTERVAL == 0:

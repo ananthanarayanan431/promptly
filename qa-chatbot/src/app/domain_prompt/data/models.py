@@ -15,6 +15,7 @@ class DomainPromptStatus(enum.StrEnum):
     optimizing = "optimizing"
     completed = "completed"
     failed = "failed"
+    cancelled = "cancelled"
 
 
 class DomainPrompt(Base, UUIDMixin, TimestampMixin):

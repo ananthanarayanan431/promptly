@@ -4,6 +4,7 @@ from typing import Annotated, Any
 
 import structlog
 from fastapi import Depends, Request
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.clerk import get_clerk_client, verify_clerk_token
@@ -52,7 +53,7 @@ async def _provision_user(user_repo: UserRepository, clerk_user_id: str) -> Any:
         )
         log.info("user_auto_provisioned", clerk_user_id=clerk_user_id, email=email)
         return user
-    except Exception as exc:  # noqa: BLE001
+    except IntegrityError as exc:
         # The failed INSERT flush leaves the session in a rolled-back-pending state;
         # any further query raises PendingRollbackError until we roll back explicitly.
         await user_repo.db.rollback()
@@ -88,16 +89,16 @@ async def get_current_user(
     authorization = request.headers.get("Authorization", "")
     log = structlog.get_logger()
 
-    if not authorization or not authorization.startswith("Bearer "):
+    scheme, _, token = authorization.partition(" ")
+    if not authorization or scheme.lower() != "bearer" or not token:
         log.warning("auth_header_missing", path=request.url.path, has_auth=bool(authorization))
         raise UnauthorizedException(detail="Missing or invalid Authorization header")
 
     user_repo = UserRepository(db)
     api_key_repo = ApiKeyRepository(db)
 
-    if authorization.startswith("Bearer qac_"):
-        raw_key = authorization.removeprefix("Bearer ")
-        key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
+    if token.startswith("qac_"):
+        key_hash = hashlib.sha256(token.encode()).hexdigest()
 
         api_key = await api_key_repo.get_active_by_hash(key_hash)
         if api_key is None:
@@ -118,7 +119,7 @@ async def get_current_user(
             org_id=api_key.org_id,
         )
 
-    payload = verify_clerk_token(authorization)
+    payload = verify_clerk_token(f"Bearer {token}")
     clerk_user_id: str = payload["sub"]
     org_id: str = payload.get("org_id", "")
 

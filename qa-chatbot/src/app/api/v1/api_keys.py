@@ -66,9 +66,13 @@ async def create_api_key(
             key_hash=key_hash,
         )
         await db.flush()
-    except IntegrityError:
-        log.warning("api_key_name_conflict", name=request.name)
-        raise ApiKeyNameConflictException() from None
+    except IntegrityError as e:
+        orig = getattr(e, "orig", None)
+        pgcode = getattr(orig, "pgcode", None) or getattr(orig, "sqlstate", None)
+        if pgcode == "23505":
+            log.warning("api_key_name_conflict", name=request.name)
+            raise ApiKeyNameConflictException() from None
+        raise
     log.info("api_key_created", key_id=str(key.id), name=key.name)
     return SuccessResponse(
         data=ApiKeyCreatedResponse(

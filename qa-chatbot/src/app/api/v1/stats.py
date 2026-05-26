@@ -193,6 +193,8 @@ async def get_dashboard_stats(
         opt = agg.get("optimize", {})
         hs = agg.get("health_score", {})
         adv = agg.get("advisory", {})
+        dpdo = agg.get("domain_pdo", {})
+        br = agg.get("bridge", {})
         return UsageBucket(
             optimize_calls=opt.get("calls", 0),
             optimize_credits=opt.get("credits", 0),
@@ -200,6 +202,10 @@ async def get_dashboard_stats(
             health_score_credits=hs.get("credits", 0),
             advisory_calls=adv.get("calls", 0),
             advisory_credits=adv.get("credits", 0),
+            domain_pdo_calls=dpdo.get("calls", 0),
+            domain_pdo_credits=dpdo.get("credits", 0),
+            bridge_calls=br.get("calls", 0),
+            bridge_credits=br.get("credits", 0),
         )
 
     usage = UsageStats(

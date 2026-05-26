@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
 from typing import Annotated
 
@@ -14,6 +15,7 @@ from app.dependencies import get_current_user, get_db
 from app.domain_prompt.api.exceptions import (
     DomainAlreadyRunningException,
     DomainInsufficientCreditsException,
+    DomainJobNotCancellableException,
     DomainJobNotFoundException,
     DomainNotFoundException,
     DomainNotReadyException,
@@ -21,6 +23,7 @@ from app.domain_prompt.api.exceptions import (
 )
 from app.domain_prompt.api.schemas import (
     AugmentDatasetRequest,
+    CancelDomainJobResponse,
     CreateDomainJobResponse,
     DatasetRowsResponse,
     DeleteDomainResponse,
@@ -40,11 +43,18 @@ from app.domain_prompt.data.repository import (
     DomainPromptRepository,
 )
 from app.domain_prompt.infrastructure.cache import (
+    clear_dp_domain_active_job,
+    get_dp_celery_task_id,
+    get_dp_domain_active_job,
+    get_dp_job_domain_id,
     get_dp_job_owner,
     get_dp_job_result,
+    get_dp_job_stage,
     get_dp_job_status,
     get_dp_tournament_state,
+    set_dp_job_cancel,
     set_dp_job_owner,
+    set_dp_job_result,
     set_dp_job_status,
 )
 from app.domain_prompt.infrastructure.storage import (
@@ -59,6 +69,7 @@ from app.domain_prompt.workers.tasks import (
     prepare_domain_dataset,
     run_domain_optimization,
 )
+from app.repositories.usage_event_repo import UsageEventRepository
 from app.repositories.user_repo import UserRepository
 from app.utils.log import get_logger
 
@@ -154,6 +165,8 @@ async def create_domain(
         bucket=bucket,
         pdf_key=pdf_key,
     )
+    usage_repo = UsageEventRepository(db)
+    await usage_repo.log(user_id=current_user.user_id, action="domain_pdo", credits_spent=10)
     await db.commit()
 
     job_id = str(uuid.uuid4())
@@ -202,10 +215,13 @@ async def poll_domain_job(
         if raw:
             error = raw.get("error", "Unknown error")
 
+    stage = await get_dp_job_stage(job_id)
+
     return SuccessResponse(
         data=DomainJobPollResponse(
             job_id=job_id,
             status=job_status,
+            stage=stage,
             result=result,
             error=error,
         )
@@ -404,6 +420,8 @@ async def reoptimize_domain(
         raise DomainInsufficientCreditsException()
 
     await repo.set_status(domain, DomainPromptStatus.optimizing, last_prompt=body.prompt.strip())
+    usage_repo = UsageEventRepository(db)
+    await usage_repo.log(user_id=current_user.user_id, action="domain_pdo", credits_spent=10)
     await db.commit()
 
     job_id = str(uuid.uuid4())
@@ -488,6 +506,153 @@ async def stop_domain_tournament(
     )
 
     return SuccessResponse(data=DomainPromptResponse.model_validate(domain))
+
+
+async def _do_cancel(
+    *,
+    job_id: str,
+    domain: DomainPrompt,
+    user_id: uuid.UUID,
+    repo: DomainPromptRepository,
+    db: AsyncSession,
+) -> None:
+    """Shared cancel logic: revoke Celery task, signal worker, update DB, refund credits."""
+    from app.workers.celery_app import celery_app as _celery_app
+
+    celery_task_id = await get_dp_celery_task_id(job_id)
+    if celery_task_id:
+        from celery.result import AsyncResult
+
+        ar = AsyncResult(celery_task_id, app=_celery_app)
+        await asyncio.to_thread(lambda: ar.revoke(terminate=True, signal="SIGTERM"))
+
+    await set_dp_job_cancel(job_id)
+    await set_dp_job_status(job_id, "cancelled")
+    await set_dp_job_result(job_id, {"error": "Cancelled by user."})
+    await clear_dp_domain_active_job(str(domain.id))
+
+    cancellable_statuses = (
+        DomainPromptStatus.pending,
+        DomainPromptStatus.preparing_dataset,
+        DomainPromptStatus.optimizing,
+    )
+    refund = 10 if domain.status in cancellable_statuses else 0
+
+    await repo.set_status(domain, DomainPromptStatus.cancelled, error_message="Cancelled by user.")
+
+    if refund:
+        user_repo = UserRepository(db)
+        await user_repo.refund_credits(user_id, refund)
+
+    await db.commit()
+
+
+@router.post(
+    "/jobs/{job_id}/cancel",
+    response_model=SuccessResponse[CancelDomainJobResponse],
+    dependencies=[Depends(_write_limiter)],
+)
+async def cancel_domain_job(
+    job_id: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
+) -> SuccessResponse[CancelDomainJobResponse]:
+    """
+    Cancel a queued or running domain job by its Redis job_id.
+
+    Available immediately after job creation; use POST /{domain_id}/cancel when the
+    job_id is no longer in memory (e.g., after a page reload).
+    Refunds 10 credits for prepare_dataset and optimize stages.
+    """
+    owner = await get_dp_job_owner(job_id)
+    if owner is None or owner != str(current_user.user_id):
+        raise DomainJobNotFoundException()
+
+    job_status = await get_dp_job_status(job_id)
+    _terminal = ("completed", "failed", "cancelled")
+    if job_status in _terminal:
+        raise DomainJobNotCancellableException()
+
+    domain_id_str = await get_dp_job_domain_id(job_id)
+    if domain_id_str is None:
+        raise DomainJobNotFoundException()
+
+    repo = DomainPromptRepository(db)
+    domain = await repo.get_by_id_and_user(uuid.UUID(domain_id_str), current_user.user_id)
+    if domain is None:
+        raise DomainNotFoundException()
+
+    await _do_cancel(job_id=job_id, domain=domain, user_id=current_user.user_id, repo=repo, db=db)
+    log.info("domain_job_cancelled", job_id=job_id, domain_id=domain_id_str)
+
+    return SuccessResponse(
+        data=CancelDomainJobResponse(job_id=job_id, domain_id=domain_id_str, cancelled=True)
+    )
+
+
+@router.post(
+    "/{domain_id}/cancel",
+    response_model=SuccessResponse[CancelDomainJobResponse],
+    dependencies=[Depends(_write_limiter)],
+)
+async def cancel_domain_by_id(
+    domain_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
+) -> SuccessResponse[CancelDomainJobResponse]:
+    """
+    Cancel a running domain job by domain_id.
+
+    Use this after a page reload when the Redis job_id is no longer known.
+    Looks up the active job_id from Redis. If Redis has expired (worker crashed long
+    ago), falls back to a force-stop (DB-only reset) so the domain becomes usable again.
+    Refunds 10 credits for prepare_dataset and optimize stages.
+    """
+    repo = DomainPromptRepository(db)
+    domain = await repo.get_by_id_and_user(domain_id, current_user.user_id)
+    if domain is None:
+        raise DomainNotFoundException()
+
+    cancellable_statuses = (
+        DomainPromptStatus.pending,
+        DomainPromptStatus.preparing_dataset,
+        DomainPromptStatus.optimizing,
+    )
+    if domain.status not in cancellable_statuses:
+        raise DomainJobNotCancellableException()
+
+    active_job_id = await get_dp_domain_active_job(str(domain_id))
+
+    if active_job_id:
+        await _do_cancel(
+            job_id=active_job_id,
+            domain=domain,
+            user_id=current_user.user_id,
+            repo=repo,
+            db=db,
+        )
+        log.info("domain_cancelled_by_domain_id", domain_id=str(domain_id), job_id=active_job_id)
+        return SuccessResponse(
+            data=CancelDomainJobResponse(
+                job_id=active_job_id, domain_id=str(domain_id), cancelled=True
+            )
+        )
+
+    # Redis expired — worker either crashed or finished long ago; force-stop DB state.
+    has_dataset = domain.dataset is not None and domain.dataset.dataset_key is not None
+    fallback_status = DomainPromptStatus.completed if has_dataset else DomainPromptStatus.cancelled
+    refund = 10 if domain.status in cancellable_statuses else 0
+    await repo.set_status(domain, fallback_status, error_message="Force-stopped by user.")
+    if refund:
+        user_repo = UserRepository(db)
+        await user_repo.refund_credits(current_user.user_id, refund)
+    await db.commit()
+    log.warning(
+        "domain_force_stopped_no_redis", domain_id=str(domain_id), fallback=fallback_status.value
+    )
+    return SuccessResponse(
+        data=CancelDomainJobResponse(job_id="", domain_id=str(domain_id), cancelled=True)
+    )
 
 
 @router.delete(

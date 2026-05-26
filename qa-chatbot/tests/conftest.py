@@ -57,7 +57,11 @@ async def _test_auth_override(
     user_id_raw = request.headers.get("X-Test-User-Id")
     if not user_id_raw:
         raise UnauthorizedException(detail="Missing test auth header")
-    user = await UserRepository(db).get_by_id(uuid.UUID(user_id_raw))
+    try:
+        user_id = uuid.UUID(user_id_raw)
+    except (ValueError, TypeError):
+        raise UnauthorizedException(detail="Missing or invalid test auth header") from None
+    user = await UserRepository(db).get_by_id(user_id)
     if user is None or not user.is_active:
         raise UnauthorizedException(detail="Test user not found")
     return UserContext(

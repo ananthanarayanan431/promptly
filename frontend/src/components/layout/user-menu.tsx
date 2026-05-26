@@ -113,7 +113,6 @@ export function UserMenu() {
     <div ref={ref} style={{ position: 'relative' }}>
       {open && (
         <div
-          role="menu"
           style={{
             position: 'absolute', bottom: 'calc(100% + 8px)', left: 0, right: 0,
             background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10,
@@ -151,7 +150,6 @@ export function UserMenu() {
           <div style={{ borderTop: '1px solid var(--border)', paddingTop: 4, display: 'flex', flexDirection: 'column', gap: 1 }}>
             <Link
               href="/settings"
-              role="menuitem"
               onClick={() => setOpen(false)}
               style={{
                 display: 'flex', alignItems: 'center', gap: 10, padding: '8px',
@@ -167,7 +165,6 @@ export function UserMenu() {
             </Link>
             <button
               type="button"
-              role="menuitem"
               onClick={handleLogout}
               style={{
                 display: 'flex', alignItems: 'center', gap: 10, padding: '8px',
