@@ -44,3 +44,11 @@ class DomainNotReadyException(HTTPException):
             status_code=status.HTTP_409_CONFLICT,
             detail="Domain dataset is not ready yet. Wait for the preparation job to complete.",
         )
+
+
+class DomainJobNotCancellableException(HTTPException):
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Job cannot be cancelled — it is already completed, failed, or cancelled.",
+        )

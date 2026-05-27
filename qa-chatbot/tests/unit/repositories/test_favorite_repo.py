@@ -13,7 +13,7 @@ from app.repositories.favorite_repo import FavoriteRepository
 
 
 async def _make_user(db: AsyncSession, email: str = "alice@test.com") -> User:
-    u = User(email=email)
+    u = User(email=email, clerk_user_id=f"user_{uuid.uuid4().hex}")
     db.add(u)
     await db.flush()
     return u

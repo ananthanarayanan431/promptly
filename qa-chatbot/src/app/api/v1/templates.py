@@ -5,8 +5,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.types.response import SuccessResponse
 from app.core.rate_limit import RateLimiter
+from app.core.user_context import UserContext
 from app.dependencies import get_current_user, get_db
-from app.models.user import User
 from app.repositories.template_repo import TemplateRepository
 from app.schemas.template import TemplateCategoryGroup, TemplateListResponse, TemplateOut
 
@@ -21,7 +21,7 @@ _default_limiter = RateLimiter(requests=60, window_seconds=60)
 )
 async def list_templates(
     db: Annotated[AsyncSession, Depends(get_db)],
-    _: Annotated[User, Depends(get_current_user)],
+    _: Annotated[UserContext, Depends(get_current_user)],
 ) -> SuccessResponse[TemplateListResponse]:
     """
     Return all active prompt templates grouped by category.

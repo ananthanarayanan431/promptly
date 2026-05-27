@@ -12,12 +12,14 @@ to avoid Celery worker bootstrap issues with async SQLAlchemy / event loops.
 from __future__ import annotations
 
 import asyncio
-import logging
 from typing import Any
 
+import structlog
+
+from app.utils.log import get_logger
 from app.workers.celery_app import celery_app
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 
 @celery_app.task(bind=True, max_retries=3, default_retry_delay=60)  # type: ignore[untyped-decorator]
@@ -43,6 +45,8 @@ def run_prompt_transfer(
     async def _run() -> None:
         from uuid import UUID
 
+        from app.config.app import get_app_settings
+        from app.core.logging import setup_worker_logging
         from app.db.redis import reset_connection_pool
         from app.db.session import AsyncSessionLocal, dispose_async_engine
         from app.llm import get_llm_settings
@@ -67,6 +71,16 @@ def run_prompt_transfer(
             set_pb_job_result,
             set_pb_job_status,
         )
+
+        setup_worker_logging(debug=get_app_settings().DEBUG)
+        structlog.contextvars.clear_contextvars()
+        structlog.contextvars.bind_contextvars(
+            job_id=job_id,
+            user_id=user_id,
+            transfer_job_id=transfer_job_id,
+            task="run_prompt_transfer",
+        )
+        _log.info("task_started", source_model=source_model, target_model=target_model)
 
         reset_connection_pool()
         await dispose_async_engine()
@@ -290,11 +304,11 @@ def run_prompt_transfer(
                 match = re.search(r"retry_after_seconds['\"\s:]+(\d+(?:\.\d+)?)", error_str)
                 retry_in = int(float(match.group(1))) + 5 if match else 60
                 _log.warning(
-                    "PromptBridge 429 for job %s — retrying in %ds (attempt %d/%d)",
-                    job_id,
-                    retry_in,
-                    self.request.retries + 1,
-                    self.max_retries,
+                    "rate_limited_retrying",
+                    job_id=job_id,
+                    retry_in=retry_in,
+                    attempt=self.request.retries + 1,
+                    max_retries=self.max_retries,
                 )
                 await set_pb_job_status(job_id, "queued")
                 await set_pb_job_progress(
@@ -308,7 +322,7 @@ def run_prompt_transfer(
                 )
                 raise self.retry(exc=exc, countdown=retry_in) from exc
 
-            _log.exception("PromptBridge transfer failed: job_id=%s", job_id)
+            _log.exception("transfer_failed", job_id=job_id)
             short_error = error_str[:500]
             await set_pb_job_result(job_id, {"error": short_error})
             await set_pb_job_status(job_id, "failed")
@@ -326,7 +340,7 @@ def run_prompt_transfer(
                         )
                     await db.commit()
             except Exception:  # noqa: BLE001
-                _log.exception("Failed to persist error state for job %s", transfer_job_id)
+                _log.exception("error_state_persist_failed", transfer_job_id=transfer_job_id)
 
         finally:
             # Dispose the engine while the loop is still alive so asyncpg can

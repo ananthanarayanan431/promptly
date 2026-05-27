@@ -14,7 +14,6 @@ Returns a list of (source_prompt_variant, target_prompt_variant) calibrated pair
 from __future__ import annotations
 
 import json
-import logging
 import random
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -39,8 +38,9 @@ from app.prompt_bridge.prompts.map_rpe import (
     EVALUATION_SYSTEM,
     REFLECTION_SYSTEM,
 )
+from app.utils.log import get_logger
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 
 # ── Data structures ───────────────────────────────────────────────────────────
@@ -155,7 +155,7 @@ async def generate_alignment_tasks(
     tasks = _parse_list_safe(str(response.content))
     if not tasks:
         # fallback: split the prompt into implied subtasks
-        _log.warning("Alignment task generation returned empty — using fallback tasks")
+        _log.warning("alignment_tasks_empty_fallback")
         tasks = [f"Test case {i + 1}: evaluate the prompt on a typical use case" for i in range(n)]
     return tasks[:n]
 
@@ -182,7 +182,7 @@ async def evaluate_response(
         feedback = str(parsed.get("feedback", "No feedback provided"))
         return max(0.0, min(1.0, score)), feedback
     except Exception:  # noqa: BLE001
-        _log.exception("Evaluation failed — defaulting to score 0.5")
+        _log.exception("evaluation_failed")
         return 0.5, "Evaluation error"
 
 
@@ -270,7 +270,7 @@ async def run_map_rpe(
         Best PromptCandidate found for target_model.
     """
     # Step 1: generate calibration tasks
-    _log.info("MAP-RPE: generating %d alignment tasks", CALIBRATION_TASKS)
+    _log.info("generating_alignment_tasks", count=CALIBRATION_TASKS)
     alignment_tasks = await generate_alignment_tasks(source_prompt, CALIBRATION_TASKS, task_llm)
 
     # Step 2: initialise K islands, each seeded with source_prompt
@@ -351,11 +351,11 @@ async def run_map_rpe(
                 if child.combined_score > global_best.combined_score:
                     global_best = child
                     _log.debug(
-                        "MAP-RPE g=%d task=%d step=%d new best=%.3f",
-                        g,
-                        task_idx,
-                        local_step,
-                        global_best.combined_score,
+                        "new_best_candidate",
+                        global_iter=g,
+                        task_idx=task_idx,
+                        local_step=local_step,
+                        score=round(global_best.combined_score, 3),
                     )
 
                 # migration
@@ -366,5 +366,5 @@ async def run_map_rpe(
                 if progress_cb is not None and callable(progress_cb):
                     await progress_cb(step_count, total_steps, global_best.combined_score)
 
-    _log.info("MAP-RPE complete. Best score=%.3f", global_best.combined_score)
+    _log.info("map_rpe_complete", best_score=round(global_best.combined_score, 3))
     return global_best

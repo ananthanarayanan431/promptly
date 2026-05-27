@@ -1,13 +1,18 @@
+import uuid
 from collections.abc import AsyncGenerator
 
 import pytest_asyncio
+from fastapi import Depends, Request
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.core.exceptions import UnauthorizedException
+from app.core.user_context import UserContext
 from app.db.session import get_async_session
-from app.dependencies import get_db
+from app.dependencies import get_current_user, get_db
 from app.main import create_app
 from app.models.base import Base
+from app.repositories.user_repo import UserRepository
 
 TEST_DB_URL = "postgresql+asyncpg://postgres:postgres@localhost:5433/qa_chatbot_test"
 
@@ -38,6 +43,36 @@ async def db_session(_db_engine) -> AsyncGenerator[AsyncSession, None]:  # type:
             await conn.execute(table.delete())
 
 
+async def _test_auth_override(
+    request: Request,
+    db: AsyncSession = Depends(get_db),  # noqa: B008
+) -> UserContext:
+    """Test-only replacement for get_current_user.
+
+    Authenticates via the ``X-Test-User-Id`` header (set by test helpers) and
+    loads that user from the DB so credits/email reflect live row state. Absence
+    of the header behaves like an unauthenticated request → 401, preserving the
+    existing "unauthenticated returns 401" tests.
+    """
+    user_id_raw = request.headers.get("X-Test-User-Id")
+    if not user_id_raw:
+        raise UnauthorizedException(detail="Missing test auth header")
+    try:
+        user_id = uuid.UUID(user_id_raw)
+    except (ValueError, TypeError):
+        raise UnauthorizedException(detail="Missing or invalid test auth header") from None
+    user = await UserRepository(db).get_by_id(user_id)
+    if user is None or not user.is_active:
+        raise UnauthorizedException(detail="Test user not found")
+    return UserContext(
+        user_id=user.id,
+        clerk_user_id=user.clerk_user_id,
+        email=user.email,
+        credits=user.credits,
+        org_id=user.clerk_user_id,
+    )
+
+
 @pytest_asyncio.fixture(loop_scope="session")
 async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
     app = create_app()
@@ -48,6 +83,7 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
     # Override BOTH dependency paths that route handlers may use
     app.dependency_overrides[get_db] = _override
     app.dependency_overrides[get_async_session] = _override
+    app.dependency_overrides[get_current_user] = _test_auth_override
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         yield ac

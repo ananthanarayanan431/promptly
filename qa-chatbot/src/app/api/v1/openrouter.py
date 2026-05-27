@@ -13,11 +13,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.types.response import SuccessResponse
 from app.core.rate_limit import RateLimiter
+from app.core.user_context import UserContext
 from app.dependencies import get_current_user, get_db
 from app.llm.settings import get_llm_settings
 from app.models.message import Message
 from app.models.session import ChatSession
-from app.models.user import User
 
 router = APIRouter(prefix="/openrouter", tags=["openrouter"])
 _limiter = RateLimiter(requests=30, window_seconds=60)
@@ -129,7 +129,7 @@ async def _fetch_key_info() -> dict[str, object]:
     dependencies=[Depends(_limiter)],
 )
 async def get_models(
-    _: Annotated[User, Depends(get_current_user)],
+    _: Annotated[UserContext, Depends(get_current_user)],
 ) -> SuccessResponse[ModelListResponse]:
     """
     Return the full OpenRouter model catalogue.
@@ -225,7 +225,7 @@ async def get_models(
 )
 async def get_openrouter_stats(
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> SuccessResponse[OpenRouterStats]:
     """Return OpenRouter key spend summary + per-model breakdown from local DB."""
     key_info = await _fetch_key_info()
@@ -234,7 +234,7 @@ async def get_openrouter_stats(
     stmt = (
         select(Message.council_votes)
         .join(ChatSession, Message.session_id == ChatSession.id)
-        .where(ChatSession.user_id == current_user.id, Message.council_votes.isnot(None))
+        .where(ChatSession.user_id == current_user.user_id, Message.council_votes.isnot(None))
         .order_by(Message.created_at.desc())
         .limit(500)
     )

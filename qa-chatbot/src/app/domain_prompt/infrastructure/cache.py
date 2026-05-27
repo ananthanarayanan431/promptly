@@ -82,3 +82,92 @@ async def get_dp_tournament_state(domain_id: str) -> dict[str, Any] | None:
 async def clear_dp_tournament_state(domain_id: str) -> None:
     redis = await get_redis_client()
     await redis.delete(f"{_TOURNAMENT_PREFIX}{domain_id}")
+
+
+# ── Dataset-preparation stage tracking ───────────────────────────────────────
+
+
+async def set_dp_job_stage(job_id: str, stage: str) -> None:
+    """Write current sub-stage of prepare_domain_dataset for UI progress tracking."""
+    redis = await get_redis_client()
+    await redis.set(
+        f"{_job_key(job_id)}:stage",
+        stage,
+        ex=_redis_settings.REDIS_TTL_SECONDS,
+    )
+
+
+async def get_dp_job_stage(job_id: str) -> str | None:
+    redis = await get_redis_client()
+    result: str | None = await redis.get(f"{_job_key(job_id)}:stage")
+    return result
+
+
+# ── Cancel / Celery / Active-job helpers ──────────────────────────────────────
+
+_DOMAIN_ACTIVE_JOB_PREFIX = "domain_prompt:domain:"
+
+
+async def set_dp_job_cancel(job_id: str) -> None:
+    """Signal the worker to stop at the next inter-stage checkpoint."""
+    redis = await get_redis_client()
+    await redis.set(f"{_job_key(job_id)}:cancel", "1", ex=3600)
+
+
+async def is_dp_job_cancelled(job_id: str) -> bool:
+    redis = await get_redis_client()
+    val: str | None = await redis.get(f"{_job_key(job_id)}:cancel")
+    return val == "1"
+
+
+async def set_dp_celery_task_id(job_id: str, celery_task_id: str) -> None:
+    """Store the Celery task ID so cancel can revoke it from the broker queue."""
+    redis = await get_redis_client()
+    await redis.set(
+        f"{_job_key(job_id)}:celery_task_id",
+        celery_task_id,
+        ex=_redis_settings.REDIS_TTL_SECONDS,
+    )
+
+
+async def get_dp_celery_task_id(job_id: str) -> str | None:
+    redis = await get_redis_client()
+    result: str | None = await redis.get(f"{_job_key(job_id)}:celery_task_id")
+    return result
+
+
+async def set_dp_job_domain_id(job_id: str, domain_id: str) -> None:
+    """Store domain_id on the job so cancel-by-job-id can look up the domain."""
+    redis = await get_redis_client()
+    await redis.set(
+        f"{_job_key(job_id)}:domain_id",
+        domain_id,
+        ex=_redis_settings.REDIS_TTL_SECONDS,
+    )
+
+
+async def get_dp_job_domain_id(job_id: str) -> str | None:
+    redis = await get_redis_client()
+    result: str | None = await redis.get(f"{_job_key(job_id)}:domain_id")
+    return result
+
+
+async def set_dp_domain_active_job(domain_id: str, job_id: str) -> None:
+    """Map a domain to its currently running job_id (for cancel-by-domain-id)."""
+    redis = await get_redis_client()
+    await redis.set(
+        f"{_DOMAIN_ACTIVE_JOB_PREFIX}{domain_id}:active_job_id",
+        job_id,
+        ex=3600,
+    )
+
+
+async def get_dp_domain_active_job(domain_id: str) -> str | None:
+    redis = await get_redis_client()
+    result: str | None = await redis.get(f"{_DOMAIN_ACTIVE_JOB_PREFIX}{domain_id}:active_job_id")
+    return result
+
+
+async def clear_dp_domain_active_job(domain_id: str) -> None:
+    redis = await get_redis_client()
+    await redis.delete(f"{_DOMAIN_ACTIVE_JOB_PREFIX}{domain_id}:active_job_id")

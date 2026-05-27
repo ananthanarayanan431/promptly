@@ -10,7 +10,7 @@ import { useJobStream } from '@/hooks/use-job-stream';
 import { api } from '@/lib/api';
 import { formatApiErrorDetail } from '@/lib/api-errors';
 import { cn } from '@/lib/utils';
-import { useAuthStore } from '@/stores/auth-store';
+import { useUser } from '@clerk/nextjs';
 import { useJobStore } from '@/stores/job-store';
 import { ChatMessage } from './chat-message';
 import { ChatInput } from './chat-input';
@@ -133,9 +133,9 @@ export function OptimizeChat() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const user = useAuthStore((s) => s.user);
+  const { user: clerkUser } = useUser();
   const setGeneratingSession = useJobStore((s) => s.setGeneratingSession);
-  const firstName = user?.email.split('@')[0] ?? 'there';
+  const firstName = clerkUser?.firstName ?? clerkUser?.primaryEmailAddress?.emailAddress?.split('@')[0] ?? 'there';
 
   const urlSession = searchParams.get('session');
 

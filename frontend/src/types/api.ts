@@ -200,6 +200,10 @@ export interface UsageBucket {
   health_score_credits: number;
   advisory_calls: number;
   advisory_credits: number;
+  domain_pdo_calls: number;
+  domain_pdo_credits: number;
+  bridge_calls: number;
+  bridge_credits: number;
 }
 
 export interface UsageStats {
@@ -411,4 +415,17 @@ export interface FavoriteUpdateRequest {
   tags?: string[];
   category?: FavoriteCategory;
   is_pinned?: boolean;
+}
+
+export interface ApiKeyResponse {
+  id: string;
+  name: string;
+  org_id: string;
+  is_active: boolean;
+  created_at: string;
+  last_used_at: string | null;
+}
+
+export interface ApiKeyCreatedResponse extends ApiKeyResponse {
+  key: string; // shown only once
 }

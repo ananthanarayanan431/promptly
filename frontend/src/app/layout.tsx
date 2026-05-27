@@ -4,8 +4,8 @@ import { Instrument_Serif } from 'next/font/google';
 import './globals.css';
 import { Providers } from '@/components/providers';
 import { Toaster } from '@/components/ui/sonner';
-import { cookies } from 'next/headers';
-import { AuthInitializer } from '@/components/auth-initializer';
+import { ClerkProvider } from '@clerk/nextjs';
+import { ClerkTokenSync } from '@/components/clerk-token-sync';
 
 const geist = localFont({
   src: './fonts/GeistVF.woff',
@@ -34,22 +34,22 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  const token = cookies().get('auth_token')?.value || null;
-
   return (
-    <html lang="en" suppressHydrationWarning>
-      {/* Apply theme before first paint to avoid flash */}
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: `(function(){try{var t=localStorage.getItem('ply-theme');if(t==='light'||t==='dark'){document.documentElement.setAttribute('data-theme',t);}else if(window.matchMedia('(prefers-color-scheme: light)').matches){document.documentElement.setAttribute('data-theme','light');}else{document.documentElement.setAttribute('data-theme','dark');}}catch(e){}})();` }} />
-      </head>
-      <body className={`${geist.variable} ${geistMono.variable} ${instrumentSerif.variable}`}
-            style={{ fontFamily: 'var(--font-geist), ui-sans-serif, system-ui, sans-serif' }}>
-        <AuthInitializer token={token} />
-        <Providers>
-          {children}
-          <Toaster />
-        </Providers>
-      </body>
-    </html>
+    <ClerkProvider>
+      <html lang="en" suppressHydrationWarning>
+        {/* Apply theme before first paint to avoid flash */}
+        <head>
+          <script dangerouslySetInnerHTML={{ __html: `(function(){try{var t=localStorage.getItem('ply-theme');if(t==='light'||t==='dark'){document.documentElement.setAttribute('data-theme',t);}else if(window.matchMedia('(prefers-color-scheme: light)').matches){document.documentElement.setAttribute('data-theme','light');}else{document.documentElement.setAttribute('data-theme','dark');}}catch(e){}})();` }} />
+        </head>
+        <body className={`${geist.variable} ${geistMono.variable} ${instrumentSerif.variable}`}
+              style={{ fontFamily: 'var(--font-geist), ui-sans-serif, system-ui, sans-serif' }}>
+          <Providers>
+            <ClerkTokenSync />
+            {children}
+            <Toaster />
+          </Providers>
+        </body>
+      </html>
+    </ClerkProvider>
   );
 }

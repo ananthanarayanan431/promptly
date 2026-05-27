@@ -27,14 +27,30 @@ class UsageBucket(BaseModel):
     health_score_credits: int = 0
     advisory_calls: int = 0
     advisory_credits: int = 0
+    domain_pdo_calls: int = 0
+    domain_pdo_credits: int = 0
+    bridge_calls: int = 0
+    bridge_credits: int = 0
 
     @property
     def total_calls(self) -> int:
-        return self.optimize_calls + self.health_score_calls + self.advisory_calls
+        return (
+            self.optimize_calls
+            + self.health_score_calls
+            + self.advisory_calls
+            + self.domain_pdo_calls
+            + self.bridge_calls
+        )
 
     @property
     def total_credits(self) -> int:
-        return self.optimize_credits + self.health_score_credits + self.advisory_credits
+        return (
+            self.optimize_credits
+            + self.health_score_credits
+            + self.advisory_credits
+            + self.domain_pdo_credits
+            + self.bridge_credits
+        )
 
 
 class UsageStats(BaseModel):

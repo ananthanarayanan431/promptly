@@ -58,6 +58,7 @@ class CreateDomainJobResponse(BaseModel):
 class DomainJobPollResponse(BaseModel):
     job_id: str
     status: str
+    stage: str | None = None
     domain_id: uuid.UUID | None = None
     result: dict[str, Any] | None = None
     error: str | None = None
@@ -119,3 +120,9 @@ class OptimizationRunResponse(BaseModel):
 
 class RunListResponse(BaseModel):
     runs: list[OptimizationRunResponse]
+
+
+class CancelDomainJobResponse(BaseModel):
+    job_id: str
+    domain_id: str
+    cancelled: bool

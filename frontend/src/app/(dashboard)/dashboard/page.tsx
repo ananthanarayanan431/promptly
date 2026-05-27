@@ -9,7 +9,7 @@ import type { OpenRouterStats } from '@/types/openrouter';
 import { formatDistanceToNow } from 'date-fns';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { useAuthStore } from '@/stores/auth-store';
+import { useUser } from '@clerk/nextjs';
 
 const ActivityChart = dynamic(
   () => import('@/components/dashboard/activity-chart').then((m) => ({ default: m.ActivityChart })),
@@ -556,7 +556,7 @@ function OpenRouterPanel({ data, loading }: { data: OpenRouterStats | undefined;
 /* ── Page ─────────────────────────────────────────────────────────────────── */
 
 export default function DashboardHome() {
-  const user = useAuthStore((s) => s.user);
+  const { user: clerkUser } = useUser();
 
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['dashboard-stats'],
@@ -614,7 +614,7 @@ export default function DashboardHome() {
   });
 
   const lowCredits = stats ? stats.credits_remaining < 20 : false;
-  const firstName = user?.email?.split('@')[0] ?? 'there';
+  const firstName = clerkUser?.firstName ?? clerkUser?.primaryEmailAddress?.emailAddress?.split('@')[0] ?? 'there';
   const recentSessions = recentData?.sessions ?? [];
   const usage = stats?.usage;
   const bridgeJobs = bridgeJobsData ?? [];

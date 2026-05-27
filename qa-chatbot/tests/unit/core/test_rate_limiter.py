@@ -5,7 +5,7 @@ import pytest
 from fastapi import Request
 
 from app.core.rate_limit import RateLimiter
-from app.models.user import User
+from app.core.user_context import UserContext
 
 
 def _make_request(path: str = "/api/v1/chat/") -> Request:
@@ -19,8 +19,14 @@ def _make_request(path: str = "/api/v1/chat/") -> Request:
     return Request(scope)
 
 
-def _make_user() -> User:
-    return User(id=uuid4(), email="test@test.com", credits=100, is_active=True)
+def _make_user() -> UserContext:
+    return UserContext(
+        user_id=uuid4(),
+        clerk_user_id="user_test_clerk",
+        email="test@test.com",
+        credits=100,
+        org_id="org_test",
+    )
 
 
 def _make_redis_mock(execute_return: list[int]) -> tuple[MagicMock, MagicMock]:
@@ -80,7 +86,7 @@ async def test_rate_limiter_uses_user_id_as_key() -> None:
     # Verify the pipeline was called with the correct key
     mock_pipe.incr.assert_called_once()
     key_used = mock_pipe.incr.call_args[0][0]
-    assert str(user.id) in key_used
+    assert str(user.user_id) in key_used
     assert "/api/v1/chat/" in key_used
 
 

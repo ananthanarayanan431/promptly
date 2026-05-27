@@ -3,17 +3,13 @@
 import json
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import UUID
 
 import pytest
-from faker import Faker
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.message import Message
 from app.models.session import ChatSession
-
-fake = Faker()
 
 _METRIC = {"score": 7, "rationale": "Good"}
 _HEALTH_SCORE_JSON: dict[str, Any] = {
@@ -41,18 +37,9 @@ _HEALTH_SCORE_JSON: dict[str, Any] = {
 }
 
 
-async def _make_user(client: AsyncClient, db: AsyncSession) -> dict[str, str]:
-    email = fake.unique.email()
-    password = "Pass123!"  # noqa: S105
-    await client.post("/api/v1/auth/register", json={"email": email, "password": password})
-    login = await client.post("/api/v1/auth/login", data={"username": email, "password": password})
-    token = login.json()["data"]["access_token"]
-    return {"Authorization": f"Bearer {token}"}
-
-
 @pytest.mark.asyncio
-async def test_dashboard_stats_empty_user(client: AsyncClient, db_session: AsyncSession) -> None:
-    headers = await _make_user(client, db_session)
+async def test_dashboard_stats_empty_user(client: AsyncClient, make_user) -> None:
+    _, headers = await make_user()
     res = await client.get("/api/v1/stats", headers=headers)
     assert res.status_code == 200
     data = res.json()["data"]
@@ -73,10 +60,8 @@ async def test_dashboard_stats_unauthenticated(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_dashboard_stats_credits_reflected(
-    client: AsyncClient, db_session: AsyncSession
-) -> None:
-    headers = await _make_user(client, db_session)
+async def test_dashboard_stats_credits_reflected(client: AsyncClient, make_user) -> None:
+    _, headers = await make_user()
     res = await client.get("/api/v1/stats", headers=headers)
     assert res.status_code == 200
     data = res.json()["data"]
@@ -86,9 +71,9 @@ async def test_dashboard_stats_credits_reflected(
 
 @pytest.mark.asyncio
 async def test_dashboard_stats_streak_days_zero_for_new_user(
-    client: AsyncClient, db_session: AsyncSession
+    client: AsyncClient, make_user
 ) -> None:
-    headers = await _make_user(client, db_session)
+    _, headers = await make_user()
     res = await client.get("/api/v1/stats", headers=headers)
     assert res.status_code == 200
     assert res.json()["data"]["streak_days"] == 0
@@ -96,10 +81,10 @@ async def test_dashboard_stats_streak_days_zero_for_new_user(
 
 @pytest.mark.asyncio
 async def test_dashboard_stats_usage_reflected_after_health_score(
-    client: AsyncClient, db_session: AsyncSession
+    client: AsyncClient, make_user
 ) -> None:
     """health_score and advisory actions appear in usage.all_time."""
-    headers = await _make_user(client, db_session)
+    _, headers = await make_user()
 
     mock = MagicMock()
     resp = MagicMock()
@@ -128,11 +113,9 @@ async def test_dashboard_stats_usage_reflected_after_health_score(
 
 
 @pytest.mark.asyncio
-async def test_dashboard_stats_versions_saved_reflected(
-    client: AsyncClient, db_session: AsyncSession
-) -> None:
+async def test_dashboard_stats_versions_saved_reflected(client: AsyncClient, make_user) -> None:
     """Creating a prompt version increments versions_saved in stats."""
-    headers = await _make_user(client, db_session)
+    _, headers = await make_user()
 
     await client.post(
         "/api/v1/prompts/versions",
@@ -148,10 +131,8 @@ async def test_dashboard_stats_versions_saved_reflected(
 
 
 @pytest.mark.asyncio
-async def test_dashboard_stats_daily_activity_has_30_days(
-    client: AsyncClient, db_session: AsyncSession
-) -> None:
-    headers = await _make_user(client, db_session)
+async def test_dashboard_stats_daily_activity_has_30_days(client: AsyncClient, make_user) -> None:
+    _, headers = await make_user()
     res = await client.get("/api/v1/stats", headers=headers)
     assert res.status_code == 200
     daily = res.json()["data"]["daily_activity"]
@@ -160,16 +141,13 @@ async def test_dashboard_stats_daily_activity_has_30_days(
 
 @pytest.mark.asyncio
 async def test_dashboard_stats_with_messages_counts_optimized(
-    client: AsyncClient, db_session: AsyncSession
+    client: AsyncClient, db_session: AsyncSession, make_user
 ) -> None:
     """Messages with a response count toward prompts_optimized."""
-    headers = await _make_user(client, db_session)
-
-    me = await client.get("/api/v1/users/me", headers=headers)
-    user_id = UUID(me.json()["data"]["id"])
+    user, headers = await make_user()
 
     # Create a session and message directly in DB
-    session = ChatSession(user_id=user_id, title="Test", graph_thread_id="test-thread-001")
+    session = ChatSession(user_id=user.id, title="Test", graph_thread_id="test-thread-001")
     db_session.add(session)
     await db_session.flush()
 
@@ -182,7 +160,7 @@ async def test_dashboard_stats_with_messages_counts_optimized(
         council_votes=[{"model": "openai/gpt-4o-mini", "usage": {"total_tokens": 100}}],
     )
     db_session.add(msg)
-    await db_session.commit()
+    await db_session.flush()
 
     res = await client.get("/api/v1/stats", headers=headers)
     assert res.status_code == 200

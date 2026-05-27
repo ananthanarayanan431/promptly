@@ -18,12 +18,10 @@ if TYPE_CHECKING:
 class User(Base, UUIDMixin, TimestampMixin):
     __tablename__ = "users"
 
+    clerk_user_id: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
-    hashed_password: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    api_key_hash: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    is_superuser: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     credits: Mapped[int] = mapped_column(Integer, default=100, server_default="100", nullable=False)
 
@@ -37,7 +35,7 @@ class User(Base, UUIDMixin, TimestampMixin):
         back_populates="user", cascade="all, delete-orphan"
     )
     api_keys: Mapped[list[ApiKey]] = relationship(
-        back_populates="user", cascade="all, delete-orphan"
+        back_populates="created_by_user", cascade="all, delete-orphan"
     )
 
     def __repr__(self) -> str:

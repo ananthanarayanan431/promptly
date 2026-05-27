@@ -1,10 +1,10 @@
-from collections.abc import AsyncGenerator
+import uuid
+from collections.abc import Awaitable, Callable
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import pytest_asyncio
 from faker import Faker
-from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,6 +12,32 @@ from app.models.prompt_category import PromptCategory
 from app.models.user import User
 
 fake = Faker()
+
+# Factory signature: (*, email=None, credits=100) -> (User, auth-headers dict)
+MakeUser = Callable[..., Awaitable[tuple[User, dict[str, str]]]]
+
+
+@pytest_asyncio.fixture
+async def make_user(db_session: AsyncSession) -> MakeUser:
+    """Factory fixture: create a User row and return (user, auth headers).
+
+    The headers carry ``X-Test-User-Id``, which the test-only get_current_user
+    override in the root conftest resolves back to this user (loading live
+    credits/email from the DB). Call multiple times for multi-user tests.
+    """
+
+    async def _make(*, email: str | None = None, credits: int = 100) -> tuple[User, dict[str, str]]:
+        user = User(
+            email=email or fake.unique.email(),
+            clerk_user_id=f"user_{uuid.uuid4().hex}",
+            credits=credits,
+        )
+        db_session.add(user)
+        await db_session.flush()
+        await db_session.refresh(user)
+        return user, {"X-Test-User-Id": str(user.id)}
+
+    return _make
 
 
 @pytest.fixture(autouse=True)
@@ -58,36 +84,6 @@ def mock_cache_redis(monkeypatch: pytest.MonkeyPatch) -> None:
         "app.prompt_bridge.infrastructure.cache.get_redis_client",
         AsyncMock(return_value=mock_redis),
     )
-
-
-@pytest_asyncio.fixture(loop_scope="session")
-async def auth_headers(
-    client: AsyncClient, db_session: AsyncSession
-) -> AsyncGenerator[dict[str, str], None]:
-    """Register a fresh user, log in, yield auth headers, then delete the user."""
-    email = fake.unique.email()
-    password = "TestPass123!"  # noqa: S105
-
-    reg = await client.post(
-        "/api/v1/auth/register",
-        json={"email": email, "password": password},
-    )
-    assert reg.status_code == 200, reg.text
-
-    login = await client.post(
-        "/api/v1/auth/login",
-        data={"username": email, "password": password},
-    )
-    assert login.status_code == 200, login.text
-    token = login.json()["data"]["access_token"]
-
-    yield {"Authorization": f"Bearer {token}"}
-
-    result = await db_session.execute(select(User).where(User.email == email))
-    user = result.scalar_one_or_none()
-    if user:
-        await db_session.delete(user)
-        await db_session.commit()
 
 
 @pytest_asyncio.fixture(autouse=True)

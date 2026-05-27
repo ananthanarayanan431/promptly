@@ -2,9 +2,9 @@ from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request
 
+from app.core.user_context import UserContext
 from app.db.redis import get_redis_client
 from app.dependencies import get_current_user
-from app.models.user import User
 
 
 class RateLimiter:
@@ -17,12 +17,12 @@ class RateLimiter:
     async def __call__(
         self,
         request: Request,
-        current_user: Annotated[User, Depends(get_current_user)],
+        current_user: Annotated[UserContext, Depends(get_current_user)],
     ) -> None:
         redis = await get_redis_client()
         route = request.scope.get("route")
         route_path = route.path if route is not None else request.url.path
-        key = f"rl:user:{current_user.id}:{route_path}"
+        key = f"rl:user:{current_user.user_id}:{route_path}"
         pipe = redis.pipeline()
         pipe.incr(key)
         pipe.expire(key, self.window_seconds, nx=True)

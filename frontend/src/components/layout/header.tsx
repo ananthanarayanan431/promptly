@@ -1,9 +1,7 @@
 'use client';
 
-import { useAuthStore } from '@/stores/auth-store';
 import { useQuery } from '@tanstack/react-query';
 import { usePathname } from 'next/navigation';
-import { useEffect } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import type { User } from '@/types/api';
@@ -25,7 +23,6 @@ function getBreadcrumbs(pathname: string): string[] {
 
 export function Header() {
   const pathname = usePathname();
-  const { setUser } = useAuthStore();
   const crumbs = getBreadcrumbs(pathname);
 
   const { data: fetchedUser } = useQuery<User>({
@@ -36,10 +33,6 @@ export function Header() {
     },
     staleTime: 1000 * 60 * 5,
   });
-
-  useEffect(() => {
-    if (fetchedUser) setUser(fetchedUser);
-  }, [fetchedUser, setUser]);
 
   const credits = fetchedUser?.credits ?? 0;
   const maxCredits = 1000;

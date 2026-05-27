@@ -1,4 +1,3 @@
-import datetime
 import uuid
 
 from pydantic import BaseModel, ConfigDict
@@ -15,9 +14,7 @@ class AddCreditRequest(BaseModel):
 class UserResponse(BaseModel):
     id: uuid.UUID
     email: str
-    full_name: str | None = None
-    is_active: bool
     credits: int
-    last_login_at: datetime.datetime | None = None
+    org_id: str
 
     model_config = ConfigDict(from_attributes=True)

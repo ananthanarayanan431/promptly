@@ -1,28 +1,7 @@
 import uuid
 
 import pytest
-from faker import Faker
 from httpx import AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.core.security import create_access_token
-from app.models.user import User
-
-fake = Faker()
-
-
-async def _make_user(db: AsyncSession, email: str | None = None) -> tuple[User, str]:
-    """Create a bare User row and return (user, jwt_token)."""
-    user = User(email=email or fake.unique.email())
-    db.add(user)
-    await db.flush()
-    token = create_access_token(subject=str(user.id))
-    return user, token
-
-
-def _auth(token: str) -> dict[str, str]:
-    return {"Authorization": f"Bearer {token}"}
-
 
 # ---------------------------------------------------------------------------
 # LIST — empty and after create
@@ -30,11 +9,10 @@ def _auth(token: str) -> dict[str, str]:
 
 
 @pytest.mark.asyncio
-async def test_list_api_keys_empty(client: AsyncClient, db_session: AsyncSession) -> None:
-    _, token = await _make_user(db_session)
-    await db_session.commit()
+async def test_list_api_keys_empty(client: AsyncClient, make_user) -> None:
+    _, headers = await make_user()
 
-    res = await client.get("/api/v1/users/api-keys", headers=_auth(token))
+    res = await client.get("/api/v1/users/api-keys", headers=headers)
     assert res.status_code == 200
     data = res.json()["data"]
     assert data["total"] == 0
@@ -42,13 +20,12 @@ async def test_list_api_keys_empty(client: AsyncClient, db_session: AsyncSession
 
 
 @pytest.mark.asyncio
-async def test_list_api_keys_after_create(client: AsyncClient, db_session: AsyncSession) -> None:
-    _, token = await _make_user(db_session)
-    await db_session.commit()
+async def test_list_api_keys_after_create(client: AsyncClient, make_user) -> None:
+    _, headers = await make_user()
 
-    await client.post("/api/v1/users/api-keys", json={"name": "my-key"}, headers=_auth(token))
+    await client.post("/api/v1/users/api-keys", json={"name": "my-key"}, headers=headers)
 
-    res = await client.get("/api/v1/users/api-keys", headers=_auth(token))
+    res = await client.get("/api/v1/users/api-keys", headers=headers)
     assert res.status_code == 200
     data = res.json()["data"]
     assert data["total"] == 1
@@ -57,24 +34,21 @@ async def test_list_api_keys_after_create(client: AsyncClient, db_session: Async
 
 
 @pytest.mark.asyncio
-async def test_list_api_keys_status_filter_active(
-    client: AsyncClient, db_session: AsyncSession
-) -> None:
-    _, token = await _make_user(db_session)
-    await db_session.commit()
+async def test_list_api_keys_status_filter_active(client: AsyncClient, make_user) -> None:
+    _, headers = await make_user()
 
     create_res = await client.post(
-        "/api/v1/users/api-keys", json={"name": "active-key"}, headers=_auth(token)
+        "/api/v1/users/api-keys", json={"name": "active-key"}, headers=headers
     )
     key_id = create_res.json()["data"]["id"]
-    await client.post("/api/v1/users/api-keys", json={"name": "revoke-me"}, headers=_auth(token))
-    revoke_res = await client.get("/api/v1/users/api-keys", headers=_auth(token))
+    await client.post("/api/v1/users/api-keys", json={"name": "revoke-me"}, headers=headers)
+    revoke_res = await client.get("/api/v1/users/api-keys", headers=headers)
     second_key_id = next(
         k["id"] for k in revoke_res.json()["data"]["keys"] if k["name"] == "revoke-me"
     )
-    await client.delete(f"/api/v1/users/api-keys/{second_key_id}", headers=_auth(token))
+    await client.delete(f"/api/v1/users/api-keys/{second_key_id}", headers=headers)
 
-    res = await client.get("/api/v1/users/api-keys?status=active", headers=_auth(token))
+    res = await client.get("/api/v1/users/api-keys?status=active", headers=headers)
     assert res.status_code == 200
     data = res.json()["data"]
     assert data["total"] == 1
@@ -83,20 +57,17 @@ async def test_list_api_keys_status_filter_active(
 
 
 @pytest.mark.asyncio
-async def test_list_api_keys_status_filter_revoked(
-    client: AsyncClient, db_session: AsyncSession
-) -> None:
-    _, token = await _make_user(db_session)
-    await db_session.commit()
+async def test_list_api_keys_status_filter_revoked(client: AsyncClient, make_user) -> None:
+    _, headers = await make_user()
 
-    await client.post("/api/v1/users/api-keys", json={"name": "keep-active"}, headers=_auth(token))
+    await client.post("/api/v1/users/api-keys", json={"name": "keep-active"}, headers=headers)
     create_res = await client.post(
-        "/api/v1/users/api-keys", json={"name": "to-revoke"}, headers=_auth(token)
+        "/api/v1/users/api-keys", json={"name": "to-revoke"}, headers=headers
     )
     key_id = create_res.json()["data"]["id"]
-    await client.delete(f"/api/v1/users/api-keys/{key_id}", headers=_auth(token))
+    await client.delete(f"/api/v1/users/api-keys/{key_id}", headers=headers)
 
-    res = await client.get("/api/v1/users/api-keys?status=revoked", headers=_auth(token))
+    res = await client.get("/api/v1/users/api-keys?status=revoked", headers=headers)
     assert res.status_code == 200
     data = res.json()["data"]
     assert data["total"] == 1
@@ -110,16 +81,15 @@ async def test_list_api_keys_status_filter_revoked(
 
 
 @pytest.mark.asyncio
-async def test_get_existing_api_key(client: AsyncClient, db_session: AsyncSession) -> None:
-    _, token = await _make_user(db_session)
-    await db_session.commit()
+async def test_get_existing_api_key(client: AsyncClient, make_user) -> None:
+    _, headers = await make_user()
 
     create_res = await client.post(
-        "/api/v1/users/api-keys", json={"name": "fetch-me"}, headers=_auth(token)
+        "/api/v1/users/api-keys", json={"name": "fetch-me"}, headers=headers
     )
     key_id = create_res.json()["data"]["id"]
 
-    res = await client.get(f"/api/v1/users/api-keys/{key_id}", headers=_auth(token))
+    res = await client.get(f"/api/v1/users/api-keys/{key_id}", headers=headers)
     assert res.status_code == 200
     data = res.json()["data"]
     assert data["id"] == key_id
@@ -128,31 +98,25 @@ async def test_get_existing_api_key(client: AsyncClient, db_session: AsyncSessio
 
 
 @pytest.mark.asyncio
-async def test_get_nonexistent_api_key_returns_404(
-    client: AsyncClient, db_session: AsyncSession
-) -> None:
-    _, token = await _make_user(db_session)
-    await db_session.commit()
+async def test_get_nonexistent_api_key_returns_404(client: AsyncClient, make_user) -> None:
+    _, headers = await make_user()
 
-    res = await client.get(f"/api/v1/users/api-keys/{uuid.uuid4()}", headers=_auth(token))
+    res = await client.get(f"/api/v1/users/api-keys/{uuid.uuid4()}", headers=headers)
     assert res.status_code == 404
 
 
 @pytest.mark.asyncio
-async def test_get_other_users_api_key_returns_404(
-    client: AsyncClient, db_session: AsyncSession
-) -> None:
+async def test_get_other_users_api_key_returns_404(client: AsyncClient, make_user) -> None:
     """A user cannot retrieve another user's key."""
-    _, token_a = await _make_user(db_session)
-    _, token_b = await _make_user(db_session)
-    await db_session.commit()
+    _, headers_a = await make_user()
+    _, headers_b = await make_user()
 
     create_res = await client.post(
-        "/api/v1/users/api-keys", json={"name": "private-key"}, headers=_auth(token_a)
+        "/api/v1/users/api-keys", json={"name": "private-key"}, headers=headers_a
     )
     key_id = create_res.json()["data"]["id"]
 
-    res = await client.get(f"/api/v1/users/api-keys/{key_id}", headers=_auth(token_b))
+    res = await client.get(f"/api/v1/users/api-keys/{key_id}", headers=headers_b)
     assert res.status_code == 404
 
 
@@ -162,13 +126,10 @@ async def test_get_other_users_api_key_returns_404(
 
 
 @pytest.mark.asyncio
-async def test_create_api_key_returns_201_with_qac_prefix(
-    client: AsyncClient, db_session: AsyncSession
-) -> None:
-    _, token = await _make_user(db_session)
-    await db_session.commit()
+async def test_create_api_key_returns_201_with_qac_prefix(client: AsyncClient, make_user) -> None:
+    _, headers = await make_user()
 
-    res = await client.post("/api/v1/users/api-keys", json={"name": "ci-key"}, headers=_auth(token))
+    res = await client.post("/api/v1/users/api-keys", json={"name": "ci-key"}, headers=headers)
     assert res.status_code == 201
     data = res.json()["data"]
     assert data["key"].startswith("qac_")
@@ -178,16 +139,11 @@ async def test_create_api_key_returns_201_with_qac_prefix(
 
 
 @pytest.mark.asyncio
-async def test_create_duplicate_name_returns_409(
-    client: AsyncClient, db_session: AsyncSession
-) -> None:
-    _, token = await _make_user(db_session)
-    await db_session.commit()
+async def test_create_duplicate_name_returns_409(client: AsyncClient, make_user) -> None:
+    _, headers = await make_user()
 
-    await client.post("/api/v1/users/api-keys", json={"name": "dup-key"}, headers=_auth(token))
-    res = await client.post(
-        "/api/v1/users/api-keys", json={"name": "dup-key"}, headers=_auth(token)
-    )
+    await client.post("/api/v1/users/api-keys", json={"name": "dup-key"}, headers=headers)
+    res = await client.post("/api/v1/users/api-keys", json={"name": "dup-key"}, headers=headers)
     assert res.status_code == 409
 
 
@@ -197,18 +153,15 @@ async def test_create_duplicate_name_returns_409(
 
 
 @pytest.mark.asyncio
-async def test_revoke_key_returns_200_with_revoked_state(
-    client: AsyncClient, db_session: AsyncSession
-) -> None:
-    _, token = await _make_user(db_session)
-    await db_session.commit()
+async def test_revoke_key_returns_200_with_revoked_state(client: AsyncClient, make_user) -> None:
+    _, headers = await make_user()
 
     create_res = await client.post(
-        "/api/v1/users/api-keys", json={"name": "revoke-key"}, headers=_auth(token)
+        "/api/v1/users/api-keys", json={"name": "revoke-key"}, headers=headers
     )
     key_id = create_res.json()["data"]["id"]
 
-    res = await client.delete(f"/api/v1/users/api-keys/{key_id}", headers=_auth(token))
+    res = await client.delete(f"/api/v1/users/api-keys/{key_id}", headers=headers)
     assert res.status_code == 200
     data = res.json()["data"]
     assert data["is_active"] is False
@@ -216,47 +169,40 @@ async def test_revoke_key_returns_200_with_revoked_state(
 
 
 @pytest.mark.asyncio
-async def test_revoke_already_revoked_returns_409(
-    client: AsyncClient, db_session: AsyncSession
-) -> None:
-    _, token = await _make_user(db_session)
-    await db_session.commit()
+async def test_revoke_already_revoked_returns_409(client: AsyncClient, make_user) -> None:
+    _, headers = await make_user()
 
     create_res = await client.post(
-        "/api/v1/users/api-keys", json={"name": "double-revoke"}, headers=_auth(token)
+        "/api/v1/users/api-keys", json={"name": "double-revoke"}, headers=headers
     )
     key_id = create_res.json()["data"]["id"]
 
-    await client.delete(f"/api/v1/users/api-keys/{key_id}", headers=_auth(token))
-    res = await client.delete(f"/api/v1/users/api-keys/{key_id}", headers=_auth(token))
+    await client.delete(f"/api/v1/users/api-keys/{key_id}", headers=headers)
+    res = await client.delete(f"/api/v1/users/api-keys/{key_id}", headers=headers)
     assert res.status_code == 409
 
 
 @pytest.mark.asyncio
-async def test_revoke_nonexistent_key_returns_404(
-    client: AsyncClient, db_session: AsyncSession
-) -> None:
-    _, token = await _make_user(db_session)
-    await db_session.commit()
+async def test_revoke_nonexistent_key_returns_404(client: AsyncClient, make_user) -> None:
+    _, headers = await make_user()
 
-    res = await client.delete(f"/api/v1/users/api-keys/{uuid.uuid4()}", headers=_auth(token))
+    res = await client.delete(f"/api/v1/users/api-keys/{uuid.uuid4()}", headers=headers)
     assert res.status_code == 404
 
 
 @pytest.mark.asyncio
 async def test_list_after_revoke_shows_revoked_in_status_filter(
-    client: AsyncClient, db_session: AsyncSession
+    client: AsyncClient, make_user
 ) -> None:
-    _, token = await _make_user(db_session)
-    await db_session.commit()
+    _, headers = await make_user()
 
     create_res = await client.post(
-        "/api/v1/users/api-keys", json={"name": "will-be-revoked"}, headers=_auth(token)
+        "/api/v1/users/api-keys", json={"name": "will-be-revoked"}, headers=headers
     )
     key_id = create_res.json()["data"]["id"]
-    await client.delete(f"/api/v1/users/api-keys/{key_id}", headers=_auth(token))
+    await client.delete(f"/api/v1/users/api-keys/{key_id}", headers=headers)
 
-    res = await client.get("/api/v1/users/api-keys?status=revoked", headers=_auth(token))
+    res = await client.get("/api/v1/users/api-keys?status=revoked", headers=headers)
     assert res.status_code == 200
     data = res.json()["data"]
     assert data["total"] == 1

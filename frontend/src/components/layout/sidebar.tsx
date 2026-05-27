@@ -1,14 +1,11 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
-import { Suspense } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useAuthStore } from '@/stores/auth-store';
-import { clearToken } from '@/lib/auth';
-import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import Link from 'next/link';
 import type { User, SessionsGrouped, SessionSummary } from '@/types/api';
+import { UserMenu } from './user-menu';
 
 /* ── Logo ─────────────────────────────────────────────────────────── */
 function Logo() {
@@ -85,13 +82,6 @@ function NavIcon({ name }: { name: string }) {
   );
 }
 
-function deriveDisplayName(email: string): string {
-  return email.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-}
-function deriveInitials(name: string): string {
-  return name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
-}
-
 const CREDITS_START = 100;
 
 function CreditsCard({ credits }: { credits: number }) {
@@ -165,8 +155,6 @@ function RecentSessions() {
 
 export function Sidebar() {
   const pathname = usePathname();
-  const router = useRouter();
-  const { logout, user } = useAuthStore();
 
   const { data: fetchedUser } = useQuery<User>({
     queryKey: ['user', 'me'],
@@ -177,22 +165,7 @@ export function Sidebar() {
     staleTime: 1000 * 60 * 5,
   });
 
-  const displayUser = fetchedUser ?? user;
-  const displayName = displayUser ? deriveDisplayName(displayUser.email) : '';
-  const initials = deriveInitials(displayName);
-  const credits = fetchedUser?.credits ?? displayUser?.credits ?? 0;
-
-  const handleLogout = async () => {
-    logout();
-    try {
-      await clearToken();
-    } catch (e) {
-      console.error('clearToken failed', e);
-    } finally {
-      router.push('/login');
-      router.refresh();
-    }
-  };
+  const credits = fetchedUser?.credits ?? 0;
 
   return (
     <aside style={{
@@ -285,40 +258,7 @@ export function Sidebar() {
       <div style={{ padding: 12, borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 10 }}>
         <CreditsCard credits={credits} />
 
-        {displayUser && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 4px' }}>
-            <div style={{
-              width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
-              background: 'linear-gradient(135deg, oklch(70% 0.18 290), oklch(75% 0.13 215))',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: 'white', fontSize: 11, fontWeight: 600,
-            }}>
-              {initials}
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {displayName}
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--text-subtle)' }}>
-                {displayUser.email}
-              </div>
-            </div>
-            <button
-              onClick={handleLogout}
-              title="Log out"
-              style={{
-                width: 28, height: 28, borderRadius: 6, border: 'none',
-                background: 'transparent', cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color: 'var(--text-subtle)',
-              }}
-            >
-              <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round">
-                <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" />
-              </svg>
-            </button>
-          </div>
-        )}
+        <UserMenu />
       </div>
     </aside>
   );

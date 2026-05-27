@@ -47,11 +47,12 @@ function pdfFilename(pdfKey: string | undefined): string {
 /* ── Status pill ────────────────────────────────────────────────────── */
 function StatusPill({ status }: { status: string }) {
   const map: Record<string, { cls: string; label: string; pulse: boolean }> = {
-    completed:        { cls: 'ply-pill ply-pill-success', label: 'Ready',            pulse: false },
-    preparing_dataset:{ cls: 'ply-pill ply-pill-warning', label: 'Building dataset', pulse: true },
-    optimizing:       { cls: 'ply-pill ply-pill-primary', label: 'Tournament running', pulse: true },
-    failed:           { cls: 'ply-pill',                  label: 'Failed',            pulse: false },
-    pending:          { cls: 'ply-pill',                  label: 'Queued',            pulse: false },
+    completed:        { cls: 'ply-pill ply-pill-success', label: 'Ready',              pulse: false },
+    preparing_dataset:{ cls: 'ply-pill ply-pill-warning', label: 'Building dataset',   pulse: true  },
+    optimizing:       { cls: 'ply-pill ply-pill-primary', label: 'Tournament running', pulse: true  },
+    failed:           { cls: 'ply-pill',                  label: 'Failed',             pulse: false },
+    pending:          { cls: 'ply-pill',                  label: 'Queued',             pulse: false },
+    cancelled:        { cls: 'ply-pill',                  label: 'Cancelled',          pulse: false },
   };
   const s = map[status] ?? map['pending'];
   return (
@@ -299,14 +300,210 @@ function TournamentRunningViz({ domainId, vizMode, onVizChange }: {
   );
 }
 
+/* ── Dataset building progress card ─────────────────────────────── */
+
+const BUILD_STEPS = [
+  { label: 'Loading PDF',              hint: 'Reading document from storage'       },
+  { label: 'Extracting text',          hint: 'Parsing pages and structure'         },
+  { label: 'Generating Q&A pairs',     hint: 'LLM producing question-answer pairs' },
+  { label: 'Saving knowledge base',    hint: 'Writing dataset to storage'          },
+];
+
+const BUILD_TIPS = [
+  'Q&A pairs are used to score each candidate prompt — the more rows, the better the signal.',
+  'The optimizer will run head-to-head duels between prompt variants using your dataset.',
+  'After this step you can run as many optimizations as you like without re-uploading.',
+  'Larger PDFs produce richer datasets with better domain coverage.',
+  'The dataset stays on your account — you can inspect and edit rows any time.',
+];
+
+// Maps backend stage strings to step indices
+const STAGE_TO_STEP: Record<string, number> = {
+  loading_pdf: 0,
+  extracting_text: 1,
+  generating_qa: 2,
+  saving_dataset: 3,
+};
+
+function DatasetBuildingCard({ jobId }: { jobId: string | null }) {
+  const [stepIdx, setStepIdx] = useState(0);
+  const [elapsed, setElapsed] = useState(0);
+  const [tipIdx, setTipIdx] = useState(0);
+  const [pct, setPct] = useState(4);
+
+  // Real stage polling — syncs stepIdx from backend when jobId is known
+  useEffect(() => {
+    if (!jobId) return;
+    let alive = true;
+    const poll = async () => {
+      try {
+        const res = await api.get<{ data: { stage: string | null; status: string } }>(
+          `/api/v1/domain-prompts/jobs/${jobId}`
+        );
+        if (!alive) return;
+        const { stage, status } = res.data.data;
+        if (stage != null && STAGE_TO_STEP[stage] !== undefined) {
+          setStepIdx(s => Math.max(s, STAGE_TO_STEP[stage!]));
+        }
+        if (status === 'completed') setStepIdx(BUILD_STEPS.length);
+      } catch { /* ignore transient errors */ }
+    };
+    void poll();
+    const iv = setInterval(() => { void poll(); }, 3_000);
+    return () => { alive = false; clearInterval(iv); };
+  }, [jobId]);
+
+  // Fallback timer steps when jobId is unavailable — cumulative delays prevent step 3 racing step 2
+  useEffect(() => {
+    if (jobId) return;
+    const t0 = setTimeout(() => setStepIdx(s => Math.max(s, 1)), 4_000);
+    const t1 = setTimeout(() => setStepIdx(s => Math.max(s, 2)), 13_000);
+    // step 2→3 never auto-fires; backend signal or page reload resets component
+    return () => { clearTimeout(t0); clearTimeout(t1); };
+  }, [jobId]);
+
+  // Tick elapsed time every second
+  useEffect(() => {
+    const iv = setInterval(() => setElapsed(s => s + 1), 1000);
+    return () => clearInterval(iv);
+  }, []);
+
+  // Slowly advance progress bar (never reaches 100)
+  useEffect(() => {
+    const iv = setInterval(() => {
+      setPct(p => {
+        const target = stepIdx < 2 ? 25 : stepIdx === 2 ? 80 : 92;
+        const delta = (target - p) * 0.04;
+        return Math.min(target, p + Math.max(0.15, delta));
+      });
+    }, 400);
+    return () => clearInterval(iv);
+  }, [stepIdx]);
+
+  // Rotate tips every 8 s
+  useEffect(() => {
+    const iv = setInterval(() => setTipIdx(i => (i + 1) % BUILD_TIPS.length), 8_000);
+    return () => clearInterval(iv);
+  }, []);
+
+  const mins = Math.floor(elapsed / 60);
+  const secs = elapsed % 60;
+  const elapsedStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+
+  return (
+    <div className="ply-card" style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{
+            width: 38, height: 38, borderRadius: 10, flexShrink: 0,
+            background: 'var(--primary-soft)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round"
+              style={{ animation: 'spin 2.5s linear infinite' }}>
+              <path d="M21 12a9 9 0 11-6.219-8.56" />
+            </svg>
+          </div>
+          <div>
+            <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text)' }}>Building knowledge base…</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+              Usually takes 2–5 minutes · running for <span className="mono">{elapsedStr}</span>
+            </div>
+          </div>
+        </div>
+        {/* mini progress */}
+        <span className="mono" style={{ fontSize: 12, color: 'var(--text-subtle)', fontWeight: 600 }}>
+          {Math.round(pct)}%
+        </span>
+      </div>
+
+      {/* Progress bar */}
+      <div style={{ height: 5, borderRadius: 99, background: 'var(--border)', overflow: 'hidden' }}>
+        <div style={{
+          height: '100%', borderRadius: 99,
+          background: 'linear-gradient(90deg, var(--primary), var(--accent))',
+          width: `${pct}%`,
+          transition: 'width 0.6s ease',
+        }} />
+      </div>
+
+      {/* Steps */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {BUILD_STEPS.map((step, i) => {
+          const done    = i < stepIdx;
+          const active  = i === stepIdx;
+          const waiting = i > stepIdx;
+          return (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              {/* Icon */}
+              <div style={{
+                width: 22, height: 22, borderRadius: '50%', flexShrink: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: done ? 'var(--success)' : active ? 'var(--primary)' : 'var(--surface-2)',
+                border: waiting ? '1.5px solid var(--border)' : 'none',
+                transition: 'background 0.3s',
+              }}>
+                {done ? (
+                  <svg width={11} height={11} viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.5} strokeLinecap="round">
+                    <path d="M20 6L9 17l-5-5" />
+                  </svg>
+                ) : active ? (
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'white', animation: 'pulse 1.5s ease-in-out infinite', display: 'block' }} />
+                ) : (
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--border)', display: 'block' }} />
+                )}
+              </div>
+              {/* Label */}
+              <div style={{ flex: 1 }}>
+                <span style={{
+                  fontSize: 13, fontWeight: active ? 500 : 400,
+                  color: done ? 'var(--text)' : active ? 'var(--text)' : 'var(--text-subtle)',
+                }}>
+                  {step.label}
+                </span>
+                {active && (
+                  <span style={{ fontSize: 11.5, color: 'var(--text-muted)', marginLeft: 8 }}>
+                    {step.hint}
+                  </span>
+                )}
+              </div>
+              {done && (
+                <span style={{ fontSize: 11, color: 'var(--success)', fontWeight: 500 }}>done</span>
+              )}
+              {active && (
+                <span style={{ fontSize: 11, color: 'var(--primary)', fontWeight: 500 }}>running</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Rotating tip */}
+      <div style={{
+        padding: '10px 14px', borderRadius: 8,
+        background: 'var(--surface-2)', border: '1px solid var(--border)',
+        fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.55,
+        display: 'flex', gap: 8, alignItems: 'flex-start',
+      }}>
+        <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth={1.8} strokeLinecap="round" style={{ flexShrink: 0, marginTop: 1 }}>
+          <circle cx="12" cy="12" r="10" /><path d="M12 16v-4M12 8h.01" />
+        </svg>
+        <span style={{ transition: 'opacity 0.4s' }}>{BUILD_TIPS[tipIdx]}</span>
+      </div>
+    </div>
+  );
+}
+
 /* ── Optimize tab ────────────────────────────────────────────────── */
 
-function OptimizeTab({ domain, onReoptimize, reoptimizing, sessionResult, onClearResult }: {
+function OptimizeTab({ domain, onReoptimize, reoptimizing, sessionResult, onClearResult, pollingJobId }: {
   domain: DomainPrompt;
   onReoptimize: (prompt: string) => void;
   reoptimizing: boolean;
   sessionResult: { optimized_prompt: string; prompt_input: string; win_rate: number | null; candidates_tried: number | null; } | null;
   onClearResult: () => void;
+  pollingJobId: string | null;
 }) {
   const [draft, setDraft] = useState('');
   const [copied, setCopied] = useState(false);
@@ -382,16 +579,7 @@ function OptimizeTab({ domain, onReoptimize, reoptimizing, sessionResult, onClea
       )}
 
       {busy && domain.status === 'preparing_dataset' && (
-        <div className="ply-card" style={{ padding: '14px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span className="ply-dot ply-dot-pulse" style={{ background: 'var(--primary)', width: 8, height: 8 }} />
-            <div>
-              <div style={{ fontWeight: 600, fontSize: 13.5 }}>Building knowledge base…</div>
-              <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>Extracting Q&A pairs from your PDF.</div>
-            </div>
-          </div>
-          <div className="ply-progress" style={{ width: 160 }}><i /></div>
-        </div>
+        <DatasetBuildingCard jobId={pollingJobId} />
       )}
 
       {busy && domain.status === 'optimizing' && (
@@ -1079,7 +1267,7 @@ export function DomainWorkspace() {
               candidates_tried: result.candidates_tried != null ? Number(result.candidates_tried) : null,
             });
           }
-        } else if (status === 'failed') {
+        } else if (status === 'failed' || status === 'cancelled') {
           setPollingJobId(null);
           setPollingDomainId(null);
           setReoptimizing(false);
@@ -1114,17 +1302,24 @@ export function DomainWorkspace() {
     } catch { /* ignore */ }
   }, [selected, qc]);
 
-  const [stopping, setStopping] = useState(false);
-  const handleStop = useCallback(async () => {
+  const [cancelling, setCancelling] = useState(false);
+  const handleCancel = useCallback(async () => {
     if (!selected) return;
-    setStopping(true);
+    setCancelling(true);
     try {
-      await api.post(`/api/v1/domain-prompts/${selected.id}/stop`);
+      if (pollingJobId) {
+        await api.post(`/api/v1/domain-prompts/jobs/${pollingJobId}/cancel`);
+      } else {
+        await api.post(`/api/v1/domain-prompts/${selected.id}/cancel`);
+      }
+      setPollingJobId(null);
+      setPollingDomainId(null);
+      setReoptimizing(false);
       void qc.invalidateQueries({ queryKey: ['domain-prompts'] });
     } catch { /* ignore */ } finally {
-      setStopping(false);
+      setCancelling(false);
     }
-  }, [selected, qc]);
+  }, [selected, pollingJobId, qc]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
@@ -1164,16 +1359,18 @@ export function DomainWorkspace() {
 
           {/* Right: force-stop + delete + new domain */}
           <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-            {selected && ['optimizing', 'preparing_dataset'].includes(selected.status) && (
+            {selected && ['optimizing', 'preparing_dataset', 'pending'].includes(selected.status) && (
               <button
                 className="ply-btn ply-btn-sm"
-                onClick={handleStop}
-                disabled={stopping}
-                title="Worker crashed? Force-stop the stuck tournament and reset this domain."
+                onClick={handleCancel}
+                disabled={cancelling}
+                title="Cancel this job and refund credits."
                 style={{ color: 'var(--warning)', borderColor: 'color-mix(in srgb, var(--warning) 40%, transparent)' }}
               >
-                {stopping ? <span className="ply-dot ply-dot-pulse" style={{ width: 7, height: 7, background: 'var(--warning)' }} /> : <Icon name="stop" size={13} />}
-                {stopping ? 'Stopping…' : 'Force stop'}
+                {cancelling
+                  ? <span className="ply-dot ply-dot-pulse" style={{ width: 7, height: 7, background: 'var(--warning)' }} />
+                  : <Icon name="stop" size={13} />}
+                {cancelling ? 'Cancelling…' : 'Cancel'}
               </button>
             )}
             <button className="ply-btn ply-btn-sm" aria-label="Delete domain" onClick={handleDelete} title="Delete domain">
@@ -1238,7 +1435,7 @@ export function DomainWorkspace() {
 
         {selected && tab === 'optimize' && (
           <div style={{ padding: '18px 24px 24px', display: 'flex', flexDirection: 'column', gap: 14, minHeight: '100%' }}>
-            <OptimizeTab domain={selected} onReoptimize={handleReoptimize} reoptimizing={reoptimizing} sessionResult={sessionResult} onClearResult={() => setSessionResult(null)} />
+            <OptimizeTab domain={selected} onReoptimize={handleReoptimize} reoptimizing={reoptimizing} sessionResult={sessionResult} onClearResult={() => setSessionResult(null)} pollingJobId={pollingJobId} />
           </div>
         )}
         {selected && tab === 'dataset' && <DatasetTab domain={selected} />}

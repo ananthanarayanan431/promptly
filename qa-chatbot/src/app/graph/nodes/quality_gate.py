@@ -14,7 +14,6 @@ Loop condition: one or more dimensions still "weak" or "missing" AND iterations 
 """
 
 import json
-import logging
 import time
 from typing import Any
 
@@ -22,8 +21,9 @@ from app.core.cache import push_job_progress
 from app.graph.state import GraphState
 from app.llm import LLMClient
 from app.llm.pipeline import build_gate
+from app.utils.log import get_logger
 
-logger = logging.getLogger(__name__)
+log = get_logger(__name__)
 
 _QUALITY_GATE_SYSTEM = """\
 You are a prompt quality auditor. Score the prompt below on 8 dimensions.
@@ -195,7 +195,7 @@ async def quality_gate_node(state: GraphState) -> dict[str, Any]:
         overall = gate.get("overall", "fail")
         weak_dimensions: list[str] = gate.get("weak_dimensions", [])
     except Exception:
-        logger.exception("quality_gate scoring failed — defaulting to exit")
+        log.exception("quality_gate_failed")
         return {
             "iteration_count": iteration + 1,
             "previous_synthesis": synthesis,
