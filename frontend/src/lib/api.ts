@@ -24,18 +24,16 @@ api.interceptors.request.use(async (config) => {
   return config;
 });
 
-// Response interceptor — redirect to sign-in when we have no token getter (truly signed out).
+// Response interceptor — redirect to sign-in on any 401 (expired token, revoked session, etc.).
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
-    if (error.response?.status === 401) {
-      if (
-        typeof window !== 'undefined' &&
-        !_getToken &&
-        !window.location.pathname.startsWith('/sign-in')
-      ) {
-        window.location.href = '/sign-in';
-      }
+    if (
+      error.response?.status === 401 &&
+      typeof window !== 'undefined' &&
+      !window.location.pathname.startsWith('/sign-in')
+    ) {
+      window.location.href = '/sign-in';
     }
     return Promise.reject(error);
   }
