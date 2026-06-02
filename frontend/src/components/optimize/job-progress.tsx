@@ -20,6 +20,7 @@ function derivePhase(events: JobProgressEvent[]): PhaseInfo {
   }
 
   let seenIntent = false;
+  let seenSubject = false;
   let maxCouncilDone = 0;
   let councilTotal = 4;
   let seenCritic = false;
@@ -32,6 +33,7 @@ function derivePhase(events: JobProgressEvent[]): PhaseInfo {
     if (iter > maxIteration) maxIteration = iter;
 
     if (ev.step === 'intent') seenIntent = true;
+    else if (ev.step === 'subject') seenSubject = true;
     else if (ev.step === 'council') {
       if ((ev.done ?? 0) > maxCouncilDone) maxCouncilDone = ev.done ?? 0;
       if (ev.total) councilTotal = ev.total;
@@ -51,6 +53,10 @@ function derivePhase(events: JobProgressEvent[]): PhaseInfo {
 
   if (!seenIntent) {
     return { phase: 'analyzing', label: 'Optimizing your prompt', sublabel: 'Understanding the task…', progress: 5 };
+  }
+
+  if (!seenSubject) {
+    return { phase: 'analyzing', label: 'Optimizing your prompt', sublabel: 'Analyzing prompt context…', progress: 8 };
   }
 
   const label = 'Optimizing your prompt';
@@ -97,6 +103,7 @@ interface DetailStep {
 function buildDetailSteps(events: JobProgressEvent[]): DetailStep[] {
   const steps: DetailStep[] = [
     { id: 'intent', label: 'Prompt analysis' },
+    { id: 'subject', label: 'Subject analysis' },
     { id: 'council_0_1', label: 'Perspective 1 of 4' },
     { id: 'council_0_2', label: 'Perspective 2 of 4' },
     { id: 'council_0_3', label: 'Perspective 3 of 4' },
@@ -132,6 +139,7 @@ function resolveDetailDone(events: JobProgressEvent[]): Map<string, { gateDecisi
   for (const ev of events) {
     const iter = ev.iteration ?? 0;
     if (ev.step === 'intent') done.set('intent', { ts: ev.ts });
+    else if (ev.step === 'subject') done.set('subject', { ts: ev.ts });
     else if (ev.step === 'council' && ev.done != null) done.set(`council_${iter}_${ev.done}`, { ts: ev.ts });
     else if (ev.step === 'critic') done.set(`crosscheck_${iter}`, { ts: ev.ts });
     else if (ev.step === 'synthesize') done.set(`combine_${iter}`, { ts: ev.ts });

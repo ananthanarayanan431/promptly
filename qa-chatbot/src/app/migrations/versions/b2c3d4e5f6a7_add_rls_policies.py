@@ -51,7 +51,7 @@ def upgrade() -> None:
         return
 
     op.execute(
-        "CREATE POLICY users_self ON users FOR ALL " "USING (supabase_user_id = auth.uid()::text)"
+        "CREATE POLICY users_self ON users FOR ALL USING (supabase_user_id = auth.uid()::text)"
     )
     op.execute(
         "CREATE POLICY sessions_own ON chat_sessions FOR ALL USING ("
