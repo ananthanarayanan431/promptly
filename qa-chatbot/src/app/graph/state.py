@@ -37,6 +37,11 @@ class GraphState(TypedDict):
     gate_dimension_scores: dict[str, str] | None  # 8-dim scoring labels
     gate_rationale: str | None  # one-sentence explanation from the gate LLM
 
+    # Subject classifier — set before council_vote, reused across refinement loop iterations.
+    # None when the classifier is disabled or failed.
+    subject_about: list[str] | None
+    subject_suggestions: list[str] | None
+
     # Pipeline stages
     # Round 1 — council_responses: [{model, optimized_prompt, usage}]
     council_responses: list[dict[str, Any]]

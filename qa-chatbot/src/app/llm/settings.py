@@ -34,6 +34,9 @@ class LLMSettings(BaseSettings):
     # to council_vote. Saves one fast LLM call per request when enabled.
     PERFORMANCE_GATE_ENABLED: bool = True
 
+    # When False, the subject_classifier node is skipped — council receives no analysis context.
+    SUBJECT_CLASSIFIER_ENABLED: bool = True
+
 
 @lru_cache
 def get_llm_settings() -> LLMSettings:
