@@ -116,18 +116,17 @@ def council_optimizer_messages(
     previous_synthesis: str | None = None,
     quality_gaps: list[str] | None = None,
     category_block: str | None = None,
+    subject_block: str | None = None,
 ) -> list[dict[str, str]]:
     """
     Build council optimizer messages.
 
-    version_history_diff: diff summary of prior versions in this family, so the council
-        understands the optimization trajectory and doesn't regress previous gains.
-    previous_synthesis: the last iteration's output — present on refinement passes so the
-        council knows what was already achieved and must surpass.
-    quality_gaps: dimensions flagged as still weak/missing by the critic in the last pass —
-        the council must address these explicitly.
-    category_block: optional category-conditioning text appended to the system prompt —
-        steers which of the 8 dimensions to emphasize for this prompt's domain.
+    subject_block: advisory context from the subject_classifier — inserted before
+        quality_gaps and feedback so those remain the dominant directives.
+    version_history_diff: diff summary of prior versions in this family.
+    previous_synthesis: the last iteration's output — present on refinement passes.
+    quality_gaps: dimensions flagged as still weak/missing by the critic.
+    category_block: optional category-conditioning text appended to the system prompt.
     """
     parts: list[str] = [raw_prompt]
 
@@ -144,6 +143,9 @@ def council_optimizer_messages(
             "PREVIOUS SYNTHESIS (last refinement pass — your output must be measurably better):\n"
             + previous_synthesis
         )
+
+    if subject_block:
+        parts.append("---\n" + subject_block)
 
     if quality_gaps:
         gaps_text = "\n".join(f"- {g}" for g in quality_gaps)

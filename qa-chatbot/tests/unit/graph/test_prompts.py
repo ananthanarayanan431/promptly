@@ -4,6 +4,7 @@ from app.graph.prompts.favorite_auto_tag import favorite_auto_tag_messages
 from app.graph.prompts.intent_classifier import intent_classifier_messages
 from app.graph.prompts.prompt_advisory import prompt_advisory_messages
 from app.graph.prompts.prompt_health_score import prompt_health_score_messages
+from app.graph.prompts.subject_classifier import subject_analysis_block
 from app.graph.prompts.synthesize_best import synthesize_messages
 
 
@@ -155,3 +156,79 @@ def test_all_builders_importable_from_package():
     assert callable(prompt_health_score_messages)
     assert callable(prompt_advisory_messages)
     assert callable(favorite_auto_tag_messages)
+
+
+def test_council_optimizer_with_subject_block():
+    block = subject_analysis_block(["Data extraction prompt."], ["Add JSON schema."])
+    msgs = council_optimizer_messages("My prompt.", None, subject_block=block)
+    assert block is not None
+    assert block in msgs[1]["content"]
+
+
+def test_council_optimizer_subject_block_before_feedback():
+    block = subject_analysis_block(["About."], ["Suggestion."])
+    msgs = council_optimizer_messages("My prompt.", "Make shorter", subject_block=block)
+    user = msgs[1]["content"]
+    assert block is not None
+    assert user.index(block) < user.index("Make shorter")
+
+
+def test_council_optimizer_without_subject_block_unchanged():
+    msgs_with = council_optimizer_messages("My prompt.", None, subject_block=None)
+    msgs_without = council_optimizer_messages("My prompt.", None)
+    assert msgs_with[1]["content"] == msgs_without[1]["content"]
+
+
+def test_critic_messages_with_subject_block():
+    block = subject_analysis_block(["A data extraction prompt."], ["Specify output format."])
+    msgs = critic_messages(
+        raw_prompt="Original",
+        proposals=[("A", "AAA"), ("B", "BBB"), ("C", "CCC")],
+        subject_block=block,
+    )
+    assert block is not None
+    assert block in msgs[1]["content"]
+
+
+def test_critic_messages_without_subject_block_unchanged():
+    msgs_with = critic_messages(
+        raw_prompt="Original",
+        proposals=[("A", "AAA"), ("B", "BBB")],
+        subject_block=None,
+    )
+    msgs_without = critic_messages(
+        raw_prompt="Original",
+        proposals=[("A", "AAA"), ("B", "BBB")],
+    )
+    assert msgs_with[1]["content"] == msgs_without[1]["content"]
+
+
+def test_synthesize_messages_with_subject_block():
+    from app.graph.prompts.synthesize_best import synthesize_messages
+
+    block = subject_analysis_block(["A code review prompt."], ["Add severity levels."])
+    msgs = synthesize_messages(
+        raw_prompt="Review my code.",
+        proposals_block="[Proposal A]:\nProposal text",
+        critiques_block="[Critic A]\nRanking: A\nRationale: Good.",
+        feedback=None,
+        subject_block=block,
+    )
+    assert block is not None
+    assert block in msgs[1]["content"]
+
+
+def test_synthesize_messages_subject_block_before_feedback():
+    from app.graph.prompts.synthesize_best import synthesize_messages
+
+    block = subject_analysis_block(["About."], ["Suggestion."])
+    msgs = synthesize_messages(
+        raw_prompt="Review my code.",
+        proposals_block="[Proposal A]:\ntext",
+        critiques_block="[Critic A]\nRanking: A\nRationale: ok.",
+        feedback="Keep it under 50 words",
+        subject_block=block,
+    )
+    user = msgs[1]["content"]
+    assert block is not None
+    assert user.index(block) < user.index("Keep it under 50 words")
