@@ -119,6 +119,8 @@ class PromptService:
             "messages": [],
             "token_usage": {},
             "error": None,
+            "subject_about": None,
+            "subject_suggestions": None,
         }
         result = await guardrails_node(state)
         if result.get("error"):
@@ -268,6 +270,8 @@ class PromptVersioningService:
             "messages": [],
             "token_usage": {},
             "error": None,
+            "subject_about": None,
+            "subject_suggestions": None,
         }
         guardrail_result = await guardrails_node(state)
         if guardrail_result.get("error"):

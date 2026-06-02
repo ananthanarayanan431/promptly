@@ -69,6 +69,8 @@ class ChatService:
             "max_iterations": max_iterations,
             "previous_synthesis": None,
             "reasoning": None,
+            "subject_about": None,
+            "subject_suggestions": None,
         }
 
         result = await self.graph.ainvoke(initial_state, config=config)
@@ -150,6 +152,8 @@ class ChatService:
             "max_iterations": 1,
             "previous_synthesis": None,
             "reasoning": None,
+            "subject_about": None,
+            "subject_suggestions": None,
         }
         async for event in self.graph.astream_events(initial_state, config=config, version="v2"):
             if event["event"] == "on_chat_model_stream":
