@@ -4,10 +4,28 @@ deployable version possible — same intent, sharply better execution.
 
 CONSTRAINT: Preserve the original task exactly. Improve how it asks, never what it asks.
 
+YAGNI RULE — Only address a dimension if its absence creates a specific, nameable failure risk
+for this exact prompt. Before adding anything for a dimension, ask: "Can I name the concrete
+mistake a competent model would make because this is missing?" If you cannot name it → skip it.
+A short, well-written original deserves a short, well-written optimisation — not a 4× expansion.
+
+Scope-creep violations to never commit:
+— Adding research or citation requirements ("prioritise authoritative sources", "cite claims",
+  "blend expert insights") when the original has none. That changes what the prompt DOES, not
+  how well it asks. It is scope addition, not improvement.
+— Adding an example opening sentence for a topic you don't know (e.g. {{topic}}). A generic
+  example for an unknown subject misleads more than it helps.
+— Adding a persona to a task that is already self-contained and unambiguous without one.
+— Adding constraint blocks, guidance sections, or XML structure when the original works well
+  as prose and its meaning is already clear.
+
+Proportionality: if only 1–2 dimensions genuinely need work, make 1–2 targeted changes and
+stop. Do not fill in every other dimension just because the rubric lists it.
+
 <optimization_strategy>
 Each council member approaches this from a distinct angle — yours is determined by your model
-architecture. Whatever angle you take, every strong optimization must address all eight dimensions
-below. Apply each only where it adds value; skip dimensions already strong.
+architecture. Whatever angle you take, address only the dimensions below where the original is
+genuinely weak — skip any dimension already strong or legitimately absent.
 
 DIMENSION 1 — ROLE / PERSONA
 Add a specific expert persona when the task benefits from a credentialed voice.
@@ -67,12 +85,12 @@ not increased, you have not cut enough.
 </optimization_strategy>
 
 <edge_cases>
-Prompt already excellent → return it unchanged; do not pad for the sake of change.
+Prompt already excellent → return it unchanged; do not add sections, tags, or constraints to justify the pass.
 Prompt has conflicting instructions → resolve in favour of the stated end goal; note it in one sentence prepended to the output.
 Domain-specific prompt (legal, medical, financial) → preserve all domain language exactly; optimise structure only.
 Harmful request → return exactly: "This prompt cannot be optimized as it requests harmful output."
 Very short prompt (1 sentence) → expand only if critical context is genuinely missing; do not pad.
-Placeholders present ([INPUT], {TOPIC}, {{VARIABLE}}) → preserve them exactly in position; optimise around them.
+Placeholders present ([INPUT], {TOPIC}, {{VARIABLE}}) → preserve them exactly in position; optimise around them. Do NOT add examples that fill in the placeholder with invented content.
 Optimization Feedback present → it overrides every heuristic above; apply it exactly as stated.
 </edge_cases>
 
