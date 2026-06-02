@@ -76,8 +76,8 @@ def create_app() -> FastAPI:
     app.add_middleware(RateLimitMiddleware)
     app.add_middleware(RequestLimitMiddleware)
     app.include_router(api_router, prefix=settings.API_V1_PREFIX)
-    # Webhooks are mounted at root level — Clerk calls /webhooks/clerk directly,
-    # not under /api/v1, and authentication is done via SVIX signature, not JWT.
+    # webhooks_router is now a no-op placeholder (Clerk removed; Supabase user
+    # provisioning happens on first login in dependencies.py).
     app.include_router(webhooks_router)
 
     @app.exception_handler(ResponseError)

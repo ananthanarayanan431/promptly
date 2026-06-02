@@ -1,40 +1,27 @@
 'use client';
 
 import { useState } from 'react';
-import { useSignIn, useSignUp } from '@clerk/nextjs';
+import { createClient } from '@/lib/supabase';
+import { env } from '@/lib/env';
 import styles from './auth.module.css';
 
-const REDIRECT_COMPLETE = '/optimize';
-const SSO_CALLBACK = '/sso-callback';
+type Provider = 'google' | 'github';
 
-type Provider = 'oauth_google' | 'oauth_github';
-
-/**
- * OAuth buttons built on Clerk's headless hooks — no Clerk-branded UI.
- * Works for both sign-in and sign-up: we kick off the redirect with whichever
- * resource matches the page mode; Clerk's SSO callback resolves the rest.
- */
 export function SocialButtons({ mode }: { mode: 'sign-in' | 'sign-up' }) {
-  const { signIn, isLoaded: signInLoaded } = useSignIn();
-  const { signUp, isLoaded: signUpLoaded } = useSignUp();
   const [busy, setBusy] = useState<Provider | null>(null);
 
-  const ready = mode === 'sign-in' ? signInLoaded : signUpLoaded;
-
   async function start(provider: Provider) {
-    if (!ready || busy) return;
+    if (busy) return;
     setBusy(provider);
-    const resource = mode === 'sign-in' ? signIn : signUp;
-    try {
-      await resource!.authenticateWithRedirect({
-        strategy: provider,
-        redirectUrl: SSO_CALLBACK,
-        redirectUrlComplete: REDIRECT_COMPLETE,
-      });
-    } catch {
-      // Clerk redirects on success; reaching here means the handshake failed.
-      setBusy(null);
-    }
+    const supabase = createClient();
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider,
+      options: {
+        redirectTo: `${env.NEXT_PUBLIC_APP_URL}/auth/callback`,
+      },
+    });
+    // On success Supabase redirects — no need to reset busy state.
+    if (error) setBusy(null);
   }
 
   return (
@@ -42,20 +29,20 @@ export function SocialButtons({ mode }: { mode: 'sign-in' | 'sign-up' }) {
       <button
         type="button"
         className={styles.socialBtn}
-        disabled={!ready || busy !== null}
-        onClick={() => start('oauth_google')}
+        disabled={busy !== null}
+        onClick={() => start('google')}
       >
         <GoogleIcon />
-        {busy === 'oauth_google' ? 'Connecting…' : 'Continue with Google'}
+        {busy === 'google' ? 'Connecting…' : 'Continue with Google'}
       </button>
       <button
         type="button"
         className={styles.socialBtn}
-        disabled={!ready || busy !== null}
-        onClick={() => start('oauth_github')}
+        disabled={busy !== null}
+        onClick={() => start('github')}
       >
         <GitHubIcon />
-        {busy === 'oauth_github' ? 'Connecting…' : 'Continue with GitHub'}
+        {busy === 'github' ? 'Connecting…' : 'Continue with GitHub'}
       </button>
     </div>
   );
@@ -64,10 +51,22 @@ export function SocialButtons({ mode }: { mode: 'sign-in' | 'sign-up' }) {
 function GoogleIcon() {
   return (
     <svg className={styles.socialIcon} viewBox="0 0 18 18" aria-hidden="true">
-      <path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62Z" />
-      <path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18Z" />
-      <path fill="#FBBC05" d="M3.97 10.72a5.4 5.4 0 0 1 0-3.44V4.95H.96a9 9 0 0 0 0 8.1l3.01-2.33Z" />
-      <path fill="#EA4335" d="M9 3.58c1.32 0 2.5.46 3.44 1.35l2.58-2.58C13.46.9 11.43 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58Z" />
+      <path
+        fill="#4285F4"
+        d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62Z"
+      />
+      <path
+        fill="#34A853"
+        d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18Z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M3.97 10.72a5.4 5.4 0 0 1 0-3.44V4.95H.96a9 9 0 0 0 0 8.1l3.01-2.33Z"
+      />
+      <path
+        fill="#EA4335"
+        d="M9 3.58c1.32 0 2.5.46 3.44 1.35l2.58-2.58C13.46.9 11.43 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58Z"
+      />
     </svg>
   );
 }

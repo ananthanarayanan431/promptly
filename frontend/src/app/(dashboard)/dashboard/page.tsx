@@ -9,7 +9,9 @@ import type { OpenRouterStats } from '@/types/openrouter';
 import { formatDistanceToNow } from 'date-fns';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { useUser } from '@clerk/nextjs';
+import { useEffect, useMemo, useState } from 'react';
+import { createClient } from '@/lib/supabase';
+import type { User as SupabaseUser } from '@supabase/supabase-js';
 
 const ActivityChart = dynamic(
   () => import('@/components/dashboard/activity-chart').then((m) => ({ default: m.ActivityChart })),
@@ -556,7 +558,11 @@ function OpenRouterPanel({ data, loading }: { data: OpenRouterStats | undefined;
 /* ── Page ─────────────────────────────────────────────────────────────────── */
 
 export default function DashboardHome() {
-  const { user: clerkUser } = useUser();
+  const [supabaseUser, setSupabaseUser] = useState<SupabaseUser | null>(null);
+  const supabase = useMemo(() => createClient(), []);
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => setSupabaseUser(user));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['dashboard-stats'],
@@ -614,7 +620,7 @@ export default function DashboardHome() {
   });
 
   const lowCredits = stats ? stats.credits_remaining < 20 : false;
-  const firstName = clerkUser?.firstName ?? clerkUser?.primaryEmailAddress?.emailAddress?.split('@')[0] ?? 'there';
+  const firstName = (supabaseUser?.user_metadata?.full_name as string | undefined)?.split(' ')[0] ?? supabaseUser?.email?.split('@')[0] ?? 'there';
   const recentSessions = recentData?.sessions ?? [];
   const usage = stats?.usage;
   const bridgeJobs = bridgeJobsData ?? [];

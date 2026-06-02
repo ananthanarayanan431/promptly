@@ -1,12 +1,20 @@
 'use client';
 
-import { AuthenticateWithRedirectCallback } from '@clerk/nextjs';
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 
 /**
- * Lands here after an OAuth redirect. The Clerk component finishes the handshake
- * and forwards to /optimize. It renders nothing, so we show a minimal placeholder.
+ * Legacy SSO callback page — OAuth redirects now handled by /auth/callback.
+ * Kept for backwards compatibility; immediately hands off to the new route.
  */
 export default function SSOCallbackPage() {
+  const router = useRouter();
+
+  useEffect(() => {
+    // Forward any query params (e.g. ?code=...) to the new OAuth callback handler.
+    router.replace(`/auth/callback${window.location.search}`);
+  }, [router]);
+
   return (
     <div
       style={{
@@ -20,10 +28,6 @@ export default function SSOCallbackPage() {
       }}
     >
       Signing you in…
-      <AuthenticateWithRedirectCallback
-        signInForceRedirectUrl="/optimize"
-        signUpForceRedirectUrl="/optimize"
-      />
     </div>
   );
 }
