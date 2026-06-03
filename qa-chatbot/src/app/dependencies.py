@@ -2,6 +2,7 @@ import hashlib
 from collections.abc import AsyncGenerator
 from typing import Annotated, Any
 
+import sentry_sdk
 import structlog
 from fastapi import Depends, Request
 from sqlalchemy.exc import IntegrityError
@@ -96,6 +97,7 @@ async def get_current_user(
             raise UnauthorizedException(detail="Invalid API key")
 
         structlog.contextvars.bind_contextvars(user_id=str(user.id))
+        sentry_sdk.set_user({"id": str(user.id)})
         return UserContext(
             user_id=user.id,
             supabase_user_id=user.supabase_user_id,
@@ -118,6 +120,7 @@ async def get_current_user(
         raise UnauthorizedException(detail="User account is inactive")
 
     structlog.contextvars.bind_contextvars(user_id=str(user.id))
+    sentry_sdk.set_user({"id": str(user.id)})
     return UserContext(
         user_id=user.id,
         supabase_user_id=user.supabase_user_id,

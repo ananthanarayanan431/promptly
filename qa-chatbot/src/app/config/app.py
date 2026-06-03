@@ -12,6 +12,7 @@ class AppSettings(BaseSettings):
         extra="ignore",
     )
     APP_NAME: str = "qa-chatbot"
+    APP_VERSION: str = "0.1.0"  # overridable via APP_VERSION env (e.g. build SHA)
     ENVIRONMENT: str = "development"
     DEBUG: bool = False
     PRODUCTION_APPLICATION: bool = False

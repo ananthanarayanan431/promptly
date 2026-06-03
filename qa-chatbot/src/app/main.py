@@ -59,12 +59,16 @@ def create_app() -> FastAPI:
     _init_sentry(settings)
     app = FastAPI(
         title=settings.APP_NAME,
-        version="0.1.0",
+        version=settings.APP_VERSION,
         docs_url="/docs" if settings.DEBUG else None,
         redoc_url=None,
         lifespan=lifespan,
     )
 
+    # Middleware added last is outermost. CorrelationIdMiddleware is added last so it
+    # binds the correlation_id (and tags Sentry) before all others and sets the
+    # X-Correlation-ID header on every response — including 429/413/504 emitted by the
+    # rate-limit / request-limit middlewares.
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.CORS_ORIGIN,
@@ -72,9 +76,9 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.add_middleware(RequestLoggingMiddleware)
-    app.add_middleware(CorrelationIdMiddleware)
     app.add_middleware(RateLimitMiddleware)
     app.add_middleware(RequestLimitMiddleware)
+    app.add_middleware(CorrelationIdMiddleware)
     app.include_router(api_router, prefix=settings.API_V1_PREFIX)
     # webhooks_router is an intentional empty placeholder for future Supabase
     # webhook handlers; user provisioning happens on first login in dependencies.py.

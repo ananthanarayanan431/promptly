@@ -5,6 +5,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.types.response import SuccessResponse
+from app.config.app import get_app_settings
 from app.db.redis import get_redis_client
 from app.dependencies import get_db
 from app.schemas.health import HealthResponse, ReadinessResponse
@@ -14,7 +15,7 @@ router = APIRouter(tags=["health"])
 
 @router.get("/health", response_model=SuccessResponse[HealthResponse])
 async def health() -> SuccessResponse[HealthResponse]:
-    return SuccessResponse(data=HealthResponse(status="ok"))
+    return SuccessResponse(data=HealthResponse(status="ok", version=get_app_settings().APP_VERSION))
 
 
 @router.get("/ready", response_model=SuccessResponse[ReadinessResponse])
