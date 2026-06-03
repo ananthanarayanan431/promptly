@@ -2,10 +2,11 @@
 import { test as base, expect } from '@playwright/test';
 import { faker } from '@faker-js/faker';
 
-// NOTE (Phase 5 — Testing & CI): this fixture authenticates via POST
-// /api/v1/auth/register + /api/v1/auth/login, neither of which exists after the
-// Supabase migration. E2E auth must be reworked to mint a Supabase session before
-// these specs pass.
+// NOTE: this fixture authenticates via POST /api/v1/auth/register + /api/v1/auth/login,
+// neither of which exists after the Supabase migration. The e2e suite is QUARANTINED
+// (specs skip unless RUN_E2E is set; the CI job is gated off via the RUN_E2E repo var).
+// Repair requires a provisioned Supabase test project to mint a real session —
+// see docs/superpowers/notes/2026-06-03-deferred-work.md
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
 

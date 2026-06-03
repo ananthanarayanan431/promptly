@@ -1,6 +1,13 @@
 // frontend/e2e/credits.spec.ts
 import { test, expect } from './fixtures';
 
+test.beforeEach(() => {
+  test.skip(
+    !process.env.RUN_E2E,
+    'E2E requires a provisioned Supabase test project — quarantined; see docs/superpowers/notes/2026-06-03-deferred-work.md',
+  );
+});
+
 test('credits balance (100) is visible in sidebar after login', async ({ page, user }) => {
   await page.goto('/login');
   await page.locator('input[type="email"]').fill(user.email);

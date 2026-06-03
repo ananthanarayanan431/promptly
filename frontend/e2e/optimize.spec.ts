@@ -1,6 +1,13 @@
 // frontend/e2e/optimize.spec.ts
 import { test, expect } from './fixtures';
 
+test.beforeEach(() => {
+  test.skip(
+    !process.env.RUN_E2E,
+    'E2E requires a provisioned Supabase test project — quarantined; see docs/superpowers/notes/2026-06-03-deferred-work.md',
+  );
+});
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
 
 // Helper: sign in and land on /optimize

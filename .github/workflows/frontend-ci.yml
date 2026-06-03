@@ -48,6 +48,10 @@ jobs:
     name: Playwright E2E
     runs-on: ubuntu-latest
     needs: quality
+    # Quarantined: e2e needs a provisioned Supabase test project for browser auth.
+    # Flip the RUN_E2E repo variable to 'true' to re-enable.
+    # See docs/superpowers/notes/2026-06-03-deferred-work.md
+    if: ${{ vars.RUN_E2E == 'true' }}
 
     services:
       postgres:
@@ -100,9 +104,12 @@ jobs:
         env:
           DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/qa_chatbot_test
           REDIS_URL: redis://localhost:6379/0
-          SECRET_KEY: test-secret-key-for-ci-only
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           ENVIRONMENT: test
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          SUPABASE_URL: https://example.supabase.co
+          SUPABASE_ANON_KEY: dummy-anon-key
+          SUPABASE_SERVICE_ROLE_KEY: dummy-service-role-key
+          SUPABASE_JWT_SECRET: dummy-jwt-secret
 
       - name: Wait for backend to be ready
         run: |
