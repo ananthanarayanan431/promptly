@@ -3,8 +3,9 @@ import { cookies } from 'next/headers';
 import { NextResponse, type NextRequest } from 'next/server';
 
 function isSafeRedirectPath(path: string): boolean {
-  // Must be a relative path starting with / but not // (protocol-relative) and no scheme
-  return path.startsWith('/') && !path.startsWith('//') && !path.includes(':');
+  // Block protocol-relative (//), schemes (:), and backslashes — WHATWG URL parsing
+  // treats \\ as / in special schemes, so /\evil.com resolves to //evil.com (open redirect).
+  return path.startsWith('/') && !path.startsWith('//') && !path.includes(':') && !path.includes('\\');
 }
 
 export async function GET(request: NextRequest) {
