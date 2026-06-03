@@ -133,6 +133,12 @@ JWKS, with HS256 fallback for legacy tokens). On first login the user row is pro
 from the verified JWT claims (`supabase_user_id`, `email`, `full_name`) — no webhook required.
 Each optimization costs 10 credits (402 if insufficient); health-score and advisory cost 5 each.
 
+**Authorization model:** the backend connects to Postgres with a role that bypasses Row-Level
+Security, so **app-level ownership checks are the primary guard** — every endpoint requires
+`get_current_user`, and user-data queries filter by the owner. RLS policies (migration
+`b2c3d4e5f6a7`) are retained as **defense-in-depth** for any direct Supabase access. API keys
+are user-scoped via `api_keys.created_by`.
+
 ### Configuration
 
 Settings are split by concern in `src/app/config/`. Copy `.env.example` to `.env`. Key variables:
