@@ -38,13 +38,22 @@ set app.current_user_id = '123';
 select * from orders;  -- Only returns orders for user 123
 ```
 
-Policy for authenticated role:
+**Choose the right identity source:**
+
+- **Supabase projects:** use `auth.uid()` — reads the user ID directly from the verified JWT, no session variable needed.
+- **Non-Supabase Postgres:** use `current_setting('app.current_user_id')::bigint` — you must `SET app.current_user_id = '<id>'` at the start of each connection/transaction.
 
 ```sql
+-- Supabase: JWT-based (preferred for Supabase projects)
 create policy orders_user_policy on orders
   for all
   to authenticated
   using (user_id = auth.uid());
+
+-- Non-Supabase: session-variable based
+create policy orders_user_policy on orders
+  for all
+  using (user_id = current_setting('app.current_user_id')::bigint);
 ```
 
 Reference: [Row Level Security](https://supabase.com/docs/guides/database/postgres/row-level-security)

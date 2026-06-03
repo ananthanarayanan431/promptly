@@ -12,10 +12,10 @@ def _org_id() -> str:
     return f"org_{uuid.uuid4().hex}"
 
 
-async def _make_user(db: AsyncSession, *, clerk_user_id: str | None = None) -> User:
+async def _make_user(db: AsyncSession, *, supabase_user_id: str | None = None) -> User:
     user = User(
         email=f"{uuid.uuid4().hex[:8]}@test.com",
-        clerk_user_id=clerk_user_id or uuid.uuid4().hex,
+        supabase_user_id=supabase_user_id or uuid.uuid4().hex,
     )
     db.add(user)
     await db.flush()

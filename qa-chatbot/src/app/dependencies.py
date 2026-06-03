@@ -109,6 +109,9 @@ async def get_current_user(
     email: str = payload.get("email", "")
     full_name: str | None = payload.get("user_metadata", {}).get("full_name")
 
+    if not email:
+        raise UnauthorizedException(detail="Token missing email claim")
+
     user = await user_repo.get_by_supabase_id(supabase_user_id)
     if user is None:
         user = await _provision_user(user_repo, supabase_user_id, email, full_name)

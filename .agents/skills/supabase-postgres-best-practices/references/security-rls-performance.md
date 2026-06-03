@@ -29,7 +29,7 @@ create policy orders_policy on orders
 
 Use security definer functions for complex checks:
 
-`SECURITY DEFINER` functions run with the creator's privileges and bypass RLS on any tables they touch — which is what makes them useful for internal lookups, but also what makes them dangerous if misused. Always include an explicit `auth.uid()` check inside the function body, keep them in a non-exposed schema, and revoke `EXECUTE` from any role that shouldn't call them directly.
+`SECURITY DEFINER` functions run with the creator's privileges and bypass RLS on any tables they touch — which is what makes them useful for internal lookups, but also what makes them dangerous if misused. Always include an explicit `auth.uid()` check inside the function body and keep them in a non-exposed schema. Do not revoke `EXECUTE` from `authenticated` — the RLS policy evaluates as the calling role and needs that permission.
 
 ```sql
 -- Create helper function in a private schema
@@ -45,9 +45,6 @@ as $$
     where team_id = $1 and user_id = (select auth.uid())
   );
 $$;
-
--- Revoke direct execution from public roles
-revoke execute on function private.is_team_member(bigint) from PUBLIC, anon, authenticated, service_role;
 
 -- Use in policy (indexed lookup, not per-row check)
 create policy team_orders_policy on orders

@@ -59,6 +59,15 @@ export function UserMenu() {
   const [avatarError, setAvatarError] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
+  const avatarUrl =
+    (supabaseUser?.user_metadata?.avatar_url as string | undefined) ||
+    (supabaseUser?.user_metadata?.picture as string | undefined) ||
+    null;
+
+  useEffect(() => {
+    setAvatarError(false);
+  }, [avatarUrl]);
+
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => setSupabaseUser(user));
     const {
@@ -115,10 +124,6 @@ export function UserMenu() {
         ? deriveDisplayName(supabaseEmail)
         : '');
   const initials = deriveInitials(fullName);
-  const avatarUrl =
-    (supabaseUser?.user_metadata?.avatar_url as string | undefined) ||
-    (supabaseUser?.user_metadata?.picture as string | undefined) ||
-    null;
   const email = fetchedUser?.email ?? supabaseEmail;
   const credits = fetchedUser?.credits ?? 0;
   const optimizations = stats?.prompts_optimized ?? 0;

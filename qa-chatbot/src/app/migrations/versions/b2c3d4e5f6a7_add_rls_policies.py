@@ -29,7 +29,12 @@ def _is_supabase() -> bool:
 
     auth.uid() is Supabase-only — local Docker Postgres does not have it.
     RLS is enabled on all envs, but auth.uid() policies are Supabase-only.
+    Returns False in offline mode (no DB connection available).
     """
+    from alembic import context as alembic_context
+
+    if alembic_context.is_offline_mode():
+        return False
     bind = op.get_bind()
     result = bind.execute(sa.text("SELECT 1 FROM pg_namespace WHERE nspname = 'auth'")).fetchone()
     return result is not None

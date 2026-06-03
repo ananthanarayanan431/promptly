@@ -142,8 +142,12 @@ main() {
     check_uv
     check_docker
     install_deps
-    start_infra
-    wait_for_postgres
+
+    DB_MODE_VAL=$(grep '^DB_MODE=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2 | tr -d ' ' || echo "local")
+    if [[ "$DB_MODE_VAL" == "local" ]]; then
+        start_infra
+        wait_for_postgres
+    fi
     wait_for_redis
 
     case "$MODE" in

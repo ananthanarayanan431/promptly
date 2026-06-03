@@ -32,7 +32,7 @@ def _make_user_context(
 ) -> UserContext:
     return UserContext(
         user_id=user.id,
-        clerk_user_id=user.clerk_user_id,
+        supabase_user_id=user.supabase_user_id,
         email=user.email,
         credits=credits,
         org_id=_ORG_ID,
@@ -60,7 +60,7 @@ async def _test_user(db_session: AsyncSession) -> User:
     """Create a real User row in the DB (FK required by domain_prompts.user_id)."""
     user = User(
         email="domain_prompt_user@example.com",
-        clerk_user_id="user_domain_prompt_clerk",
+        supabase_user_id="user_domain_prompt_clerk",
     )
     db_session.add(user)
     await db_session.flush()
@@ -73,7 +73,7 @@ async def _test_user2(db_session: AsyncSession) -> User:
     """A second real User row — used for cross-user ownership tests."""
     user = User(
         email="domain_prompt_user2@example.com",
-        clerk_user_id="user_domain_prompt_clerk2",
+        supabase_user_id="user_domain_prompt_clerk2",
     )
     db_session.add(user)
     await db_session.flush()

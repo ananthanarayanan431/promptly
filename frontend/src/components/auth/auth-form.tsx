@@ -48,7 +48,7 @@ function SignInForm() {
       <h1 className={styles.heading}>Sign in to promptly</h1>
       <p className={styles.subhead}>Welcome back — let&apos;s optimize.</p>
 
-      <SocialButtons mode="sign-in" />
+      <SocialButtons />
       <div className={styles.divider}>or</div>
 
       <form className={styles.form} onSubmit={onSubmit}>
@@ -201,7 +201,7 @@ function SignUpForm() {
       <h1 className={styles.heading}>Create your account</h1>
       <p className={styles.subhead}>Four models. Three rounds. One better prompt.</p>
 
-      <SocialButtons mode="sign-up" />
+      <SocialButtons />
       <div className={styles.divider}>or</div>
 
       <form className={styles.form} onSubmit={onCreate}>

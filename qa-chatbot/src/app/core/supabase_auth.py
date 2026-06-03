@@ -48,23 +48,32 @@ def verify_supabase_token(token: str) -> dict[str, Any]:
     settings = get_supabase_settings()
 
     # Try JWKS first (current ECC / ES256 signing key)
+    signing_key = None
     try:
         client = _get_jwks_client()
         signing_key = client.get_signing_key_from_jwt(token)
-        payload: dict[str, Any] = jwt.decode(
-            token,
-            signing_key.key,
-            algorithms=["ES256", "RS256"],
-            audience="authenticated",
-        )
-        return payload
     except PyJWKClientConnectionError as exc:
         # Infrastructure failure (e.g. CERTIFICATE_VERIFY_FAILED, network) — NOT a
         # bad token. Without this log the failure is invisible and every ES256
         # token silently falls through to HS256 and gets rejected as "invalid".
         log.error("supabase_jwks_fetch_failed", error=str(exc))
-    except (PyJWKClientError, InvalidTokenError):
-        pass  # not a JWKS/ES256 token — fall through to legacy HS256
+    except PyJWKClientError:
+        pass  # key not found — legacy token without JWKS entry, fall through to HS256
+
+    if signing_key is not None:
+        # We resolved the signing key — any decode failure is a definitive bad token,
+        # not a "try another algorithm" situation.
+        try:
+            payload: dict[str, Any] = jwt.decode(
+                token,
+                signing_key.key,
+                algorithms=["ES256", "RS256"],
+                audience="authenticated",
+            )
+            return payload
+        except InvalidTokenError as exc:
+            log.warning("supabase_es256_token_invalid", error=str(exc))
+            raise UnauthorizedException(detail="Invalid or expired token") from exc
 
     # Fallback: legacy HS256 shared secret (for tokens issued before JWKS migration)
     try:

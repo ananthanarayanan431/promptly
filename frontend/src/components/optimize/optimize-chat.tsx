@@ -286,7 +286,7 @@ export function OptimizeChat() {
         setTurns([]);
       })
       .finally(() => setIsLoadingSession(false));
-  }, [urlSession]);
+  }, [urlSession, setGeneratingSession]);
 
   // Stream active job
   const { status: streamStatus, result: streamResult, error: streamError, progress: streamProgress } =

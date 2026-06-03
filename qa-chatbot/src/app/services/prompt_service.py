@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import GuardrailException, LLMException, NotFoundException
 from app.graph.nodes.guardrails import guardrails_node
 from app.graph.prompts import prompt_advisory_messages, prompt_health_score_messages
-from app.graph.state import GraphState
+from app.graph.state import GraphState, make_graph_state
 from app.llm import LLMClient
 from app.llm.analysis import build_analyser
 from app.models.favorite_prompt import FavoritePrompt
@@ -93,35 +93,7 @@ class PromptService:
         self.db = db
 
     async def _run_guardrails(self, raw_prompt: str, user_id: str) -> GraphState:
-        state: GraphState = {
-            "raw_prompt": raw_prompt,
-            "session_id": "",
-            "user_id": user_id,
-            "feedback": None,
-            "category_slug": None,
-            "category_name": None,
-            "category_description": None,
-            "category_is_predefined": False,
-            "version_history_diff": None,
-            "job_id": None,
-            "intent": None,
-            "force_optimize": False,
-            "already_optimized": False,
-            "gate_dimension_scores": None,
-            "gate_rationale": None,
-            "council_responses": [],
-            "critic_responses": [],
-            "final_response": "",
-            "reasoning": None,
-            "iteration_count": 0,
-            "max_iterations": 1,
-            "previous_synthesis": None,
-            "messages": [],
-            "token_usage": {},
-            "error": None,
-            "subject_about": None,
-            "subject_suggestions": None,
-        }
+        state = make_graph_state(raw_prompt=raw_prompt, session_id="", user_id=user_id)
         result = await guardrails_node(state)
         if result.get("error"):
             raise GuardrailException(detail=result["error"])
@@ -244,35 +216,7 @@ class PromptVersioningService:
         Raises:
             GuardrailException if the content fails safety checks.
         """
-        state: GraphState = {
-            "raw_prompt": content,
-            "session_id": "",
-            "user_id": user_id,
-            "feedback": None,
-            "category_slug": None,
-            "category_name": None,
-            "category_description": None,
-            "category_is_predefined": False,
-            "version_history_diff": None,
-            "job_id": None,
-            "intent": None,
-            "force_optimize": False,
-            "already_optimized": False,
-            "gate_dimension_scores": None,
-            "gate_rationale": None,
-            "council_responses": [],
-            "critic_responses": [],
-            "final_response": "",
-            "reasoning": None,
-            "iteration_count": 0,
-            "max_iterations": 1,
-            "previous_synthesis": None,
-            "messages": [],
-            "token_usage": {},
-            "error": None,
-            "subject_about": None,
-            "subject_suggestions": None,
-        }
+        state = make_graph_state(raw_prompt=content, session_id="", user_id=user_id)
         guardrail_result = await guardrails_node(state)
         if guardrail_result.get("error"):
             raise GuardrailException(detail=guardrail_result["error"])

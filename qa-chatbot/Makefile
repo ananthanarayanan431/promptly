@@ -66,6 +66,7 @@ migrate:
 
 migrate-supabase:
 	@SUPABASE_DB_URL=$$(grep '^SUPABASE_DB_URL=' .env | cut -d '=' -f2-); \
+	[ -n "$$SUPABASE_DB_URL" ] || { echo "❌  SUPABASE_DB_URL is not set in .env"; exit 1; }; \
 	echo "🚀  Running Alembic migrations against Supabase..."; \
 	DATABASE_URL="$$SUPABASE_DB_URL" uv run alembic upgrade head
 
@@ -96,6 +97,7 @@ dbshell:
 
 dbshell-supabase:
 	@SUPABASE_DB_URL=$$(grep '^SUPABASE_DB_URL=' .env | cut -d '=' -f2-); \
+	[ -n "$$SUPABASE_DB_URL" ] || { echo "❌  SUPABASE_DB_URL is not set in .env"; exit 1; }; \
 	PLAIN_URL=$$(echo "$$SUPABASE_DB_URL" | sed 's|postgresql+asyncpg://|postgresql://|'); \
 	psql "$$PLAIN_URL"
 

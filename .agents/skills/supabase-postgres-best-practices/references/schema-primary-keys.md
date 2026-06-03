@@ -38,12 +38,13 @@ create table orders (
   id uuid default uuid_generate_v7() primary key  -- Time-ordered, no fragmentation
 );
 
--- Alternative: time-prefixed IDs for sortable, distributed IDs (no extension needed)
+-- Alternative: compact time-prefixed IDs (no extension, 32-char hex, sortable)
 create table events (
-  id text default concat(
-    to_char(now() at time zone 'utc', 'YYYYMMDDHH24MISSMS'),
-    gen_random_uuid()::text
+  id text default (
+    to_char(now() at time zone 'utc', 'YYYYMMDDHH24MISSMS') ||
+    replace(gen_random_uuid()::text, '-', '')
   ) primary key
+  -- Results in a ~50-char sortable string; use UUID/bigint if storage is a concern
 );
 ```
 

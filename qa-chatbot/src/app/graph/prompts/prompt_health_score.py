@@ -26,7 +26,7 @@ These are not absolute rules, but guidelines to help you score consistently.
 - 5–6: Adequate — works but leaves meaningful room for misinterpretation or failure
 - 3–4: Weak — the dimension's absence noticeably degrades output quality
 - 1–2: Missing or actively harmful — this dimension needs to be built from scratch
-</calibration_anchor>
+</calibration_anchors>
 
 <scoring_dimensions>
 Score each dimension from 1 to 10 using the calibration anchors above.

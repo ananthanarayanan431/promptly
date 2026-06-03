@@ -4,7 +4,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.graph.state import GraphState
+from app.graph.state import make_graph_state
 from app.repositories.message_repo import MessageRepository
 from app.repositories.session_repo import SessionRepository
 from app.utils.log import get_logger
@@ -43,35 +43,20 @@ class ChatService:
         )
 
         config = {"configurable": {"thread_id": session_id}}
-        initial_state: GraphState = {
-            "raw_prompt": raw_prompt,
-            "session_id": session_id,
-            "user_id": user_id,
-            "feedback": feedback,
-            "category_slug": category_slug,
-            "category_name": category_name,
-            "category_description": category_description,
-            "category_is_predefined": category_is_predefined,
-            "job_id": job_id,
-            "intent": None,
-            "force_optimize": force_optimize,
-            "already_optimized": False,
-            "gate_dimension_scores": None,
-            "gate_rationale": None,
-            "council_responses": [],
-            "critic_responses": [],
-            "final_response": "",
-            "messages": [],
-            "token_usage": {},
-            "error": None,
-            "version_history_diff": version_history_diff,
-            "iteration_count": 0,
-            "max_iterations": max_iterations,
-            "previous_synthesis": None,
-            "reasoning": None,
-            "subject_about": None,
-            "subject_suggestions": None,
-        }
+        initial_state = make_graph_state(
+            raw_prompt=raw_prompt,
+            session_id=session_id,
+            user_id=user_id,
+            feedback=feedback,
+            category_slug=category_slug,
+            category_name=category_name,
+            category_description=category_description,
+            category_is_predefined=category_is_predefined,
+            job_id=job_id,
+            version_history_diff=version_history_diff,
+            max_iterations=max_iterations,
+            force_optimize=force_optimize,
+        )
 
         result = await self.graph.ainvoke(initial_state, config=config)
 
@@ -126,35 +111,11 @@ class ChatService:
         self, user_id: str, raw_prompt: str, session_id: str
     ) -> AsyncGenerator[str, None]:
         config = {"configurable": {"thread_id": session_id}}
-        initial_state: GraphState = {
-            "raw_prompt": raw_prompt,
-            "session_id": session_id,
-            "user_id": user_id,
-            "feedback": None,
-            "category_slug": None,
-            "category_name": None,
-            "category_description": None,
-            "category_is_predefined": False,
-            "job_id": None,
-            "intent": None,
-            "force_optimize": False,
-            "already_optimized": False,
-            "gate_dimension_scores": None,
-            "gate_rationale": None,
-            "council_responses": [],
-            "critic_responses": [],
-            "final_response": "",
-            "messages": [],
-            "token_usage": {},
-            "error": None,
-            "version_history_diff": None,
-            "iteration_count": 0,
-            "max_iterations": 1,
-            "previous_synthesis": None,
-            "reasoning": None,
-            "subject_about": None,
-            "subject_suggestions": None,
-        }
+        initial_state = make_graph_state(
+            raw_prompt=raw_prompt,
+            session_id=session_id,
+            user_id=user_id,
+        )
         async for event in self.graph.astream_events(initial_state, config=config, version="v2"):
             if event["event"] == "on_chat_model_stream":
                 chunk = event["data"]["chunk"].content

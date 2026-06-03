@@ -7,7 +7,7 @@ import styles from './auth.module.css';
 
 type Provider = 'google' | 'github';
 
-export function SocialButtons({ mode }: { mode: 'sign-in' | 'sign-up' }) {
+export function SocialButtons() {
   const [busy, setBusy] = useState<Provider | null>(null);
 
   async function start(provider: Provider) {

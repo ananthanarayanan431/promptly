@@ -22,7 +22,7 @@ def _make_request(path: str = "/api/v1/chat/") -> Request:
 def _make_user() -> UserContext:
     return UserContext(
         user_id=uuid4(),
-        clerk_user_id="user_test_clerk",
+        supabase_user_id="user_test_sb",
         email="test@test.com",
         credits=100,
         org_id="org_test",
