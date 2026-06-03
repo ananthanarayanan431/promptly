@@ -28,7 +28,7 @@ def _make_user_context(
 ) -> UserContext:
     return UserContext(
         user_id=user_id or uuid.uuid4(),
-        supabase_user_id="user_test_clerk",
+        supabase_user_id="user_test_orgs",
         email="test@example.com",
         credits=100,
         org_id=org_id,
@@ -40,7 +40,7 @@ async def _test_user(db_session: AsyncSession) -> User:
     """Create a real User row in the DB (required by the FK on api_keys.created_by)."""
     user = User(
         email="orgs_test_user@example.com",
-        supabase_user_id="user_orgs_test_clerk",
+        supabase_user_id="user_orgs_test",
     )
     db_session.add(user)
     await db_session.flush()

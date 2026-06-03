@@ -60,7 +60,7 @@ async def _test_user(db_session: AsyncSession) -> User:
     """Create a real User row in the DB (FK required by domain_prompts.user_id)."""
     user = User(
         email="domain_prompt_user@example.com",
-        supabase_user_id="user_domain_prompt_clerk",
+        supabase_user_id="user_domain_prompt_1",
     )
     db_session.add(user)
     await db_session.flush()
@@ -73,7 +73,7 @@ async def _test_user2(db_session: AsyncSession) -> User:
     """A second real User row — used for cross-user ownership tests."""
     user = User(
         email="domain_prompt_user2@example.com",
-        supabase_user_id="user_domain_prompt_clerk2",
+        supabase_user_id="user_domain_prompt_2",
     )
     db_session.add(user)
     await db_session.flush()

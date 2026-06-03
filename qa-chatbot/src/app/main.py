@@ -76,8 +76,8 @@ def create_app() -> FastAPI:
     app.add_middleware(RateLimitMiddleware)
     app.add_middleware(RequestLimitMiddleware)
     app.include_router(api_router, prefix=settings.API_V1_PREFIX)
-    # webhooks_router is now a no-op placeholder (Clerk removed; Supabase user
-    # provisioning happens on first login in dependencies.py).
+    # webhooks_router is an intentional empty placeholder for future Supabase
+    # webhook handlers; user provisioning happens on first login in dependencies.py.
     app.include_router(webhooks_router)
 
     @app.exception_handler(ResponseError)
