@@ -106,10 +106,14 @@ jobs:
           REDIS_URL: redis://localhost:6379/0
           ENVIRONMENT: test
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          SUPABASE_URL: https://example.supabase.co
-          SUPABASE_ANON_KEY: dummy-anon-key
-          SUPABASE_SERVICE_ROLE_KEY: dummy-service-role-key
-          SUPABASE_JWT_SECRET: dummy-jwt-secret
+          # e2e runs the REAL backend with real browser auth (no get_current_user
+          # override), so token verification needs REAL Supabase values — provisioned
+          # alongside the RUN_E2E test project. (Dummies are fine only in backend-ci.yml,
+          # where the pytest suite overrides auth and never calls verify_supabase_token.)
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_JWT_SECRET: ${{ secrets.SUPABASE_JWT_SECRET }}
 
       - name: Wait for backend to be ready
         run: |
