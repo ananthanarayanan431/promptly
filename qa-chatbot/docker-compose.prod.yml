@@ -9,6 +9,7 @@ services:
       - ./docker/nginx/certs:/etc/nginx/certs:ro
     depends_on:
       - api
+      - frontend
     restart: always
 
   api:
@@ -62,6 +63,31 @@ services:
         limits:
           cpus: "2"
           memory: 2G
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+      # NEXT_PUBLIC_* are inlined at build time. docker-compose reads ${VAR} from the
+      # shell env or a `.env` beside this file — NOT from .env.production (see that file).
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+    restart: always
+    depends_on:
+      - api
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1G
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/',r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
   postgres:
     image: pgvector/pgvector:pg16

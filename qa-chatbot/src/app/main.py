@@ -15,7 +15,8 @@ from app.api.v1.webhooks import router as webhooks_router
 from app.config.app import AppSettings, get_app_settings
 from app.core.logging import RequestLoggingMiddleware, setup_logging
 from app.core.middleware import CorrelationIdMiddleware, RateLimitMiddleware, RequestLimitMiddleware
-from app.db.session import AsyncSessionLocal
+from app.db.redis import get_connection_pool
+from app.db.session import AsyncSessionLocal, dispose_async_engine
 from app.graph.builder import compile_graph
 from app.graph.checkpointer import get_checkpointer
 from app.seeds.templates import seed_templates
@@ -51,6 +52,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         app.state.graph = await compile_graph(checkpointer)
         log.info("app_started")
         yield
+    # Graceful shutdown — release pooled resources (best-effort; never raise on exit).
+    try:
+        await dispose_async_engine()
+        await get_connection_pool().disconnect()
+    except Exception as exc:
+        log.warning("shutdown_cleanup_failed", error=str(exc))
     log.info("app_shutdown")
 
 

@@ -34,6 +34,9 @@ const nextConfig = {
 
   // Disable powered-by header
   poweredByHeader: false,
+
+  // Emit a minimal self-contained server for Docker (.next/standalone).
+  output: 'standalone',
 };
 
 export default nextConfig;
