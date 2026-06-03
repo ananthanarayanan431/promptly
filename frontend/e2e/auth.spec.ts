@@ -2,7 +2,7 @@
 import { test, expect } from './fixtures';
 
 test('login with valid credentials redirects to dashboard', async ({ page, user }) => {
-  await page.goto('/login');
+  await page.goto('/sign-in');
 
   await page.locator('input[type="email"]').fill(user.email);
   await page.locator('input[type="password"]').fill(user.password);
@@ -14,7 +14,7 @@ test('login with valid credentials redirects to dashboard', async ({ page, user 
 });
 
 test('login with wrong password shows error toast', async ({ page, user }) => {
-  await page.goto('/login');
+  await page.goto('/sign-in');
 
   await page.locator('input[type="email"]').fill(user.email);
   await page.locator('input[type="password"]').fill('WrongPass999!');
@@ -35,7 +35,7 @@ test('navigate to /optimize without auth redirects away from dashboard', async (
 
 test('login then logout then /optimize redirects away from dashboard', async ({ page, user }) => {
   // Log in
-  await page.goto('/login');
+  await page.goto('/sign-in');
   await page.locator('input[type="email"]').fill(user.email);
   await page.locator('input[type="password"]').fill(user.password);
   await page.getByRole('button', { name: /sign in/i }).click();
