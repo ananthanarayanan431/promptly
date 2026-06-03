@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import type { DomainPrompt, DomainListResponse, DatasetRowsResponse, QAPair, TournamentState, OptimizationRun, RunListResponse } from '@/types/domain-prompts';
@@ -1231,7 +1231,7 @@ export function DomainWorkspace() {
     },
   });
 
-  const domains = data?.domains ?? [];
+  const domains = useMemo(() => data?.domains ?? [], [data?.domains]);
   // Only fall back to domains[0] when selectedId is null (nothing explicitly chosen).
   // If selectedId is set but not found yet (new domain still loading), keep selected=null
   // so the tab body shows a loading state instead of the previous domain's content.

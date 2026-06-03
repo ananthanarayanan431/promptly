@@ -170,7 +170,8 @@ export function useJobStream(jobId: string | null): UseJobStreamResult {
     return () => {
       ctrl.abort();
     };
-  }, [jobId]); // supabase is stable via useRef
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- supabase client is ref-stable (useRef)
+  }, [jobId]);
 
   const reset = () => {
     abortRef.current?.abort();
