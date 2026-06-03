@@ -69,7 +69,6 @@ async def _test_auth_override(
         supabase_user_id=user.supabase_user_id,
         email=user.email,
         credits=user.credits,
-        org_id="",
     )
 
 

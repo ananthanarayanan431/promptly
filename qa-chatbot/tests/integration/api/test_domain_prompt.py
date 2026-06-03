@@ -22,8 +22,6 @@ from app.models.user import User
 _MINIMAL_PDF = b"%PDF-1.4 fake pdf content for testing purposes"
 _VALID_PROMPT = "You are a helpful assistant. Answer questions based on the provided context."
 
-_ORG_ID = "org_test_domain_prompt"
-
 
 def _make_user_context(
     user: User,
@@ -35,7 +33,6 @@ def _make_user_context(
         supabase_user_id=user.supabase_user_id,
         email=user.email,
         credits=credits,
-        org_id=_ORG_ID,
     )
 
 

@@ -17,15 +17,14 @@ class ApiKey(Base, UUIDMixin, TimestampMixin):
     __tablename__ = "api_keys"
     __table_args__ = (
         Index(
-            "uq_api_keys_org_active_name",
-            "org_id",
+            "uq_api_keys_user_active_name",
+            "created_by",
             "name",
             unique=True,
             postgresql_where=text("is_active = true"),
         ),
     )
 
-    org_id: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
     created_by: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), index=True
     )

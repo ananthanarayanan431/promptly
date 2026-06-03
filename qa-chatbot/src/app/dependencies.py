@@ -101,7 +101,6 @@ async def get_current_user(
             supabase_user_id=user.supabase_user_id,
             email=user.email,
             credits=user.credits,
-            org_id=api_key.org_id or "",
         )
 
     payload = verify_supabase_token(token)
@@ -124,5 +123,4 @@ async def get_current_user(
         supabase_user_id=user.supabase_user_id,
         email=user.email,
         credits=user.credits,
-        org_id="",
     )

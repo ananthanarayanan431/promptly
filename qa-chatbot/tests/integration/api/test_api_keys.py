@@ -191,6 +191,29 @@ async def test_revoke_nonexistent_key_returns_404(client: AsyncClient, make_user
 
 
 @pytest.mark.asyncio
+async def test_other_user_cannot_get_or_delete_key(client: AsyncClient, make_user) -> None:
+    """User A creates a key; User B gets 404 on both GET and DELETE of it."""
+    _, headers_a = await make_user()
+    _, headers_b = await make_user()
+
+    create_res = await client.post(
+        "/api/v1/users/api-keys", json={"name": "owned-by-a"}, headers=headers_a
+    )
+    key_id = create_res.json()["data"]["id"]
+
+    get_res = await client.get(f"/api/v1/users/api-keys/{key_id}", headers=headers_b)
+    assert get_res.status_code == 404
+
+    del_res = await client.delete(f"/api/v1/users/api-keys/{key_id}", headers=headers_b)
+    assert del_res.status_code == 404
+
+    # The key remains intact and accessible to its owner.
+    owner_res = await client.get(f"/api/v1/users/api-keys/{key_id}", headers=headers_a)
+    assert owner_res.status_code == 200
+    assert owner_res.json()["data"]["is_active"] is True
+
+
+@pytest.mark.asyncio
 async def test_list_after_revoke_shows_revoked_in_status_filter(
     client: AsyncClient, make_user
 ) -> None:
