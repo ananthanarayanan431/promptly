@@ -421,7 +421,6 @@ export interface FavoriteUpdateRequest {
 export interface ApiKeyResponse {
   id: string;
   name: string;
-  org_id: string;
   is_active: boolean;
   created_at: string;
   last_used_at: string | null;
