@@ -1,4 +1,4 @@
-import { BridgeWorkspace } from './_components/bridge-workspace';
+import { BridgeWorkspace } from '@/components/bridge/bridge-workspace';
 
 export default function BridgePage() {
   return <BridgeWorkspace />;
