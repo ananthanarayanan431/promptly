@@ -16,7 +16,7 @@ async def _submit_chat(
     prompt: str = "You are a helpful assistant.",
 ) -> str:
     """Submit a chat job and return the session_id."""
-    with patch("app.api.v1.chat.process_chat_async") as mock_task:
+    with patch("app.optimize.api.router.process_chat_async") as mock_task:
         mock_task.apply_async.return_value = MagicMock(id="fake-celery-id")
         res = await client.post(
             "/api/v1/chat/",

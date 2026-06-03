@@ -10,7 +10,7 @@ async def test_chat_deducts_10_credits(
     client: AsyncClient, db_session: AsyncSession, make_user
 ) -> None:
     user, headers = await make_user(credits=100)
-    with patch("app.api.v1.chat.process_chat_async") as mock_task:
+    with patch("app.optimize.api.router.process_chat_async") as mock_task:
         mock_task.apply_async.return_value = MagicMock(id="fake-celery-id")
         res = await client.post(
             "/api/v1/chat/",

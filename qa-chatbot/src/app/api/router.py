@@ -3,7 +3,6 @@ from fastapi import APIRouter
 from app.api.v1 import (
     api_keys,
     categories,
-    chat,
     favorites,
     health,
     openrouter,
@@ -14,12 +13,13 @@ from app.api.v1 import (
 )
 from app.api.v1.orgs import router as orgs_router
 from app.domain_prompt import router as domain_prompt_router
+from app.optimize.api.router import router as optimize_router
 from app.prompt_bridge import router as prompt_bridge_router
 
 api_router = APIRouter()
 
 api_router.include_router(health.router)
-api_router.include_router(chat.router)
+api_router.include_router(optimize_router)
 api_router.include_router(prompts.router)
 api_router.include_router(templates.router)
 api_router.include_router(stats.router)

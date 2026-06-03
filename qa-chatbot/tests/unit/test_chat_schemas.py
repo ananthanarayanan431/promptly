@@ -1,4 +1,4 @@
-"""Unit tests for app.schemas.chat — ChatRequest validator and MessageOut._unpack_gate_fields."""
+"""Unit tests for optimize schemas — ChatRequest validator and MessageOut._unpack_gate_fields."""
 
 import uuid
 from datetime import UTC, datetime
@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from app.schemas.chat import ChatRequest, MessageOut, ReasoningBlock
+from app.optimize.api.schemas import ChatRequest, MessageOut, ReasoningBlock
 
 # ---------------------------------------------------------------------------
 # Helpers

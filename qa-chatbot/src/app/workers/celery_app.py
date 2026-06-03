@@ -14,6 +14,7 @@ celery_app = Celery(
     backend=str(redis_settings.REDIS_URL),
     include=[
         "app.workers.tasks",
+        "app.optimize.workers.tasks",
         "app.domain_prompt.workers.tasks",
         "app.prompt_bridge.workers.tasks",
     ],
