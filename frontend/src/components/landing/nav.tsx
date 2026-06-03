@@ -29,13 +29,13 @@ export function LandingNav() {
         {/* Desktop actions */}
         <div className="hidden md:flex items-center gap-3">
           <Link
-            href="/login"
+            href="/sign-in"
             className="text-sm text-muted-foreground hover:text-foreground transition-colors px-3 py-2"
           >
             Sign in
           </Link>
           <Link
-            href="/register"
+            href="/sign-up"
             className="text-sm font-semibold px-4 py-2 rounded-lg bg-gradient-to-br from-primary to-primary/80 text-primary-foreground transition-all shadow-sm shadow-primary/20 hover:shadow-primary/30 hover:opacity-90"
           >
             Get started
@@ -87,13 +87,13 @@ export function LandingNav() {
           </a>
           <div className="border-t border-border mt-3 pt-4 flex flex-col gap-3">
             <Link
-              href="/login"
+              href="/sign-in"
               className="text-sm text-center py-2.5 rounded-lg border border-border hover:bg-muted transition-colors"
             >
               Sign in
             </Link>
             <Link
-              href="/register"
+              href="/sign-up"
               className="text-sm font-semibold text-center py-2.5 rounded-lg bg-gradient-to-br from-primary to-primary/80 text-primary-foreground"
             >
               Get started free

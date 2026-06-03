@@ -231,7 +231,7 @@ export default function DocsPage() {
             docs
           </span>
           <span style={{ flex: 1 }} />
-          <Link href="/register"
+          <Link href="/sign-up"
             style={{ height: 32, padding: '0 14px', borderRadius: 6, background: violet,
               display: 'inline-flex', alignItems: 'center', fontSize: 13,
               color: '#fff', textDecoration: 'none', fontWeight: 500 }}>
@@ -326,7 +326,7 @@ export default function DocsPage() {
           <StepList steps={[
             {
               title: 'Create a free account',
-              body: <>Go to <InlineCode>promptly.dev/register</InlineCode>. Enter your email and
+              body: <>Go to <InlineCode>promptly.dev/sign-up</InlineCode>. Enter your email and
                 a password. No credit card required. You get <strong>100 credits</strong> the
                 moment your account is created.</>,
             },
@@ -966,7 +966,7 @@ export default function DocsPage() {
             <p style={{ fontSize: 15, color: muted, margin: '0 0 28px' }}>
               100 credits free. No card required. Start with any prompt you already have.
             </p>
-            <Link href="/register"
+            <Link href="/sign-up"
               style={{ height: 46, padding: '0 28px', borderRadius: 8,
                 background: violet, color: '#fff', textDecoration: 'none',
                 fontWeight: 500, fontSize: 15, display: 'inline-flex',
