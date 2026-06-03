@@ -9,7 +9,7 @@ db_settings = get_database_settings()
 app_settings = get_app_settings()
 
 # Supabase requires SSL; asyncpg takes it via connect_args.
-_connect_args: dict = {"ssl": "require"} if db_settings.is_supabase else {}
+_connect_args: dict[str, str] = {"ssl": "require"} if db_settings.is_supabase else {}
 
 engine = create_async_engine(
     db_settings.effective_url,
