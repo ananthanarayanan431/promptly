@@ -16,7 +16,9 @@ class AppSettings(BaseSettings):
     DEBUG: bool = False
     PRODUCTION_APPLICATION: bool = False
     API_V1_PREFIX: str = "/api/v1"
-    CORS_ORIGIN: list[str] = ["http://localhost:3000", "*"]
+    # Allowed CORS origins. NEVER include "*" — set explicit origins per environment.
+    # Production sets this via the CORS_ORIGIN env var (JSON list).
+    CORS_ORIGIN: list[str] = ["http://localhost:3000"]
     MAX_REQUEST_BODY_BYTES: int = 100 * 1024 * 1024  # 100 MB (PDF uploads)
     REQUEST_TIMEOUT_SECONDS: float = 60.0
     SENTRY_DSN: SecretStr | None = None
