@@ -12,7 +12,7 @@ class LLMSettings(BaseSettings):
         extra="ignore",
     )
     OPENROUTER_API_KEY: SecretStr
-    DEFAULT_MODEL: str = "anthropic/claude-3.5-haiku"
+    DEFAULT_MODEL: str = "openai/gpt-4o-mini"
 
     # Four models — each independently optimizes with the same unified prompt.
     # All are routed through OpenRouter.
@@ -33,6 +33,15 @@ class LLMSettings(BaseSettings):
     # When False, the performance_gate node is skipped — every OPTIMIZE intent goes straight
     # to council_vote. Saves one fast LLM call per request when enabled.
     PERFORMANCE_GATE_ENABLED: bool = True
+
+    # When False, the subject_classifier node is skipped — council receives no analysis context.
+    SUBJECT_CLASSIFIER_ENABLED: bool = True
+
+    # When True, Anthropic-routed calls carry an explicit cache_control breakpoint on the
+    # static system prompt (OpenAI/Gemini/xAI already auto-cache via OpenRouter). Anthropic
+    # only caches when the request carries breakpoints, so this is required to cache the large
+    # pipeline system prompts on Claude. Set False to disable instantly without a deploy.
+    PROMPT_CACHE_ENABLED: bool = True
 
 
 @lru_cache

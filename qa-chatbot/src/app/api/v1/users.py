@@ -4,9 +4,11 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.types.response import SuccessResponse
+from app.core.exceptions import NotFoundException
 from app.core.rate_limit import RateLimiter
 from app.core.user_context import UserContext
 from app.dependencies import get_current_user, get_db
+from app.repositories.user_repo import UserRepository
 from app.schemas.user import AddCreditRequest, CreditResponse, UserResponse
 from app.utils.log import get_logger
 
@@ -56,6 +58,10 @@ async def add_credits(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> SuccessResponse[CreditResponse]:
     """Add more credits to the current user."""
-    current_user.credits += request.amount
-    log.info("credits_added", amount=request.amount, balance=current_user.credits)
-    return SuccessResponse(data=CreditResponse(credits=current_user.credits))
+    user_repo = UserRepository(db)
+    new_balance = await user_repo.add_credits(current_user.user_id, request.amount)
+    if new_balance is None:
+        raise NotFoundException(detail="User not found")
+    current_user.credits = new_balance
+    log.info("credits_added", amount=request.amount, balance=new_balance)
+    return SuccessResponse(data=CreditResponse(credits=new_balance))

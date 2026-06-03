@@ -8,12 +8,16 @@ from app.config.database import get_database_settings
 db_settings = get_database_settings()
 app_settings = get_app_settings()
 
+# Supabase requires SSL; asyncpg takes it via connect_args.
+_connect_args: dict[str, str] = {"ssl": "require"} if db_settings.is_supabase else {}
+
 engine = create_async_engine(
-    str(db_settings.DATABASE_URL),
-    pool_size=db_settings.DATABASE_POOL_SIZE,
-    max_overflow=db_settings.DATABASE_MAX_OVERFLOW,
+    db_settings.effective_url,
+    pool_size=db_settings.effective_pool_size,
+    max_overflow=db_settings.effective_max_overflow,
     pool_pre_ping=True,
     echo=app_settings.DEBUG,
+    connect_args=_connect_args,
 )
 
 AsyncSessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)

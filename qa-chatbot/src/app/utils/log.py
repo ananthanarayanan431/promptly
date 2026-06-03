@@ -13,9 +13,11 @@ or scoped to a block:
     bound.info("processing")
 """
 
+from typing import cast
+
 import structlog
 
 
 def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:
     """Return a structlog logger. Pass __name__ so log records include the module."""
-    return structlog.get_logger(name)  # type: ignore[return-value]
+    return cast(structlog.stdlib.BoundLogger, structlog.get_logger(name))

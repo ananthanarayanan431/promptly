@@ -20,7 +20,7 @@ from collections import Counter
 from typing import Any
 
 from app.core.cache import push_job_progress
-from app.graph.prompts import critic_messages
+from app.graph.prompts import critic_messages, subject_analysis_block
 from app.graph.state import GraphState
 from app.llm import LLMClient
 from app.llm.pipeline import build_critic_models
@@ -91,6 +91,10 @@ async def critic_node(state: GraphState) -> dict[str, Any]:
     raw_prompt = state["raw_prompt"]
     feedback = state.get("feedback")
     previous_synthesis = state.get("previous_synthesis")
+    subject_block = subject_analysis_block(
+        state.get("subject_about"),
+        state.get("subject_suggestions"),
+    )
 
     if len(proposals) < 4:
         log.warning("critic_skipped_insufficient_proposals", count=len(proposals))
@@ -113,6 +117,7 @@ async def critic_node(state: GraphState) -> dict[str, Any]:
             proposals=others,
             feedback=feedback,
             previous_synthesis=previous_synthesis,
+            subject_block=subject_block,
         )
         response = await model.ainvoke(messages)
         parsed = _parse_critique(str(response.content))

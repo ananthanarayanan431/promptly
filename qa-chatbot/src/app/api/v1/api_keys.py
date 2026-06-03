@@ -51,7 +51,7 @@ async def create_api_key(
 ) -> SuccessResponse[ApiKeyCreatedResponse]:
     """Create a new API key. The raw key is returned once and never stored."""
 
-    org_id = current_user.clerk_user_id
+    org_id = current_user.supabase_user_id
     repo = ApiKeyRepository(db)
     if await repo.has_active_org_name(org_id, request.name):
         log.warning("api_key_name_conflict", name=request.name)
@@ -102,7 +102,7 @@ async def list_api_keys(
     ] = "all",
 ) -> SuccessResponse[PaginatedApiKeyListResponse]:
     """List API keys for the current user's org with pagination and optional status filter."""
-    org_id = current_user.clerk_user_id
+    org_id = current_user.supabase_user_id
     repo = ApiKeyRepository(db)
     offset = (page - 1) * page_size
     total = await repo.count_by_org(org_id, status=status)
@@ -134,7 +134,7 @@ async def get_api_key(
 ) -> SuccessResponse[ApiKeyResponse]:
     """Get metadata for a single API key."""
     repo = ApiKeyRepository(db)
-    key = await repo.get_by_id_and_org(key_id, current_user.clerk_user_id)
+    key = await repo.get_by_id_and_org(key_id, current_user.supabase_user_id)
     if not key:
         raise ApiKeyNotFoundException()
     return SuccessResponse(data=ApiKeyResponse.model_validate(key))
@@ -155,7 +155,7 @@ async def revoke_api_key(
 ) -> SuccessResponse[ApiKeyResponse]:
     """Revoke an API key (soft delete)."""
     repo = ApiKeyRepository(db)
-    key = await repo.get_by_id_and_org(key_id, current_user.clerk_user_id)
+    key = await repo.get_by_id_and_org(key_id, current_user.supabase_user_id)
     if not key:
         raise ApiKeyNotFoundException()
     if not key.is_active:

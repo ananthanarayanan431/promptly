@@ -1,4 +1,4 @@
-.PHONY: help install dev worker infra pull migrate migration rollback dbshell \
+.PHONY: help install dev worker infra pull migrate migrate-supabase migrate-supabase-sql migration rollback dbshell dbshell-supabase \
         lint format typecheck check test test-unit test-api \
         build prod down logs clean
 
@@ -14,10 +14,13 @@ help:
 	@echo "    make worker           Start Celery worker"
 	@echo ""
 	@echo "  Database"
-	@echo "    make migrate          Apply pending migrations"
-	@echo "    make migration        Create migration  (name=your_name)"
-	@echo "    make rollback         Roll back last migration"
-	@echo "    make dbshell          Open psql shell"
+	@echo "    make migrate              Apply pending migrations (local Docker)"
+	@echo "    make migrate-supabase     Apply pending migrations (Supabase, direct)"
+	@echo "    make migrate-supabase-sql Generate SQL to paste into Supabase SQL editor"
+	@echo "    make migration            Create migration  (name=your_name)"
+	@echo "    make rollback             Roll back last migration (local)"
+	@echo "    make dbshell              Open psql shell (local Docker)"
+	@echo "    make dbshell-supabase     Open psql shell (Supabase)"
 	@echo ""
 	@echo "  Code quality"
 	@echo "    make lint             Run ruff linter"
@@ -61,6 +64,27 @@ worker:
 migrate:
 	uv run alembic upgrade head
 
+migrate-supabase:
+	@SUPABASE_DB_URL=$$(grep '^SUPABASE_DB_URL=' .env | cut -d '=' -f2-); \
+	[ -n "$$SUPABASE_DB_URL" ] || { echo "❌  SUPABASE_DB_URL is not set in .env"; exit 1; }; \
+	echo "🚀  Running Alembic migrations against Supabase..."; \
+	DATABASE_URL="$$SUPABASE_DB_URL" uv run alembic upgrade head
+
+migrate-supabase-sql:
+	@echo "📄  Generating complete SQL for all Supabase migrations..."
+	@echo "    Paste /tmp/supabase_migrations.sql into: Supabase dashboard → SQL Editor → New query → Run"
+	@echo ""
+	@_URL="postgresql+asyncpg://postgres:placeholder@db.placeholder.supabase.co:5432/postgres"; \
+	{ \
+		DATABASE_URL="$$_URL" uv run alembic upgrade base:c9f3e5a1d7b2 --sql 2>/dev/null | grep -v '^COMMIT'; \
+		printf "\n-- Running upgrade c9f3e5a1d7b2 -> d4a7c2e9b1f5 (partial unique index, skipping live check — safe on empty DB)\n"; \
+		printf "CREATE UNIQUE INDEX IF NOT EXISTS uq_prompt_category_slug_when_global ON prompt_categories(slug) WHERE user_id IS NULL;\n"; \
+		printf "UPDATE alembic_version SET version_num='d4a7c2e9b1f5' WHERE alembic_version.version_num = 'c9f3e5a1d7b2';\n\n"; \
+		DATABASE_URL="$$_URL" uv run alembic upgrade d4a7c2e9b1f5:head --sql 2>/dev/null | grep -v '^BEGIN;'; \
+	} > /tmp/supabase_migrations.sql
+	@echo "✅  $(shell wc -l < /tmp/supabase_migrations.sql | tr -d ' ') lines written to /tmp/supabase_migrations.sql"
+	@echo "    Last migration: $(shell grep 'Running upgrade' /tmp/supabase_migrations.sql | tail -1)"
+
 migration:
 	@[ "${name}" ] || ( echo "❌ Usage: make migration name=your_migration_name"; exit 1 )
 	uv run alembic revision --autogenerate -m "$(name)"
@@ -70,6 +94,12 @@ rollback:
 
 dbshell:
 	docker compose exec postgres psql -U postgres -d qa_chatbot
+
+dbshell-supabase:
+	@SUPABASE_DB_URL=$$(grep '^SUPABASE_DB_URL=' .env | cut -d '=' -f2-); \
+	[ -n "$$SUPABASE_DB_URL" ] || { echo "❌  SUPABASE_DB_URL is not set in .env"; exit 1; }; \
+	PLAIN_URL=$$(echo "$$SUPABASE_DB_URL" | sed 's|postgresql+asyncpg://|postgresql://|'); \
+	psql "$$PLAIN_URL"
 
 # ── Code quality ─────────────────────────────────────────────
 lint:

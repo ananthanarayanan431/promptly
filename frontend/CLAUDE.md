@@ -25,41 +25,43 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 
 ```
 src/app/
-  (auth)/login        → /login
-  (auth)/register     → /register
-  (dashboard)/        → / (dashboard home)
-  (dashboard)/optimize    → main prompt optimization page
-  (dashboard)/versions    → list of versioned prompt families
-  (dashboard)/versions/[id] → version history for one family
-  (dashboard)/analyze     → health-score + advisory tools
-  api/auth/           → Next.js API route that manages the httpOnly auth cookie
+  (auth)/sign-in       → /sign-in   (email/password + OAuth via AuthForm)
+  (auth)/sign-up       → /sign-up
+  auth/callback        → OAuth code-exchange route handler (sets the session cookie)
+  sso-callback         → legacy compat shim; forwards to /auth/callback
+  (dashboard)/         → authenticated app (sidebar + header layout)
+  (dashboard)/optimize → main prompt optimization page
 ```
 
-The `(dashboard)` group shares a layout (`src/app/(dashboard)/layout.tsx`) that renders the sidebar and header.
+The `(dashboard)` group is gated by `middleware.ts`; unauthenticated users are redirected to `/sign-in`.
 
-### Auth Token Flow
+### Auth (Supabase)
 
-Token storage uses a **two-layer pattern** to satisfy both server-side middleware and client-side axios:
+Auth uses **Supabase** via `@supabase/ssr`:
 
-1. **httpOnly cookie** (`auth_token`) — set/cleared by the Next.js API route at `src/app/api/auth/route.ts` via `lib/auth.ts`. Read by `middleware.ts` to protect dashboard routes before React renders.
-2. **Zustand store** (`src/stores/auth-store.ts`) — holds the token in memory for the axios request interceptor.
+- `lib/supabase.ts` — browser client (`createClient`) for client components.
+- `lib/supabase-server.ts` — `createMiddlewareClient` used by `middleware.ts` to refresh
+  the session cookie on every request (`supabase.auth.getUser()`).
+- `app/auth/callback/route.ts` — exchanges the OAuth `?code` for a session
+  (`exchangeCodeForSession`) with safe-redirect validation, then redirects to `next` (default `/optimize`).
+- `components/auth/auth-form.tsx` + `social-buttons.tsx` — email/password and OAuth UI.
 
-On page load, `AuthInitializer` (a client component rendered in the dashboard layout) hydrates the Zustand store from the cookie by reading the token server-side and passing it as a prop. This means the axios interceptor always has the token available without an extra fetch.
-
-On 401, the axios response interceptor (`src/lib/api.ts`) logs out the Zustand store, deletes the cookie via the API route, and redirects to `/login`.
+The axios instance in `lib/api.ts` attaches the Supabase access token as `Authorization: Bearer`
+and handles 401 globally. The previous custom-JWT cookie flow, Zustand token store, and
+page-load hydration component were removed in the Supabase migration.
 
 ### Data Fetching Patterns
 
 - **Server components** fetch initial data directly (no useEffect, no loading states needed)
 - **Client components** use TanStack Query for anything interactive or polling-based
-- `src/hooks/use-job-poller.ts` — polls `GET /api/v1/chat/jobs/{id}` every 2 seconds; stops automatically when `status` is `completed` or `failed`
+- `src/hooks/use-job-stream.ts` — streams job progress (SSE) with a polling fallback; stops on a terminal `completed`/`failed` status.
 
 ### API Layer
 
 All HTTP calls go through the single axios instance in `src/lib/api.ts`. Never use raw `fetch` for backend calls. The instance:
 - Sets `baseURL` from `NEXT_PUBLIC_API_URL`
-- Attaches `Authorization: Bearer <token>` from Zustand on every request
-- Handles 401 globally (logout + redirect)
+- Attaches a fresh Supabase access token as `Authorization: Bearer <token>` on every request, via a per-request getter registered by `SupabaseTokenSync` (`registerTokenGetter` → `supabase.auth.getSession()`)
+- Redirects to `/sign-in` on any 401 (expired or revoked session)
 
 ### Types and Validation
 

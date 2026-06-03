@@ -14,6 +14,18 @@ Each subdirectory has its own `CLAUDE.md` with full detail. Always `cd` into the
 
 ---
 
+## Claude Code MCP Setup
+
+`.mcp.json` is gitignored (contains your personal Supabase project ref). Copy the example and fill in your value:
+
+```bash
+cp .mcp.json.example .mcp.json
+# then edit .mcp.json and replace YOUR_SUPABASE_PROJECT_REF with your actual project ref
+# Find it at: https://supabase.com/dashboard → your project → Settings → General
+```
+
+---
+
 ## Quick Start (full stack)
 
 ```bash

@@ -29,7 +29,7 @@ async def make_user(db_session: AsyncSession) -> MakeUser:
     async def _make(*, email: str | None = None, credits: int = 100) -> tuple[User, dict[str, str]]:
         user = User(
             email=email or fake.unique.email(),
-            clerk_user_id=f"user_{uuid.uuid4().hex}",
+            supabase_user_id=f"user_{uuid.uuid4().hex}",
             credits=credits,
         )
         db_session.add(user)

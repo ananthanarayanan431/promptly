@@ -27,6 +27,7 @@ from app.graph.nodes.critic import critic_node
 from app.graph.nodes.intent_classifier import intent_classifier_node
 from app.graph.nodes.performance_gate import performance_gate_node
 from app.graph.nodes.quality_gate import quality_gate_node
+from app.graph.nodes.subject_classifier import subject_classifier_node
 from app.graph.nodes.synthesize import synthesize_node
 from app.graph.state import GraphState
 from app.llm import get_llm_settings
@@ -79,6 +80,7 @@ async def compile_graph(checkpointer: AsyncPostgresSaver) -> Any:  # noqa: ANN40
     settings = get_llm_settings()
     quality_gate_enabled = settings.QUALITY_GATE_ENABLED
     performance_gate_enabled = settings.PERFORMANCE_GATE_ENABLED
+    subject_classifier_enabled = settings.SUBJECT_CLASSIFIER_ENABLED
 
     builder.add_node("intent_classifier", intent_classifier_node)
     builder.add_node("council_vote", council_vote_node)
@@ -88,40 +90,47 @@ async def compile_graph(checkpointer: AsyncPostgresSaver) -> Any:  # noqa: ANN40
         builder.add_node("performance_gate", performance_gate_node)
     if quality_gate_enabled:
         builder.add_node("quality_gate", quality_gate_node)
+    if subject_classifier_enabled:
+        builder.add_node("subject_classifier", subject_classifier_node)
+
+    council_entry = "subject_classifier" if subject_classifier_enabled else "council_vote"
 
     # Entry point
     builder.set_entry_point("intent_classifier")
 
     if performance_gate_enabled:
-        # IRRELEVANT → END | force_optimize → council_vote | default → performance_gate
+        # IRRELEVANT → END | force_optimize → council_entry | default → performance_gate
         builder.add_conditional_edges(
             "intent_classifier",
             _route_intent,
             {
                 "blocked": END,
                 "gate": "performance_gate",
-                "skip_gate": "council_vote",
+                "skip_gate": council_entry,
             },
         )
-        # performance_gate → END (already optimized) | council_vote (needs work)
+        # performance_gate → END (already optimized) | council_entry (needs work)
         builder.add_conditional_edges(
             "performance_gate",
             _route_performance_gate,
             {
                 "exit": END,
-                "proceed": "council_vote",
+                "proceed": council_entry,
             },
         )
     else:
-        # Gate disabled — IRRELEVANT → END, OPTIMIZE → council_vote (original behaviour)
+        # Gate disabled — IRRELEVANT → END, OPTIMIZE → council_entry (original behaviour)
         builder.add_conditional_edges(
             "intent_classifier",
             _route_intent,
             {
                 "blocked": END,
-                "proceed": "council_vote",
+                "proceed": council_entry,
             },
         )
+
+    if subject_classifier_enabled:
+        builder.add_edge("subject_classifier", "council_vote")
 
     # Round 1 → Round 2 → Round 3
     builder.add_edge("council_vote", "critic")
@@ -146,5 +155,6 @@ async def compile_graph(checkpointer: AsyncPostgresSaver) -> Any:  # noqa: ANN40
         "graph_compiled",
         performance_gate=performance_gate_enabled,
         quality_gate=quality_gate_enabled,
+        subject_classifier=subject_classifier_enabled,
     )
     return graph

@@ -16,14 +16,16 @@ async def get_checkpointer() -> AsyncGenerator[AsyncPostgresSaver, None]:
     The checkpointer persists graph state (thread-level) to PostgreSQL,
     enabling stateful multi-turn conversations across stateless API pods.
     """
-    # Alembic uses psycopg2; LangGraph checkpointer needs the raw psycopg3 DSN
-    conn_string = (
-        str(db_settings.DATABASE_URL)
-        .replace("postgresql+asyncpg", "postgresql")
-        .replace("postgresql+psycopg2", "postgresql")
+    # LangGraph AsyncPostgresSaver uses psycopg3 which expects a plain DSN.
+    conn_string = db_settings.effective_url.replace("postgresql+asyncpg", "postgresql").replace(
+        "postgresql+psycopg2", "postgresql"
     )
 
+    # psycopg3 reads sslmode from the DSN query string.
+    if db_settings.is_supabase and "sslmode" not in conn_string:
+        sep = "&" if "?" in conn_string else "?"
+        conn_string = f"{conn_string}{sep}sslmode=require"
+
     async with AsyncPostgresSaver.from_conn_string(conn_string) as checkpointer:
-        # Creates langgraph internal checkpoint tables if they don't exist
         await checkpointer.setup()
         yield checkpointer

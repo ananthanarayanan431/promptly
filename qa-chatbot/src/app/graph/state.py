@@ -1,7 +1,60 @@
+from __future__ import annotations
+
 from typing import Annotated, Any
 
 from langgraph.graph.message import add_messages
 from typing_extensions import TypedDict
+
+
+def make_graph_state(
+    *,
+    raw_prompt: str,
+    session_id: str,
+    user_id: str,
+    feedback: str | None = None,
+    category_slug: str | None = None,
+    category_name: str | None = None,
+    category_description: str | None = None,
+    category_is_predefined: bool = False,
+    job_id: str | None = None,
+    version_history_diff: str | None = None,
+    max_iterations: int = 1,
+    force_optimize: bool = False,
+) -> GraphState:
+    """Return a fully-initialised GraphState with caller-supplied inputs and safe defaults.
+
+    All pipeline outputs (intent, council_responses, reasoning, …) start at their
+    zero values so every future field addition only needs to be defaulted here.
+    """
+    return {
+        "raw_prompt": raw_prompt,
+        "session_id": session_id,
+        "user_id": user_id,
+        "feedback": feedback,
+        "category_slug": category_slug,
+        "category_name": category_name,
+        "category_description": category_description,
+        "category_is_predefined": category_is_predefined,
+        "version_history_diff": version_history_diff,
+        "job_id": job_id,
+        "intent": None,
+        "force_optimize": force_optimize,
+        "already_optimized": False,
+        "gate_dimension_scores": None,
+        "gate_rationale": None,
+        "subject_about": None,
+        "subject_suggestions": None,
+        "council_responses": [],
+        "critic_responses": [],
+        "final_response": "",
+        "reasoning": None,
+        "iteration_count": 0,
+        "max_iterations": max_iterations,
+        "previous_synthesis": None,
+        "messages": [],
+        "token_usage": {},
+        "error": None,
+    }
 
 
 class GraphState(TypedDict):
@@ -36,6 +89,11 @@ class GraphState(TypedDict):
     already_optimized: bool  # True when gate short-circuits the pipeline
     gate_dimension_scores: dict[str, str] | None  # 8-dim scoring labels
     gate_rationale: str | None  # one-sentence explanation from the gate LLM
+
+    # Subject classifier — set before council_vote, reused across refinement loop iterations.
+    # None when the classifier is disabled or failed.
+    subject_about: list[str] | None
+    subject_suggestions: list[str] | None
 
     # Pipeline stages
     # Round 1 — council_responses: [{model, optimized_prompt, usage}]

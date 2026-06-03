@@ -7,6 +7,7 @@ from app.graph.prompts.performance_gate import performance_gate_messages
 from app.graph.prompts.prompt_advisory import prompt_advisory_messages
 from app.graph.prompts.prompt_health_score import prompt_health_score_messages
 from app.graph.prompts.reasoning import reasoning_messages
+from app.graph.prompts.subject_classifier import subject_analysis_block, subject_classifier_messages
 from app.graph.prompts.synthesize_best import synthesize_messages
 
 __all__ = [
@@ -19,5 +20,7 @@ __all__ = [
     "prompt_advisory_messages",
     "prompt_health_score_messages",
     "reasoning_messages",
+    "subject_analysis_block",
+    "subject_classifier_messages",
     "synthesize_messages",
 ]

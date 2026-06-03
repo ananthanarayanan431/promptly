@@ -90,6 +90,7 @@ export interface JobStatusResponse {
 
 export type ProgressStep =
   | 'intent'
+  | 'subject'
   | 'performance_gate'
   | 'council'
   | 'critic'

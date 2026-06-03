@@ -12,7 +12,12 @@ import time
 from typing import Any
 
 from app.core.cache import push_job_progress
-from app.graph.prompts import category_guidance_block, reasoning_messages, synthesize_messages
+from app.graph.prompts import (
+    category_guidance_block,
+    reasoning_messages,
+    subject_analysis_block,
+    synthesize_messages,
+)
 from app.graph.state import GraphState
 from app.llm import LLMClient
 from app.llm.pipeline import build_synthesizer
@@ -120,6 +125,10 @@ async def synthesize_node(state: GraphState) -> dict[str, Any]:
         category_description=state.get("category_description"),
         is_predefined=state.get("category_is_predefined", False),
     )
+    subject_block = subject_analysis_block(
+        state.get("subject_about"),
+        state.get("subject_suggestions"),
+    )
 
     response = await _get_synthesizer().ainvoke(
         synthesize_messages(
@@ -130,6 +139,7 @@ async def synthesize_node(state: GraphState) -> dict[str, Any]:
             previous_synthesis=state.get("previous_synthesis"),
             quality_gaps=quality_gaps if quality_gaps else None,
             category_block=category_block,
+            subject_block=subject_block,
         )
     )
 

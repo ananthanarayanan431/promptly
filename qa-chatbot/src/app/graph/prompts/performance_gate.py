@@ -15,8 +15,9 @@ SCORING SCALE
 "missing" — dimension is absent AND its absence would cause a worse LLM output
 
 CALIBRATION RULE: When uncertain between "strong" and "weak", score "weak". When uncertain
-between "weak" and "missing", score "missing". Conservative scoring prevents false positives —
-it is always better to run the council than to skip it on a prompt that needed improvement.
+between "weak" and "missing", score "weak" — only use "missing" when you can name the specific
+failure this prompt would cause because the dimension is absent. "Missing" means the LLM will
+produce output the user rejects; it does not mean the dimension could theoretically be present.
 
 DIMENSION DEFINITIONS
 

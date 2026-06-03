@@ -198,7 +198,7 @@ _USER_TEMPLATE = """\
 ORIGINAL PROMPT:
 {{raw_prompt}}
 
-{{feedback_block}}{{previous_synthesis_block}}\
+{{subject_block}}{{feedback_block}}{{previous_synthesis_block}}\
 ---
 
 {{proposals_block}}
@@ -215,11 +215,14 @@ def critic_messages(
     proposals: list[tuple[str, str]],
     feedback: str | None = None,
     previous_synthesis: str | None = None,
+    subject_block: str | None = None,
 ) -> list[dict[str, str]]:
     """
     Build critic review messages for N proposals.
 
-    proposals: list of (label, text) tuples — e.g. [("A", "..."), ("B", "..."), ("C", "..."), ("D", "...")]
+    subject_block: advisory context from subject_classifier injected before feedback
+        so it informs reviewers without overriding directives.
+    proposals: list of (label, text) tuples — e.g. [("A", "..."), ("B", "...")]
                Labels are the actual proposal identifiers so the critic's output maps correctly
                back to the synthesizer's proposal block.
     """
@@ -236,6 +239,7 @@ def critic_messages(
         .replace("{{output_schema_block}}", schema)
     )
 
+    subject_section = f"{subject_block}\n\n" if subject_block else ""
     feedback_block = (
         f"USER FEEDBACK (highest-priority directive — proposals must honour this):\n{feedback}\n\n"
         if feedback
@@ -249,6 +253,7 @@ def critic_messages(
     )
     user = (
         _USER_TEMPLATE.replace("{{raw_prompt}}", raw_prompt)
+        .replace("{{subject_block}}", subject_section)
         .replace("{{feedback_block}}", feedback_block)
         .replace("{{previous_synthesis_block}}", previous_synthesis_block)
         .replace("{{proposals_block}}", proposals_block)

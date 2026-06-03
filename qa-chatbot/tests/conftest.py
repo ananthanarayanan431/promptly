@@ -66,10 +66,10 @@ async def _test_auth_override(
         raise UnauthorizedException(detail="Test user not found")
     return UserContext(
         user_id=user.id,
-        clerk_user_id=user.clerk_user_id,
+        supabase_user_id=user.supabase_user_id,
         email=user.email,
         credits=user.credits,
-        org_id=user.clerk_user_id,
+        org_id="",
     )
 
 

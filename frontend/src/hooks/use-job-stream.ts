@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { useAuth } from '@clerk/nextjs';
+import { createClient } from '@/lib/supabase';
 import type { JobProgressEvent, JobResult } from '@/types/api';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? '';
@@ -85,7 +85,8 @@ export function useJobStream(jobId: string | null): UseJobStreamResult {
   const [result, setResult] = useState<JobResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
-  const { getToken } = useAuth();
+  const supabaseRef = useRef(createClient());
+  const supabase = supabaseRef.current;
 
   useEffect(() => {
     if (!jobId) return;
@@ -99,10 +100,11 @@ export function useJobStream(jobId: string | null): UseJobStreamResult {
     setStatus('streaming');
 
     (async () => {
-      const token = await getToken();
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token ?? '';
       try {
         const res = await fetch(`${API_URL}/api/v1/chat/jobs/${jobId}/stream`, {
-          headers: { Authorization: `Bearer ${token ?? ''}` },
+          headers: { Authorization: `Bearer ${token}` },
           signal: ctrl.signal,
         });
 
@@ -138,10 +140,7 @@ export function useJobStream(jobId: string | null): UseJobStreamResult {
                 setStatus('completed');
                 terminal = true;
               } else if (ev.step === 'failed') {
-                // "Stream timeout" from server means the SSE ceiling was hit but the
-                // job may still be running — check the actual job status before failing.
                 if (ev.error === 'Stream timeout') {
-                  // Fall through to poll fallback
                   break;
                 }
                 setError(ev.error ?? 'Optimization failed');
@@ -159,19 +158,20 @@ export function useJobStream(jobId: string | null): UseJobStreamResult {
 
         // Stream ended without a terminal event (timeout / disconnect) — poll for result
         if (!terminal) {
-          await pollUntilDone(jobId, token ?? '', ctrl.signal, setResult, setStatus, setError);
+          await pollUntilDone(jobId, token, ctrl.signal, setResult, setStatus, setError);
         }
       } catch (e: unknown) {
         if ((e as Error).name === 'AbortError') return;
         // Network error — try polling as fallback
-        await pollUntilDone(jobId, token ?? '', ctrl.signal, setResult, setStatus, setError);
+        await pollUntilDone(jobId, token, ctrl.signal, setResult, setStatus, setError);
       }
     })();
 
     return () => {
       ctrl.abort();
     };
-  }, [jobId, getToken]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- supabase client is ref-stable (useRef)
+  }, [jobId]);
 
   const reset = () => {
     abortRef.current?.abort();

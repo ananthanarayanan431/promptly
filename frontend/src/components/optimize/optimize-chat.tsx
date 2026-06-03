@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -10,7 +10,8 @@ import { useJobStream } from '@/hooks/use-job-stream';
 import { api } from '@/lib/api';
 import { formatApiErrorDetail } from '@/lib/api-errors';
 import { cn } from '@/lib/utils';
-import { useUser } from '@clerk/nextjs';
+import { createClient } from '@/lib/supabase';
+import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { useJobStore } from '@/stores/job-store';
 import { ChatMessage } from './chat-message';
 import { ChatInput } from './chat-input';
@@ -133,9 +134,13 @@ export function OptimizeChat() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { user: clerkUser } = useUser();
+  const [supabaseUser, setSupabaseUser] = useState<SupabaseUser | null>(null);
+  const supabase = useMemo(() => createClient(), []);
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => setSupabaseUser(user));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const setGeneratingSession = useJobStore((s) => s.setGeneratingSession);
-  const firstName = clerkUser?.firstName ?? clerkUser?.primaryEmailAddress?.emailAddress?.split('@')[0] ?? 'there';
+  const firstName = (supabaseUser?.user_metadata?.full_name as string | undefined)?.split(' ')[0] ?? supabaseUser?.email?.split('@')[0] ?? 'there';
 
   const urlSession = searchParams.get('session');
 
@@ -281,7 +286,7 @@ export function OptimizeChat() {
         setTurns([]);
       })
       .finally(() => setIsLoadingSession(false));
-  }, [urlSession]);
+  }, [urlSession, setGeneratingSession]);
 
   // Stream active job
   const { status: streamStatus, result: streamResult, error: streamError, progress: streamProgress } =

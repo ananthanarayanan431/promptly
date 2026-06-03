@@ -36,10 +36,10 @@ export default function AuthError({
           Try again
         </button>
         <Link
-          href="/login"
+          href="/sign-in"
           className="text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
-          Back to login
+          Back to sign in
         </Link>
       </div>
     </div>

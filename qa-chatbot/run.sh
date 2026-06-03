@@ -6,7 +6,7 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
 log_info()    { echo -e "${BLUE}[INFO]${NC}  $1"; }
 log_success() { echo -e "${GREEN}[OK]${NC}    $1"; }
@@ -18,7 +18,7 @@ APP_HOST="${APP_HOST:-0.0.0.0}"
 APP_PORT="${APP_PORT:-8000}"
 WORKERS="${WORKERS:-1}"
 ENV_FILE=".env"
-MAX_WAIT=30   # seconds to wait for postgres/redis
+MAX_WAIT=30
 
 # ── Mode (default: dev) ───────────────────────────────────────
 MODE="${1:-dev}"   # dev | prod | worker | migrate-only
@@ -52,8 +52,8 @@ install_deps() {
 }
 
 start_infra() {
-    log_info "Starting Postgres and Redis via Docker Compose..."
-    docker compose up postgres redis -d
+    log_info "Starting Postgres, Redis and MinIO via Docker Compose..."
+    docker compose up postgres redis minio -d
     log_success "Infrastructure containers started"
 }
 
@@ -88,7 +88,7 @@ wait_for_redis() {
 }
 
 run_migrations() {
-    log_info "Running Alembic migrations..."
+    log_info "Running Alembic migrations against Supabase..."
     uv run alembic upgrade head
     log_success "Migrations applied"
 }
@@ -121,11 +121,13 @@ start_worker() {
 }
 
 print_banner() {
+    DB_MODE_VAL=$(grep '^DB_MODE=' .env 2>/dev/null | cut -d '=' -f2 | tr -d ' ' || echo "local")
     echo ""
     echo -e "${GREEN}╔══════════════════════════════════════╗${NC}"
     echo -e "${GREEN}║        QA Chatbot — Backend          ║${NC}"
     echo -e "${GREEN}╚══════════════════════════════════════╝${NC}"
     echo -e "  Mode     : ${YELLOW}${MODE}${NC}"
+    echo -e "  Database : ${YELLOW}${DB_MODE_VAL}${NC}"
     echo -e "  Host     : http://${APP_HOST}:${APP_PORT}"
     echo -e "  Docs     : http://localhost:${APP_PORT}/docs"
     echo -e "  Health   : http://localhost:${APP_PORT}/api/v1/health"
@@ -140,8 +142,12 @@ main() {
     check_uv
     check_docker
     install_deps
-    start_infra
-    wait_for_postgres
+
+    DB_MODE_VAL=$(grep '^DB_MODE=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2 | tr -d ' ' || echo "local")
+    if [[ "$DB_MODE_VAL" == "local" ]]; then
+        start_infra
+        wait_for_postgres
+    fi
     wait_for_redis
 
     case "$MODE" in

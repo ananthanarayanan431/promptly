@@ -23,6 +23,17 @@ def build_classifier() -> ChatOpenAI:
     )
 
 
+def build_subject_classifier() -> ChatOpenAI:
+    """Subject analysis — about + suggestions. JSON output, ~512 tokens."""
+    from app.llm.settings import get_llm_settings
+
+    return _build(
+        get_llm_settings().DEFAULT_MODEL,
+        temperature=0,
+        max_tokens=512,
+    )
+
+
 def build_gate() -> ChatOpenAI:
     """Performance and quality gates — 8-dimension prompt scoring."""
     return _build("openai/gpt-4o-mini")

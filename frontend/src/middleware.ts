@@ -1,36 +1,41 @@
-import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
-import { NextResponse } from 'next/server';
+import { type NextRequest, NextResponse } from 'next/server';
+import { createMiddlewareClient } from '@/lib/supabase-server';
 
-const isPublicRoute = createRouteMatcher([
-  '/',
-  '/sign-in(.*)',
-  '/sign-up(.*)',
-  '/sso-callback(.*)',
-]);
+const PUBLIC_ROUTES = ['/', '/sign-in', '/sign-up', '/sso-callback', '/auth/callback'];
+const AUTH_ROUTES = ['/sign-in', '/sign-up'];
 
-export default clerkMiddleware((auth, request) => {
-  const { userId } = auth();
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Clerk's hosted org-setup task isn't used — send it straight into the app.
-  if (pathname.startsWith('/sign-up/tasks/choose-organization')) {
+  // API routes are authenticated by the FastAPI backend — skip middleware auth.
+  if (pathname.startsWith('/api/')) {
+    return NextResponse.next();
+  }
+
+  const { supabase, response } = createMiddlewareClient(request);
+
+  // getUser() refreshes the session cookie when needed.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const isPublic = PUBLIC_ROUTES.some(
+    (route) => pathname === route || pathname.startsWith(route + '/'),
+  );
+
+  if (!user && !isPublic) {
+    return NextResponse.redirect(new URL('/sign-in', request.url));
+  }
+
+  if (user && AUTH_ROUTES.some((r) => pathname.startsWith(r))) {
     return NextResponse.redirect(new URL('/optimize', request.url));
   }
 
-  // Already signed in? The auth pages can't sign you in again (Clerk throws
-  // `session_exists`), so bounce to the app instead of showing them.
-  if (userId && (pathname.startsWith('/sign-in') || pathname.startsWith('/sign-up'))) {
-    return NextResponse.redirect(new URL('/optimize', request.url));
-  }
-
-  if (!isPublicRoute(request)) {
-    auth().protect();
-  }
-});
+  return response;
+}
 
 export const config = {
   matcher: [
-    '/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)',
-    '/(api|trpc)(.*)',
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 };

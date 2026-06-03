@@ -16,7 +16,11 @@ import time
 from typing import Any
 
 from app.core.cache import push_job_progress
-from app.graph.prompts import category_guidance_block, council_optimizer_messages
+from app.graph.prompts import (
+    category_guidance_block,
+    council_optimizer_messages,
+    subject_analysis_block,
+)
 from app.graph.state import GraphState
 from app.llm import LLMClient
 from app.llm.pipeline import build_council_models
@@ -86,6 +90,10 @@ async def council_vote_node(state: GraphState) -> dict[str, Any]:
         category_description=state.get("category_description"),
         is_predefined=state.get("category_is_predefined", False),
     )
+    subject_block = subject_analysis_block(
+        state.get("subject_about"),
+        state.get("subject_suggestions"),
+    )
 
     # Quality gaps are only meaningful on refinement passes
     quality_gaps = _extract_quality_gaps(state) if iteration > 0 else []
@@ -103,6 +111,7 @@ async def council_vote_node(state: GraphState) -> dict[str, Any]:
             previous_synthesis=previous_synthesis if iteration > 0 else None,
             quality_gaps=quality_gaps if quality_gaps else None,
             category_block=category_block,
+            subject_block=subject_block,
         )
         response = await model.ainvoke(messages)
         result: dict[str, Any] = {

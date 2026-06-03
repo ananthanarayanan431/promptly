@@ -1,19 +1,17 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useSignIn, useSignUp } from '@clerk/nextjs';
-import { isClerkAPIResponseError } from '@clerk/nextjs/errors';
+import { createClient } from '@/lib/supabase';
+import { env } from '@/lib/env';
 import { SocialButtons } from './social-buttons';
 import styles from './auth.module.css';
 
 const AFTER_AUTH = '/optimize';
 
 function readError(err: unknown): string {
-  if (isClerkAPIResponseError(err)) {
-    return err.errors[0]?.longMessage ?? err.errors[0]?.message ?? 'Something went wrong.';
-  }
+  if (err instanceof Error) return err.message;
   return 'Something went wrong. Please try again.';
 }
 
@@ -24,7 +22,7 @@ export function AuthForm({ mode }: { mode: 'sign-in' | 'sign-up' }) {
 /* ───────────────────────────── Sign in ───────────────────────────── */
 
 function SignInForm() {
-  const { signIn, setActive, isLoaded } = useSignIn();
+  const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -33,21 +31,15 @@ function SignInForm() {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!isLoaded || busy) return;
+    if (busy) return;
     setBusy(true);
     setError(null);
-    try {
-      const res = await signIn.create({ identifier: email, password });
-      if (res.status === 'complete') {
-        await setActive({ session: res.createdSessionId });
-        router.push(AFTER_AUTH);
-      } else {
-        setError('Additional verification is required to sign in.');
-        setBusy(false);
-      }
-    } catch (err) {
+    const { error: err } = await supabase.auth.signInWithPassword({ email, password });
+    if (err) {
       setError(readError(err));
       setBusy(false);
+    } else {
+      router.push(AFTER_AUTH);
     }
   }
 
@@ -56,13 +48,15 @@ function SignInForm() {
       <h1 className={styles.heading}>Sign in to promptly</h1>
       <p className={styles.subhead}>Welcome back — let&apos;s optimize.</p>
 
-      <SocialButtons mode="sign-in" />
+      <SocialButtons />
       <div className={styles.divider}>or</div>
 
       <form className={styles.form} onSubmit={onSubmit}>
         {error && <p className={styles.error}>{error}</p>}
         <div className={styles.field}>
-          <label className={styles.label} htmlFor="email">Email</label>
+          <label className={styles.label} htmlFor="email">
+            Email
+          </label>
           <input
             id="email"
             className={styles.input}
@@ -76,7 +70,9 @@ function SignInForm() {
           />
         </div>
         <div className={styles.field}>
-          <label className={styles.label} htmlFor="password">Password</label>
+          <label className={styles.label} htmlFor="password">
+            Password
+          </label>
           <input
             id="password"
             className={styles.input}
@@ -89,14 +85,16 @@ function SignInForm() {
             required
           />
         </div>
-        <button className={styles.submit} type="submit" disabled={busy || !isLoaded}>
+        <button className={styles.submit} type="submit" disabled={busy}>
           {busy ? <span className={styles.spinner} /> : 'Sign in'}
         </button>
       </form>
 
       <p className={styles.footer}>
         New to promptly?{' '}
-        <Link className={styles.footerLink} href="/sign-up">Create account</Link>
+        <Link className={styles.footerLink} href="/sign-up">
+          Create account
+        </Link>
       </p>
     </div>
   );
@@ -105,7 +103,7 @@ function SignInForm() {
 /* ───────────────────────────── Sign up ───────────────────────────── */
 
 function SignUpForm() {
-  const { signUp, setActive, isLoaded } = useSignUp();
+  const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
   const [step, setStep] = useState<'form' | 'verify'>('form');
   const [email, setEmail] = useState('');
@@ -116,37 +114,40 @@ function SignUpForm() {
 
   async function onCreate(e: React.FormEvent) {
     e.preventDefault();
-    if (!isLoaded || busy) return;
+    if (busy) return;
     setBusy(true);
     setError(null);
-    try {
-      await signUp.create({ emailAddress: email, password });
-      await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
-      setStep('verify');
-    } catch (err) {
+    const { error: err } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: `${env.NEXT_PUBLIC_APP_URL}/auth/callback`,
+      },
+    });
+    if (err) {
       setError(readError(err));
-    } finally {
+      setBusy(false);
+    } else {
+      setStep('verify');
       setBusy(false);
     }
   }
 
   async function onVerify(e: React.FormEvent) {
     e.preventDefault();
-    if (!isLoaded || busy) return;
+    if (busy) return;
     setBusy(true);
     setError(null);
-    try {
-      const res = await signUp.attemptEmailAddressVerification({ code });
-      if (res.status === 'complete') {
-        await setActive({ session: res.createdSessionId });
-        router.push(AFTER_AUTH);
-      } else {
-        setError('That code didn’t verify your email. Please try again.');
-        setBusy(false);
-      }
-    } catch (err) {
+    const { error: err } = await supabase.auth.verifyOtp({
+      email,
+      token: code,
+      type: 'email',
+    });
+    if (err) {
       setError(readError(err));
       setBusy(false);
+    } else {
+      router.push(AFTER_AUTH);
     }
   }
 
@@ -159,7 +160,9 @@ function SignUpForm() {
         <form className={styles.form} onSubmit={onVerify}>
           {error && <p className={styles.error}>{error}</p>}
           <div className={styles.field}>
-            <label className={styles.label} htmlFor="code">Verification code</label>
+            <label className={styles.label} htmlFor="code">
+              Verification code
+            </label>
             <input
               id="code"
               className={styles.input}
@@ -172,13 +175,20 @@ function SignUpForm() {
               required
             />
           </div>
-          <button className={styles.submit} type="submit" disabled={busy || !isLoaded}>
+          <button className={styles.submit} type="submit" disabled={busy}>
             {busy ? <span className={styles.spinner} /> : 'Verify & continue'}
           </button>
         </form>
 
         <p className={styles.footer}>
-          <button type="button" className={styles.footerLink} onClick={() => { setStep('form'); setError(null); }}>
+          <button
+            type="button"
+            className={styles.footerLink}
+            onClick={() => {
+              setStep('form');
+              setError(null);
+            }}
+          >
             Use a different email
           </button>
         </p>
@@ -191,13 +201,15 @@ function SignUpForm() {
       <h1 className={styles.heading}>Create your account</h1>
       <p className={styles.subhead}>Four models. Three rounds. One better prompt.</p>
 
-      <SocialButtons mode="sign-up" />
+      <SocialButtons />
       <div className={styles.divider}>or</div>
 
       <form className={styles.form} onSubmit={onCreate}>
         {error && <p className={styles.error}>{error}</p>}
         <div className={styles.field}>
-          <label className={styles.label} htmlFor="su-email">Email</label>
+          <label className={styles.label} htmlFor="su-email">
+            Email
+          </label>
           <input
             id="su-email"
             className={styles.input}
@@ -211,29 +223,31 @@ function SignUpForm() {
           />
         </div>
         <div className={styles.field}>
-          <label className={styles.label} htmlFor="su-password">Password</label>
+          <label className={styles.label} htmlFor="su-password">
+            Password
+          </label>
           <input
             id="su-password"
             className={styles.input}
             type="password"
             autoComplete="new-password"
-            placeholder="At least 8 characters"
+            placeholder="At least 6 characters"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             disabled={busy}
             required
           />
         </div>
-        {/* Clerk bot-protection widget mounts here (invisible when not required). */}
-        <div id="clerk-captcha" />
-        <button className={styles.submit} type="submit" disabled={busy || !isLoaded}>
+        <button className={styles.submit} type="submit" disabled={busy}>
           {busy ? <span className={styles.spinner} /> : 'Create account'}
         </button>
       </form>
 
       <p className={styles.footer}>
         Already have an account?{' '}
-        <Link className={styles.footerLink} href="/sign-in">Sign in</Link>
+        <Link className={styles.footerLink} href="/sign-in">
+          Sign in
+        </Link>
       </p>
     </div>
   );

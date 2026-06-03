@@ -204,6 +204,8 @@ _FEEDBACK_SUFFIX = (
     "{{feedback}}"
 )
 
+_SUBJECT_BLOCK_SECTION = "\n\n---\n\n{{subject_block}}"
+
 
 def synthesize_messages(
     raw_prompt: str,
@@ -213,12 +215,15 @@ def synthesize_messages(
     previous_synthesis: str | None = None,
     quality_gaps: list[str] | None = None,
     category_block: str | None = None,
+    subject_block: str | None = None,
 ) -> list[dict[str, str]]:
     user = (
         _USER.replace("{{raw_prompt}}", raw_prompt)
         .replace("{{proposals_block}}", proposals_block)
         .replace("{{critiques_block}}", critiques_block)
     )
+    if subject_block:
+        user += _SUBJECT_BLOCK_SECTION.replace("{{subject_block}}", subject_block)
     if previous_synthesis:
         user += _PREVIOUS_SYNTHESIS_BLOCK.replace("{{previous_synthesis}}", previous_synthesis)
     if quality_gaps:

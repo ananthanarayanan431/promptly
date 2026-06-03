@@ -35,3 +35,9 @@ node_modules/
 
 # Git worktrees
 .worktrees/
+
+# Claude Code local config (contains project-specific MCP server URLs)
+.mcp.json
+
+# Logs
+*.log
