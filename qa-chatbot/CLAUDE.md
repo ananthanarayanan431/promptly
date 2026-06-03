@@ -97,7 +97,7 @@ All LLM system prompts live in `prompts/` as `.md` files and are loaded once at 
 
 | Layer | Location | Purpose |
 |-------|----------|---------|
-| API routes | `src/app/api/v1/` | FastAPI routers: auth, chat, users, prompts, health |
+| API routes | `src/app/api/v1/` | FastAPI routers: chat, users, prompts, health |
 | Services | `src/app/services/` | Business logic; `ChatService` owns graph execution |
 | Repositories | `src/app/repositories/` | Async SQLAlchemy data access; extend `BaseRepository[T]` |
 | Models | `src/app/models/` | ORM: `User`, `ChatSession`, `Message`, `PromptVersion` |
@@ -108,7 +108,7 @@ All LLM system prompts live in `prompts/` as `.md` files and are loaded once at 
 
 ### Data Models
 
-- **User:** `id`, `email`, `hashed_password`, `api_key_hash`, `credits` (default 100), `is_active`
+- **User:** `id`, `supabase_user_id`, `email`, `full_name`, `is_active`, `last_login_at`, `credits` (default 100)
 - **ChatSession:** `id`, `user_id`, `graph_thread_id`
 - **Message:** `id`, `session_id`, `role`, `raw_prompt`, `response` (= final optimized prompt), `council_votes` (JSON), `token_usage` (JSON)
 - **PromptVersion:** `id`, `prompt_id` (grouping UUID), `user_id`, `name`, `version` (int), `content`
@@ -122,7 +122,11 @@ All LLM system prompts live in `prompts/` as `.md` files and are loaded once at 
 
 ### Auth
 
-`get_current_user()` in `src/app/dependencies.py` accepts either a JWT Bearer token or a `qac_`-prefixed API key. Each optimization costs 10 credits (402 if insufficient); health-score and advisory cost 5 credits each.
+`get_current_user()` in `src/app/dependencies.py` accepts either a **Supabase JWT** Bearer token
+or a `qac_`-prefixed API key. Supabase JWTs are verified in `core/supabase_auth.py` (ES256 via
+JWKS, with HS256 fallback for legacy tokens). On first login the user row is provisioned lazily
+from the verified JWT claims (`supabase_user_id`, `email`, `full_name`) — no webhook required.
+Each optimization costs 10 credits (402 if insufficient); health-score and advisory cost 5 each.
 
 ### Configuration
 
