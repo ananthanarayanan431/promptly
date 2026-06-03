@@ -106,7 +106,7 @@ npm install
 npm run dev                # Next.js on :3000
 ```
 
-Set `NEXT_PUBLIC_API_URL=http://localhost:8000` in `frontend/.env.local`.
+Set `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_SUPABASE_URL`, and `NEXT_PUBLIC_SUPABASE_ANON_KEY` in `frontend/.env.local` (see `frontend/.env.example`).
 
 Visit `http://localhost:3000` · API docs at `http://localhost:8000/docs`
 
@@ -121,7 +121,10 @@ Visit `http://localhost:3000` · API docs at `http://localhost:8000/docs`
 | `OPENROUTER_API_KEY` | ✅ | Routes all LLM calls |
 | `DATABASE_URL` | ✅ | Async postgres (`postgresql+asyncpg://...`) |
 | `REDIS_URL` | ✅ | Celery broker/backend + job state cache |
-| `SECRET_KEY` | ✅ | JWT signing key |
+| `SUPABASE_URL` | ✅ | Supabase project URL (JWT verification via JWKS) |
+| `SUPABASE_ANON_KEY` | ✅ | Supabase anon key |
+| `SUPABASE_SERVICE_ROLE_KEY` | ✅ | Supabase service-role key |
+| `SUPABASE_JWT_SECRET` | ✅ | HS256 fallback for token verification |
 | `COUNCIL_MODELS` | — | Override 4 model slugs (comma-separated); index order maps to the 4 optimization strategies |
 | `DEFAULT_MODEL` | — | Chairman/synthesizer model slug |
 | `MINIO_ENDPOINT_URL` | — | Default: `http://localhost:9000` |
@@ -134,6 +137,8 @@ Visit `http://localhost:3000` · API docs at `http://localhost:8000/docs`
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `NEXT_PUBLIC_API_URL` | ✅ | Backend base URL |
+| `NEXT_PUBLIC_SUPABASE_URL` | ✅ | Supabase project URL (browser auth) |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | ✅ | Supabase anon key (browser auth) |
 
 ---
 
@@ -143,16 +148,15 @@ Visit `http://localhost:3000` · API docs at `http://localhost:8000/docs`
 promptly/
 ├── qa-chatbot/                   # FastAPI backend
 │   ├── prompts/                  # LLM system prompts (.md files, edit to change behavior)
-│   └── src/app/
-│       ├── api/v1/               # FastAPI routers (chat, auth, prompts, health, ...)
-│       ├── graph/                # LangGraph pipeline — nodes, state, checkpointer
-│       ├── services/             # Business logic (ChatService, PromptService)
-│       ├── repositories/         # Async SQLAlchemy data access
-│       ├── models/               # ORM models (User, ChatSession, Message, PromptVersion, ...)
-│       ├── schemas/              # Pydantic I/O contracts
-│       ├── workers/              # Celery app + task definitions
+│   └── src/app/                  # modular monolith — see docs/adr/0001-backend-architecture.md
+│       ├── optimize/             # Flagship "optimize" slice (chat api + service + worker)
 │       ├── domain_prompt/        # Domain Prompts feature (PDF → dataset → optimize)
-│       └── prompt_bridge/        # Prompt Bridge feature (cross-model style transfer)
+│       ├── prompt_bridge/        # Prompt Bridge feature (cross-model style transfer)
+│       ├── graph/                # Shared LangGraph engine — nodes, state, checkpointer
+│       ├── llm/                  # Shared LLM client (OpenRouter)
+│       ├── api/v1/               # Thin-layer routers (prompts, favorites, categories, users, health, ...)
+│       ├── services/ repositories/ models/ schemas/  # Thin-layer CRUD
+│       └── core/ config/ db/ workers/  # Shared kernel (auth, settings, sessions, Celery)
 └── frontend/                    # Next.js frontend
     └── src/
         ├── app/(dashboard)/      # Dashboard routes
@@ -163,7 +167,7 @@ promptly/
         │   └── versions/         # Version history browser
         ├── components/optimize/  # Chat messages, result panel, job progress stepper
         ├── hooks/                # TanStack Query hooks, SSE job stream
-        ├── stores/               # Zustand (auth, job state)
+        ├── stores/               # Zustand (job state)
         └── types/api.ts          # TypeScript interfaces mirroring backend schemas
 ```
 
@@ -202,6 +206,13 @@ npm run build    # type-check + production build
 ```
 
 ---
+
+## Documentation
+
+- **Backend architecture (ADR):** [`docs/adr/0001-backend-architecture.md`](docs/adr/0001-backend-architecture.md) — the modular-monolith rule.
+- **Deployment runbook:** [`docs/deployment.md`](docs/deployment.md) — Docker Compose build / migrate / deploy / rollback.
+- **Per-app guides:** [`qa-chatbot/README.md`](qa-chatbot/README.md) · [`qa-chatbot/CLAUDE.md`](qa-chatbot/CLAUDE.md) (backend) · [`frontend/CLAUDE.md`](frontend/CLAUDE.md).
+- **Deferred work:** [`docs/superpowers/notes/2026-06-03-deferred-work.md`](docs/superpowers/notes/2026-06-03-deferred-work.md).
 
 ## Contributing
 
