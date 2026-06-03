@@ -60,8 +60,8 @@ page-load hydration component were removed in the Supabase migration.
 
 All HTTP calls go through the single axios instance in `src/lib/api.ts`. Never use raw `fetch` for backend calls. The instance:
 - Sets `baseURL` from `NEXT_PUBLIC_API_URL`
-- Attaches `Authorization: Bearer <token>` from Zustand on every request
-- Handles 401 globally (logout + redirect)
+- Attaches a fresh Supabase access token as `Authorization: Bearer <token>` on every request, via a per-request getter registered by `SupabaseTokenSync` (`registerTokenGetter` → `supabase.auth.getSession()`)
+- Redirects to `/sign-in` on any 401 (expired or revoked session)
 
 ### Types and Validation
 

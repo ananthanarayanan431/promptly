@@ -3,8 +3,9 @@ import { test as base, expect } from '@playwright/test';
 import { faker } from '@faker-js/faker';
 
 // NOTE (Phase 5 — Testing & CI): this fixture authenticates via POST
-// /api/v1/auth/login, which no longer exists after the Supabase migration.
-// E2E auth must be reworked to mint a Supabase session before these specs pass.
+// /api/v1/auth/register + /api/v1/auth/login, neither of which exists after the
+// Supabase migration. E2E auth must be reworked to mint a Supabase session before
+// these specs pass.
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
 
