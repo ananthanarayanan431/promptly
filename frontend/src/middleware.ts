@@ -1,3 +1,4 @@
+import type { User } from '@supabase/supabase-js';
 import { type NextRequest, NextResponse } from 'next/server';
 import { createMiddlewareClient } from '@/lib/supabase-server';
 
@@ -14,10 +15,16 @@ export async function middleware(request: NextRequest) {
 
   const { supabase, response } = createMiddlewareClient(request);
 
-  // getUser() refreshes the session cookie when needed.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // getUser() refreshes the session cookie when needed. If Supabase is unreachable
+  // (network blip, or a paused/deleted project), fail safe to "unauthenticated" so
+  // public routes still render and protected routes redirect to /sign-in — never crash.
+  let user: User | null = null;
+  try {
+    const { data } = await supabase.auth.getUser();
+    user = data.user;
+  } catch {
+    user = null;
+  }
 
   const isPublic = PUBLIC_ROUTES.some(
     (route) => pathname === route || pathname.startsWith(route + '/'),
