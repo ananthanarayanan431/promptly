@@ -20,7 +20,7 @@ class LLMSettings(BaseSettings):
         "openai/gpt-4o-mini",
         "anthropic/claude-3.5-haiku",
         "google/gemini-2.5-flash",
-        "x-ai/grok-4.1-fast",
+        "x-ai/grok-4.3",
     ]
 
     # Maximum refinement loop iterations (council → critic → synthesize → quality_gate).
