@@ -29,6 +29,7 @@ function Icon({ name, size = 16, color }: { name: string; size?: number; color?:
     heart: <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 10-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/>,
     arrowRight: <><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></>,
     sparkle2: <><path d="m12 3-1.912 5.813a2 2 0 01-1.275 1.275L3 12l5.813 1.912a2 2 0 011.275 1.275L12 21l1.912-5.813a2 2 0 011.275-1.275L21 12l-5.813-1.912a2 2 0 01-1.275-1.275L12 3z"/></>,
+    stop: <rect x="4" y="4" width="16" height="16" rx="2" fill="currentColor" stroke="none" />,
   };
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
@@ -261,36 +262,53 @@ function TournamentRunningViz({ domainId, vizMode, onVizChange }: {
             <div style={{ background: 'var(--border)' }} />
             <div style={{ padding: '16px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
               <div style={{ fontSize: 10, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '.1em', fontWeight: 700 }}>Current duel</div>
+
+              {/* Question at the top */}
+              <div style={{ fontSize: 11, color: 'var(--text)', lineHeight: 1.6, padding: '8px 10px', borderRadius: 6, background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+                <span style={{ fontWeight: 700, color: 'var(--primary)' }}>Q: </span>
+                {state.question}
+              </div>
+
               {/* Candidate A */}
               <div className="ply-card" style={{ padding: '10px 12px', borderColor: `${C_COLORS[state.duel_i % C_COLORS.length]}55` }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
                   <span className="mono" style={{ fontSize: 11, color: C_COLORS[state.duel_i % C_COLORS.length], fontWeight: 700 }}>A · {state.names[state.duel_i]}</span>
                   <span className="mono" style={{ fontSize: 11, color: 'var(--text-subtle)' }}>
                     win rate {(state.avg_win_rates[state.duel_i] * 100).toFixed(0)}%
                   </span>
                 </div>
-                <div style={{ fontSize: 11, color: 'var(--text-subtle)', fontStyle: 'italic' }}>answering Q…</div>
+                {state.answer_a ? (
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.55, paddingLeft: 8, borderLeft: `2px solid ${C_COLORS[state.duel_i % C_COLORS.length]}66` }}>
+                    <span style={{ fontWeight: 700, color: 'var(--text-subtle)' }}>A: </span>
+                    {state.answer_a}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 11, color: 'var(--text-subtle)', fontStyle: 'italic' }}>answering Q…</div>
+                )}
                 <div style={{ marginTop: 6, height: 2, background: 'var(--surface-2)', borderRadius: 999, overflow: 'hidden' }}>
                   <div className="ply-progress indet" style={{ height: '100%' }}><i /></div>
                 </div>
               </div>
+
               {/* Candidate B */}
               <div className="ply-card" style={{ padding: '10px 12px', borderColor: `${C_COLORS[state.duel_j % C_COLORS.length]}55` }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
                   <span className="mono" style={{ fontSize: 11, color: C_COLORS[state.duel_j % C_COLORS.length], fontWeight: 700 }}>B · {state.names[state.duel_j]}</span>
                   <span className="mono" style={{ fontSize: 11, color: 'var(--text-subtle)' }}>
                     win rate {(state.avg_win_rates[state.duel_j] * 100).toFixed(0)}%
                   </span>
                 </div>
-                <div style={{ fontSize: 11, color: 'var(--text-subtle)', fontStyle: 'italic' }}>answering Q…</div>
+                {state.answer_b ? (
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.55, paddingLeft: 8, borderLeft: `2px solid ${C_COLORS[state.duel_j % C_COLORS.length]}66` }}>
+                    <span style={{ fontWeight: 700, color: 'var(--text-subtle)' }}>A: </span>
+                    {state.answer_b}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 11, color: 'var(--text-subtle)', fontStyle: 'italic' }}>answering Q…</div>
+                )}
                 <div style={{ marginTop: 6, height: 2, background: 'var(--surface-2)', borderRadius: 999, overflow: 'hidden' }}>
                   <div className="ply-progress indet" style={{ height: '100%' }}><i /></div>
                 </div>
-              </div>
-              {/* Question snippet */}
-              <div style={{ fontSize: 11, color: 'var(--text-subtle)', lineHeight: 1.5, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
-                <span style={{ fontWeight: 600, color: 'var(--text-muted)' }}>Q: </span>
-                {state.question.length > 80 ? state.question.slice(0, 80) + '…' : state.question}
               </div>
             </div>
           </>
@@ -1321,6 +1339,18 @@ export function DomainWorkspace() {
     }
   }, [selected, pollingJobId, qc]);
 
+  const [recovering, setRecovering] = useState(false);
+  const handleRecover = useCallback(async () => {
+    if (!selected) return;
+    setRecovering(true);
+    try {
+      await api.post(`/api/v1/domain-prompts/${selected.id}/stop`);
+      void qc.invalidateQueries({ queryKey: ['domain-prompts'] });
+    } catch { /* ignore */ } finally {
+      setRecovering(false);
+    }
+  }, [selected, qc]);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
 
@@ -1371,6 +1401,20 @@ export function DomainWorkspace() {
                   ? <span className="ply-dot ply-dot-pulse" style={{ width: 7, height: 7, background: 'var(--warning)' }} />
                   : <Icon name="stop" size={13} />}
                 {cancelling ? 'Cancelling…' : 'Cancel'}
+              </button>
+            )}
+            {selected && selected.status === 'cancelled' && !!selected.dataset?.dataset_key && (
+              <button
+                className="ply-btn ply-btn-sm"
+                onClick={handleRecover}
+                disabled={recovering}
+                title="Dataset is intact — restore this domain to Ready so you can run PDO again."
+                style={{ color: 'var(--success)', borderColor: 'color-mix(in srgb, var(--success) 40%, transparent)' }}
+              >
+                {recovering
+                  ? <span className="ply-dot ply-dot-pulse" style={{ width: 7, height: 7, background: 'var(--success)' }} />
+                  : <Icon name="check" size={13} />}
+                {recovering ? 'Restoring…' : 'Restore to Ready'}
               </button>
             )}
             <button className="ply-btn ply-btn-sm" aria-label="Delete domain" onClick={handleDelete} title="Delete domain">

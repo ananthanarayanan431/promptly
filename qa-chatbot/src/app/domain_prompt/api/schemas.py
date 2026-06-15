@@ -97,6 +97,8 @@ class TournamentStateResponse(BaseModel):
     duel_i: int
     duel_j: int
     question: str
+    answer_a: str = ""
+    answer_b: str = ""
 
 
 class OptimizationRunResponse(BaseModel):

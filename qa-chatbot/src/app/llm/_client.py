@@ -94,5 +94,5 @@ def _build(
         base_url=_OPENROUTER_BASE,
         api_key=SecretStr(api_key),
         temperature=temperature,
-        model_kwargs={"max_tokens": max_tokens} if max_tokens is not None else {},
+        max_tokens=max_tokens,
     )

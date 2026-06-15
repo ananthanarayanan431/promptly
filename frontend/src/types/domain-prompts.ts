@@ -3,7 +3,8 @@ export type DomainPromptStatus =
   | 'preparing_dataset'
   | 'optimizing'
   | 'completed'
-  | 'failed';
+  | 'failed'
+  | 'cancelled';
 
 export interface DatasetInfo {
   row_count: number | null;
@@ -41,6 +42,7 @@ export interface CreateDomainJobResponse {
 export interface DomainJobPollResponse {
   job_id: string;
   status: string;
+  stage: string | null;
   domain_id: string | null;
   result: Record<string, unknown> | null;
   error: string | null;
@@ -67,6 +69,8 @@ export interface TournamentState {
   duel_i: number;
   duel_j: number;
   question: string;
+  answer_a?: string;
+  answer_b?: string;
 }
 
 export interface OptimizationRun {

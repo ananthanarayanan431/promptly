@@ -44,6 +44,7 @@ from app.domain_prompt.data.repository import (
 )
 from app.domain_prompt.infrastructure.cache import (
     clear_dp_domain_active_job,
+    clear_dp_tournament_state,
     get_dp_celery_task_id,
     get_dp_domain_active_job,
     get_dp_job_domain_id,
@@ -486,11 +487,15 @@ async def stop_domain_tournament(
     if domain is None:
         raise DomainNotFoundException()
 
-    stuck_statuses = (DomainPromptStatus.optimizing, DomainPromptStatus.preparing_dataset)
-    if domain.status not in stuck_statuses:
+    recoverable_statuses = (
+        DomainPromptStatus.optimizing,
+        DomainPromptStatus.preparing_dataset,
+        DomainPromptStatus.cancelled,
+    )
+    if domain.status not in recoverable_statuses:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Domain is not in a running state — nothing to stop.",
+            detail="Domain is not in a recoverable state — nothing to stop.",
         )
 
     # Reset to completed if dataset is ready, otherwise to failed
@@ -530,6 +535,7 @@ async def _do_cancel(
     await set_dp_job_status(job_id, "cancelled")
     await set_dp_job_result(job_id, {"error": "Cancelled by user."})
     await clear_dp_domain_active_job(str(domain.id))
+    await clear_dp_tournament_state(str(domain.id))
 
     cancellable_statuses = (
         DomainPromptStatus.pending,
