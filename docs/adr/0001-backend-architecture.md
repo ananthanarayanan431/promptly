@@ -18,8 +18,9 @@ The backend is a **modular monolith** organized by this rule:
   `db/`, `llm/` (LLM client), `graph/` (the optimize engine), `models/`, `utils/`,
   `workers/celery_app.py`.
 - **Thin shared layer** — small CRUD features with little domain logic stay in
-  `api/v1/ + services/ + repositories/ + models/ + schemas/`: favorites, categories,
-  templates, users, api_keys, stats, prompts (health/advisory).
+  `api/v1/ + services/ + repositories/ + schemas/` (their ORM entities live in the shared
+  `models/`, which remains part of the shared kernel): favorites, categories, templates,
+  users, api_keys, stats, prompts (health/advisory).
 
 **Choosing for a new feature:** substantial domain logic or background jobs → slice;
 thin DB-backed CRUD → shared layer.

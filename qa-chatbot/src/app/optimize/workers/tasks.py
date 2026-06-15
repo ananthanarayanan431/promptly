@@ -326,15 +326,20 @@ def process_chat_async(
             await set_job_result(job_id, result)
             await set_job_status(job_id, "completed")
 
-            # Fire-and-forget silent health scoring (no credits charged)
-            from app.workers.tasks import score_prompt_async
+            # Fire-and-forget silent health scoring (no credits charged). Wrap the enqueue so a
+            # broker hiccup can't fall through to the failure handler below and wrongly flip an
+            # already-completed job to "failed" + refund credits.
+            try:
+                from app.workers.tasks import score_prompt_async
 
-            score_prompt_async.apply_async(
-                kwargs={
-                    "user_id": user_id,
-                    "optimized_prompt": result.get("optimized_prompt", ""),
-                }
-            )
+                score_prompt_async.apply_async(
+                    kwargs={
+                        "user_id": user_id,
+                        "optimized_prompt": result.get("optimized_prompt", ""),
+                    }
+                )
+            except Exception as exc:
+                log.warning("score_prompt_enqueue_failed", job_id=job_id, error=str(exc))
 
             return result
 
