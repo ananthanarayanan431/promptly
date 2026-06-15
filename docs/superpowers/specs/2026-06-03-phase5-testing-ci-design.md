@@ -31,8 +31,9 @@ Replace the test-job `env` block: drop `SECRET_KEY`, `ANTHROPIC_API_KEY`, `OPENA
 ```
 
 ### 2.2 Fix frontend CI backend env + quarantine the e2e job (`.github/workflows/frontend-ci.yml`)
-- In the e2e job's backend-startup `env`, apply the same fix (drop `SECRET_KEY`; add dummy `SUPABASE_*`; keep `OPENROUTER_API_KEY`).
-- **Quarantine the `e2e` job:** add a job-level guard `if: ${{ vars.RUN_E2E == 'true' }}` so it does not run by default (the `quality` job — lint/tsc/build — still runs and gates PRs). Re-enabling later is a one-line repo-variable flip once a Supabase test project exists.
+- Keep `OPENROUTER_API_KEY`. **Unlike `backend-ci.yml`, the e2e job must use REAL `SUPABASE_*` secrets** (`SUPABASE_URL`/`ANON_KEY`/`SERVICE_ROLE_KEY`/`JWT_SECRET` via `${{ secrets.* }}`): it runs the real backend with real browser auth (no `get_current_user` override), so token verification actually calls Supabase/JWKS. The Playwright step also needs `NEXT_PUBLIC_SUPABASE_URL`/`NEXT_PUBLIC_SUPABASE_ANON_KEY` so the frontend can boot (see `src/lib/env.ts`).
+- ⚠️ Do **not** switch this job to dummy `SUPABASE_*` unless/until a dedicated Supabase **test project** exists — dummies would break browser auth/JWKS verification. (Dummies are correct only in `backend-ci.yml`, where pytest overrides auth.)
+- **Quarantine the `e2e` job:** add a job-level guard `if: ${{ vars.RUN_E2E == 'true' }}` so it does not run by default (the `quality` job — lint/tsc/build — still gates PRs). Re-enabling is a one-line repo-variable flip once the test project exists (deferred — see `docs/superpowers/notes/2026-06-03-deferred-work.md`).
 
 ### 2.3 Quarantine the e2e specs locally
 Add a skip guard to the top of each spec (`e2e/auth.spec.ts`, `credits.spec.ts`, `optimize.spec.ts`) so `npm run test:e2e` skips cleanly with a clear reason instead of failing on the removed endpoints:

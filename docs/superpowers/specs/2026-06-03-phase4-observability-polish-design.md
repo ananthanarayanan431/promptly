@@ -30,6 +30,7 @@ Add a single source of truth for the app version (`APP_VERSION` constant in `con
 OpenTelemetry/OTLP; new dashboards; changing the JSON log schema; CORS middleware-ordering (separate concern, not observability).
 
 ## 3. Risks & Mitigations
+
 | Risk | Mitigation |
 |------|------------|
 | Removing the middleware `except` changes an error response shape a test asserts | The app-level handler already produces the canonical shape; full `make test` gates it. |

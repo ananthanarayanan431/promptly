@@ -42,6 +42,7 @@ Add `docs/deployment.md`: prerequisites, env setup (`.env.production`), build (`
 The font self-host (deferred); k8s/helm; CI image publishing; secrets-manager integration (document env-file approach only).
 
 ## 3. Risks & Mitigations
+
 | Risk | Mitigation |
 |------|------------|
 | Frontend image build can't be verified in this sandbox (Google Fonts blocked) | Write the standard Next standalone Dockerfile; verify `next.config` via tsc/lint + compose/Dockerfile structure; document that the image build is confirmed on CI/deploy (internet) and is gated on the deferred font fix for offline builds. |

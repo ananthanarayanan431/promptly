@@ -52,9 +52,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         app.state.graph = await compile_graph(checkpointer)
         log.info("app_started")
         yield
-    # Graceful shutdown — release pooled resources (best-effort; never raise on exit).
+    # Graceful shutdown — release pooled resources best-effort; isolate each step so a
+    # failure in one does not skip the other, and never raise on exit.
     try:
         await dispose_async_engine()
+    except Exception as exc:
+        log.warning("shutdown_cleanup_failed", error=str(exc))
+    try:
         await get_connection_pool().disconnect()
     except Exception as exc:
         log.warning("shutdown_cleanup_failed", error=str(exc))

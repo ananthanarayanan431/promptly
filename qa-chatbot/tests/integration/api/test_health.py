@@ -6,12 +6,15 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config.app import get_app_settings
+
 
 @pytest.mark.asyncio
 async def test_health_endpoint(client: AsyncClient) -> None:
     res = await client.get("/api/v1/health")
     assert res.status_code == 200
     assert res.json()["data"]["status"] == "ok"
+    assert res.json()["data"]["version"] == get_app_settings().APP_VERSION
 
 
 @pytest.mark.asyncio
