@@ -538,7 +538,16 @@ async def _do_cancel(
     )
     refund = 10 if domain.status in cancellable_statuses else 0
 
-    await repo.set_status(domain, DomainPromptStatus.cancelled, error_message="Cancelled by user.")
+    # Cancelling a *run* must not kill the *domain*: if the Q&A dataset already exists the
+    # domain stays usable (-> completed / "Ready") so the user can run PDO again. Only a
+    # cancel during dataset preparation (no dataset yet) leaves the domain cancelled.
+    has_dataset = domain.dataset is not None and domain.dataset.dataset_key is not None
+    if has_dataset:
+        await repo.set_status(domain, DomainPromptStatus.completed, error_message=None)
+    else:
+        await repo.set_status(
+            domain, DomainPromptStatus.cancelled, error_message="Cancelled by user."
+        )
 
     if refund:
         user_repo = UserRepository(db)
