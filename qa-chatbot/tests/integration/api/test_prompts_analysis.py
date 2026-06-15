@@ -158,7 +158,7 @@ async def test_diff_returns_hunks(client: AsyncClient, make_user) -> None:
     prompt_id = res.json()["data"]["prompt_id"]
 
     # Create a second version by using the prompt_id in chat
-    with patch("app.api.v1.chat.process_chat_async") as mock_task:
+    with patch("app.optimize.api.router.process_chat_async") as mock_task:
         mock_task.apply_async.return_value = MagicMock(id="fake-celery-id")
         await client.post(
             "/api/v1/chat/",

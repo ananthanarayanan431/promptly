@@ -86,7 +86,7 @@ _COST: dict[str, float] = {
     "gemini-2.0-flash": 0.25,
     "gemini-2.5-flash": 0.60,
     "grok-2": 6.00,
-    "grok-4.1-fast": 3.00,
+    "grok-4.3": 3.00,
 }
 _DEFAULT_COST = 1.00
 

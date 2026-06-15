@@ -8,4 +8,3 @@ class UserContext:
     supabase_user_id: str
     email: str
     credits: int
-    org_id: str

@@ -15,7 +15,8 @@ from app.api.v1.webhooks import router as webhooks_router
 from app.config.app import AppSettings, get_app_settings
 from app.core.logging import RequestLoggingMiddleware, setup_logging
 from app.core.middleware import CorrelationIdMiddleware, RateLimitMiddleware, RequestLimitMiddleware
-from app.db.session import AsyncSessionLocal
+from app.db.redis import get_connection_pool
+from app.db.session import AsyncSessionLocal, dispose_async_engine
 from app.graph.builder import compile_graph
 from app.graph.checkpointer import get_checkpointer
 from app.seeds.templates import seed_templates
@@ -51,6 +52,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         app.state.graph = await compile_graph(checkpointer)
         log.info("app_started")
         yield
+    # Graceful shutdown — release pooled resources best-effort; isolate each step so a
+    # failure in one does not skip the other, and never raise on exit.
+    try:
+        await dispose_async_engine()
+    except Exception as exc:
+        log.warning("shutdown_cleanup_failed", error=str(exc))
+    try:
+        await get_connection_pool().disconnect()
+    except Exception as exc:
+        log.warning("shutdown_cleanup_failed", error=str(exc))
     log.info("app_shutdown")
 
 
@@ -59,12 +70,16 @@ def create_app() -> FastAPI:
     _init_sentry(settings)
     app = FastAPI(
         title=settings.APP_NAME,
-        version="0.1.0",
+        version=settings.APP_VERSION,
         docs_url="/docs" if settings.DEBUG else None,
         redoc_url=None,
         lifespan=lifespan,
     )
 
+    # Middleware added last is outermost. CorrelationIdMiddleware is added last so it
+    # binds the correlation_id (and tags Sentry) before all others and sets the
+    # X-Correlation-ID header on every response — including 429/413/504 emitted by the
+    # rate-limit / request-limit middlewares.
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.CORS_ORIGIN,
@@ -72,9 +87,9 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.add_middleware(RequestLoggingMiddleware)
-    app.add_middleware(CorrelationIdMiddleware)
     app.add_middleware(RateLimitMiddleware)
     app.add_middleware(RequestLimitMiddleware)
+    app.add_middleware(CorrelationIdMiddleware)
     app.include_router(api_router, prefix=settings.API_V1_PREFIX)
     # webhooks_router is an intentional empty placeholder for future Supabase
     # webhook handlers; user provisioning happens on first login in dependencies.py.

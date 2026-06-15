@@ -95,16 +95,21 @@ All LLM system prompts live in `prompts/` as `.md` files and are loaded once at 
 
 ### Key Layers
 
+Structure follows `docs/adr/0001-backend-architecture.md` — a modular monolith: **vertical slices** for big features, a **shared kernel**, and **thin layers** for small CRUD.
+
 | Layer | Location | Purpose |
 |-------|----------|---------|
-| API routes | `src/app/api/v1/` | FastAPI routers: chat, users, prompts, health |
-| Services | `src/app/services/` | Business logic; `ChatService` owns graph execution |
+| Optimize slice | `src/app/optimize/` | Flagship feature: `api/` (chat router, schemas, exceptions), `core/service.py` (`ChatService`), `workers/tasks.py` (`process_chat_async`); uses the shared `graph/` engine |
+| Feature slices | `src/app/{domain_prompt,prompt_bridge}/` | Self-contained features (`api/core/data/workers`) per ADR-0001 |
+| API routes (thin layers) | `src/app/api/v1/` | CRUD routers: prompts, templates, stats, users, favorites, api_keys, categories, openrouter, health |
+| Services (thin layers) | `src/app/services/` | Business logic for thin-layer features (category, favorite, prompt) |
 | Repositories | `src/app/repositories/` | Async SQLAlchemy data access; extend `BaseRepository[T]` |
-| Models | `src/app/models/` | ORM: `User`, `ChatSession`, `Message`, `PromptVersion` |
-| Schemas | `src/app/schemas/` | Pydantic I/O contracts |
-| Config | `src/app/config/` | One settings class per concern (app, auth, db, llm, redis, rate_limit) |
-| Graph | `src/app/graph/` | LangGraph state, builder, checkpointer, nodes, prompt loader |
-| Workers | `src/app/workers/` | `celery_app.py` + `tasks.py` (process_chat_async) |
+| Models | `src/app/models/` | Shared ORM: `User`, `ChatSession`, `Message`, `PromptVersion`, … |
+| Schemas | `src/app/schemas/` | Pydantic I/O contracts (thin layers) |
+| Config | `src/app/config/` | One settings class per concern (app, db, llm, redis, rate_limit, supabase) |
+| Graph (shared engine) | `src/app/graph/` | LangGraph pipeline (state, builder, checkpointer, nodes, prompts) used by the optimize slice |
+| LLM (shared kernel) | `src/app/llm/` | LLM client + builders, used by graph and the feature slices |
+| Workers | `src/app/workers/` | `celery_app.py` (shared) + `tasks.py` (`score_prompt_async`); per-feature tasks live in each slice's `workers/` |
 
 ### Data Models
 
@@ -127,6 +132,12 @@ or a `qac_`-prefixed API key. Supabase JWTs are verified in `core/supabase_auth.
 JWKS, with HS256 fallback for legacy tokens). On first login the user row is provisioned lazily
 from the verified JWT claims (`supabase_user_id`, `email`, `full_name`) — no webhook required.
 Each optimization costs 10 credits (402 if insufficient); health-score and advisory cost 5 each.
+
+**Authorization model:** the backend connects to Postgres with a role that bypasses Row-Level
+Security, so **app-level ownership checks are the primary guard** — every endpoint requires
+`get_current_user`, and user-data queries filter by the owner. RLS policies (migration
+`b2c3d4e5f6a7`) are retained as **defense-in-depth** for any direct Supabase access. API keys
+are user-scoped via `api_keys.created_by`.
 
 ### Configuration
 

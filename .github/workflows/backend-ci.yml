@@ -2,12 +2,12 @@ name: Backend CI
 
 on:
   pull_request:
-    branches: [main, develop]
+    branches: [main, dev]
     paths:
       - 'qa-chatbot/**'
       - '.github/workflows/backend-ci.yml'
   push:
-    branches: [main, develop]
+    branches: [main, dev]
     paths:
       - 'qa-chatbot/**'
 
@@ -76,9 +76,12 @@ jobs:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/qa_chatbot_test
       REDIS_URL: redis://localhost:6379/0
       ENVIRONMENT: test
-      SECRET_KEY: test-secret-key-for-ci-only
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      # Tests override get_current_user and mock LLM calls, so dummy values suffice.
+      OPENROUTER_API_KEY: dummy-openrouter-key
+      SUPABASE_URL: https://example.supabase.co
+      SUPABASE_ANON_KEY: dummy-anon-key
+      SUPABASE_SERVICE_ROLE_KEY: dummy-service-role-key
+      SUPABASE_JWT_SECRET: dummy-jwt-secret
 
     steps:
       - uses: actions/checkout@v4

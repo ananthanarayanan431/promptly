@@ -8,6 +8,7 @@ const STATUS_LABELS: Record<DomainPromptStatus, string> = {
   optimizing: 'Optimizing…',
   completed: 'Ready',
   failed: 'Failed',
+  cancelled: 'Cancelled',
 };
 
 const STATUS_COLORS: Record<DomainPromptStatus, string> = {
@@ -16,6 +17,7 @@ const STATUS_COLORS: Record<DomainPromptStatus, string> = {
   optimizing: '#7c5cff',
   completed: '#22c55e',
   failed: '#f43f5e',
+  cancelled: '#8a8a90',
 };
 
 function WinRateBadge({ winRate }: { winRate: number | null }) {

@@ -25,7 +25,6 @@ def _make_user() -> UserContext:
         supabase_user_id="user_test_sb",
         email="test@test.com",
         credits=100,
-        org_id="org_test",
     )
 
 

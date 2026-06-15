@@ -12,14 +12,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.types.response import SuccessResponse
 from app.api.v1.exceptions.categories import InvalidCategoryException
-from app.api.v1.exceptions.chat import (
-    ChatInsufficientCreditsException,
-    InvalidSessionIDException,
-    JobNotFoundException,
-    LLMTimeoutException,
-    SessionNotFoundException,
-    VersionedPromptNotFoundException,
-)
 from app.core.cache import (
     get_job_owner,
     get_job_progress_from,
@@ -34,11 +26,15 @@ from app.dependencies import get_current_user, get_db
 from app.llm.naming import build_naming_llm
 from app.models.message import Message
 from app.models.session import ChatSession
-from app.repositories.message_repo import MessageRepository
-from app.repositories.prompt_version_repo import PromptVersionRepository
-from app.repositories.session_repo import SessionRepository
-from app.repositories.user_repo import UserRepository
-from app.schemas.chat import (
+from app.optimize.api.exceptions import (
+    ChatInsufficientCreditsException,
+    InvalidSessionIDException,
+    JobNotFoundException,
+    LLMTimeoutException,
+    SessionNotFoundException,
+    VersionedPromptNotFoundException,
+)
+from app.optimize.api.schemas import (
     ChatJobAcceptedResponse,
     ChatRequest,
     ChatResponse,
@@ -56,9 +52,13 @@ from app.schemas.chat import (
     SuggestNameRequest,
     SuggestNameResponse,
 )
+from app.optimize.workers.tasks import process_chat_async
+from app.repositories.message_repo import MessageRepository
+from app.repositories.prompt_version_repo import PromptVersionRepository
+from app.repositories.session_repo import SessionRepository
+from app.repositories.user_repo import UserRepository
 from app.services.category_service import CategoryService
 from app.utils.log import get_logger
-from app.workers.tasks import process_chat_async
 
 log = get_logger(__name__)
 

@@ -71,5 +71,6 @@ All HTTP calls go through the single axios instance in `src/lib/api.ts`. Never u
 ### Component Conventions
 
 - `src/components/ui/` — shadcn-generated components; do not edit directly
-- Feature components live in subdirectories matching the route: `optimize/`, `analyze/`, `versions/`, `layout/`
+- `src/components/<feature>/` — all feature components, named to match their route (e.g. `optimize/`, `bridge/`, `domain-prompts/`, `analyze/`, `versions/`, `layout/`). Do NOT use colocated `app/.../_components/` dirs.
+- `src/lib/` helpers + clients · `src/hooks/` React hooks · `src/stores/` Zustand stores · `src/types/` shared TS types mirroring backend shapes
 - `"use client"` only where interactivity is required; page shells and layouts are server components

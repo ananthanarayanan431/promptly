@@ -23,14 +23,14 @@ repos:
       - id: ruff-format
         exclude: "^docs/pitch-deck/"
 
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.13.0
+  - repo: local
     hooks:
       - id: mypy
-        additional_dependencies:
-          - pydantic
-          - sqlalchemy
-          - types-redis
-          - langchain-openai==1.1.12
-        args: ["--ignore-missing-imports"]
-        exclude: "^docs/pitch-deck/"
+        name: mypy (project src/ — strict + pydantic plugin)
+        # Run the project's own mypy (uv env + qa-chatbot/pyproject.toml config) so the hook
+        # matches `make typecheck`/CI exactly — avoids stub/plugin/version drift on dep bumps
+        # (an isolated mirrors-mypy env lacked the pydantic.mypy plugin and mis-analyzed models).
+        entry: uv run --directory qa-chatbot mypy src/
+        language: system
+        pass_filenames: false
+        files: ^qa-chatbot/src/.*\.py$

@@ -6,7 +6,7 @@ import io
 import uuid
 from collections.abc import AsyncGenerator
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytest_asyncio
@@ -22,8 +22,6 @@ from app.models.user import User
 _MINIMAL_PDF = b"%PDF-1.4 fake pdf content for testing purposes"
 _VALID_PROMPT = "You are a helpful assistant. Answer questions based on the provided context."
 
-_ORG_ID = "org_test_domain_prompt"
-
 
 def _make_user_context(
     user: User,
@@ -35,7 +33,6 @@ def _make_user_context(
         supabase_user_id=user.supabase_user_id,
         email=user.email,
         credits=credits,
-        org_id=_ORG_ID,
     )
 
 
@@ -621,6 +618,53 @@ async def test_stop_domain_preparing_with_dataset_resets_to_completed(
     res = await authed_client.post(f"/api/v1/domain-prompts/{domain_id}/stop")
     assert res.status_code == 200
     assert res.json()["data"]["status"] == "completed"
+
+
+@pytest.mark.asyncio
+async def test_cancel_run_keeps_domain_ready_when_dataset_exists(
+    authed_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Cancelling a PDO *run* on a domain that already has a dataset reverts the domain to
+    'completed' (Ready) — not 'cancelled' — so it stays reusable for future runs."""
+    from sqlalchemy import update
+
+    from app.domain_prompt.data.models import DomainDataset, DomainPrompt, DomainPromptStatus
+
+    domain_id, _ = await _create_domain_with_dataset(authed_client, name="Cancel Keeps Ready")
+
+    # Dataset is ready (has a key) and a PDO run is in progress.
+    await db_session.execute(
+        update(DomainDataset)
+        .where(DomainDataset.domain_id == uuid.UUID(domain_id))
+        .values(dataset_key="users/test/domains/test/dataset.jsonl")
+    )
+    await db_session.execute(
+        update(DomainPrompt)
+        .where(DomainPrompt.id == uuid.UUID(domain_id))
+        .values(status=DomainPromptStatus.optimizing)
+    )
+    await db_session.commit()
+
+    # An active job exists -> the _do_cancel path. Stub the Redis/Celery cancel helpers.
+    with (
+        patch(
+            "app.domain_prompt.api.router.get_dp_domain_active_job",
+            AsyncMock(return_value="job-1"),
+        ),
+        patch("app.domain_prompt.api.router.get_dp_celery_task_id", AsyncMock(return_value=None)),
+        patch("app.domain_prompt.api.router.set_dp_job_cancel", AsyncMock()),
+        patch("app.domain_prompt.api.router.set_dp_job_status", AsyncMock()),
+        patch("app.domain_prompt.api.router.set_dp_job_result", AsyncMock()),
+        patch("app.domain_prompt.api.router.clear_dp_domain_active_job", AsyncMock()),
+    ):
+        res = await authed_client.post(f"/api/v1/domain-prompts/{domain_id}/cancel")
+    assert res.status_code == 200
+    assert res.json()["data"]["cancelled"] is True
+
+    # The domain itself must remain usable, not cancelled.
+    got = await authed_client.get(f"/api/v1/domain-prompts/{domain_id}")
+    assert got.status_code == 200
+    assert got.json()["data"]["status"] == "completed"
 
 
 @pytest.mark.asyncio

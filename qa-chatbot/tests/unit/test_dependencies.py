@@ -46,12 +46,10 @@ def _make_api_key(
     *,
     key_id: uuid.UUID | None = None,
     created_by: uuid.UUID | None = None,
-    org_id: str = "org_xyz",
 ) -> MagicMock:
     api_key = MagicMock()
     api_key.id = key_id or uuid.uuid4()
     api_key.created_by = created_by or uuid.uuid4()
-    api_key.org_id = org_id
     return api_key
 
 
@@ -67,7 +65,7 @@ def _integrity_error() -> IntegrityError:
 
 @pytest.mark.asyncio
 async def test_get_current_user_valid_supabase_jwt_returns_user_context() -> None:
-    """Valid Supabase JWT with a known user → UserContext (org_id is always '')."""
+    """Valid Supabase JWT with a known user → UserContext."""
     user = _make_user()
     fake_payload = {
         "sub": user.supabase_user_id,
@@ -96,7 +94,6 @@ async def test_get_current_user_valid_supabase_jwt_returns_user_context() -> Non
     assert result.supabase_user_id == user.supabase_user_id
     assert result.email == user.email
     assert result.credits == user.credits
-    assert result.org_id == ""
 
 
 @pytest.mark.asyncio
@@ -268,11 +265,11 @@ async def test_provision_user_raises_when_no_recovery_possible() -> None:
 
 @pytest.mark.asyncio
 async def test_get_current_user_valid_api_key_returns_user_context() -> None:
-    """Valid qac_ API key → returns UserContext with org_id from the api_key row."""
+    """Valid qac_ API key → returns UserContext for the key's owner."""
     raw_key = "qac_mysupersecretkey"
     user_id = uuid.uuid4()
     user = _make_user(user_id=user_id)
-    api_key = _make_api_key(created_by=user_id, org_id="org_apikey")
+    api_key = _make_api_key(created_by=user_id)
 
     request = _make_request(f"Bearer {raw_key}")
 
@@ -297,7 +294,6 @@ async def test_get_current_user_valid_api_key_returns_user_context() -> None:
     mock_api_key_repo.update_last_used.assert_called_once_with(api_key.id)
 
     assert isinstance(result, UserContext)
-    assert result.org_id == "org_apikey"
     assert result.user_id == user.id
 
 

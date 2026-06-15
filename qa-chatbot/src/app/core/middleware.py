@@ -2,12 +2,12 @@ import asyncio
 import uuid
 from typing import Any
 
+import sentry_sdk
 import structlog
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app.api.types.response import ResponseError
 from app.config.app import get_app_settings
 from app.config.rate_limit import get_rate_limit_settings
 from app.db.redis import get_redis_client
@@ -17,15 +17,14 @@ class CorrelationIdMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Any) -> Any:
         correlation_id = request.headers.get("X-Correlation-ID", str(uuid.uuid4()))
         request.state.correlation_id = correlation_id
-        # Bind to structlog contextvars so every log in this request includes it
+        # Bind to structlog contextvars so every log in this request includes it,
+        # and tag Sentry so events cross-link to the same ID that appears in the logs.
         structlog.contextvars.clear_contextvars()
         structlog.contextvars.bind_contextvars(correlation_id=correlation_id)
-        try:
-            response = await call_next(request)
-            response.headers["X-Correlation-ID"] = correlation_id
-            return response
-        except ResponseError as e:
-            return JSONResponse(status_code=e.error.code, content={"detail": e.error.message})
+        sentry_sdk.set_tag("correlation_id", correlation_id)
+        response = await call_next(request)
+        response.headers["X-Correlation-ID"] = correlation_id
+        return response
 
 
 _SKIP_PATHS = {"/api/v1/health", "/api/v1/ready"}

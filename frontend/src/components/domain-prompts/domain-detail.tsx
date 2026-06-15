@@ -183,7 +183,7 @@ function StatusPill({ domain }: { domain: DomainPrompt }) {
   const c = STATUS_COLOR[domain.status] ?? '#6a6a72';
   const label = {
     pending: 'Pending', preparing_dataset: 'Building dataset',
-    optimizing: 'Optimizing', completed: 'Ready', failed: 'Failed',
+    optimizing: 'Optimizing', completed: 'Ready', failed: 'Failed', cancelled: 'Cancelled',
   }[domain.status] ?? domain.status;
 
   return (
