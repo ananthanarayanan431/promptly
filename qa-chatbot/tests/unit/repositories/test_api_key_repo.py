@@ -3,8 +3,8 @@ import uuid
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.user import User
-from app.repositories.api_key_repo import ApiKeyRepository
+from promptly.models.user import User
+from promptly.repositories.api_key_repo import ApiKeyRepository
 
 
 async def _make_user(db: AsyncSession, *, supabase_user_id: str | None = None) -> User:

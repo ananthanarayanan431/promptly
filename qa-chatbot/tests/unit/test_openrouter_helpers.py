@@ -1,6 +1,6 @@
 """Unit tests for openrouter helper functions (pure logic)."""
 
-from app.api.v1.openrouter import _cost_per_token
+from promptly.api.v1.openrouter import _cost_per_token
 
 
 def test_cost_per_token_known_model_gpt4o_mini() -> None:

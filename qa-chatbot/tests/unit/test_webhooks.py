@@ -1,4 +1,4 @@
-"""Contract tests for src/app/api/v1/webhooks.py.
+"""Contract tests for src/promptly/api/v1/webhooks.py.
 
 The previous auth provider's webhook handler was removed in the Supabase
 migration — user provisioning now happens lazily in
@@ -14,13 +14,13 @@ from fastapi import APIRouter
 
 
 def test_webhooks_router_is_importable() -> None:
-    from app.api.v1.webhooks import router
+    from promptly.api.v1.webhooks import router
 
     assert isinstance(router, APIRouter)
 
 
 def test_webhooks_router_has_no_routes() -> None:
     """Guard against accidentally shipping an unauthenticated webhook endpoint."""
-    from app.api.v1.webhooks import router
+    from promptly.api.v1.webhooks import router
 
     assert router.routes == []

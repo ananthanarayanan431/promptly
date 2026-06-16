@@ -49,7 +49,7 @@ MODE="${MODE:-api}"
 case "$MODE" in
     api)
         echo "🌐 Starting FastAPI..."
-        exec uvicorn app.main:app \
+        exec uvicorn promptly.main:app \
             --host "0.0.0.0" \
             --port "${PORT:-8000}" \
             --workers "${WORKERS:-4}" \
@@ -58,7 +58,7 @@ case "$MODE" in
         ;;
     worker)
         echo "⚙️  Starting Celery worker..."
-        exec celery -A app.workers.celery_app worker \
+        exec celery -A promptly.workers.celery_app worker \
             --loglevel="${LOG_LEVEL:-info}" \
             --concurrency="${CELERY_CONCURRENCY:-4}" \
             --without-heartbeat \
@@ -66,7 +66,7 @@ case "$MODE" in
         ;;
     beat)
         echo "⏰ Starting Celery beat..."
-        exec celery -A app.workers.celery_app beat \
+        exec celery -A promptly.workers.celery_app beat \
             --loglevel="${LOG_LEVEL:-info}"
         ;;
     *)

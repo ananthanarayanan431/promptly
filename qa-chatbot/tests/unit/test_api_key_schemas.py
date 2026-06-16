@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from app.schemas.api_key import (
+from promptly.schemas.api_key import (
     ApiKeyCreatedResponse,
     ApiKeyCreateRequest,
     ApiKeyListResponse,

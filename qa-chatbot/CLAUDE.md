@@ -17,7 +17,7 @@ make migration name=X # uv run alembic revision --autogenerate -m "X"
 make rollback         # uv run alembic downgrade -1
 
 # Run (both processes required for chat to work)
-make dev              # uvicorn app.main:app --reload (port 8000)
+make dev              # uvicorn promptly.main:app --reload (port 8000)
 make worker           # celery worker (concurrency=4)
 
 # Code quality
@@ -78,11 +78,11 @@ All models receive the same unified `council_optimizer.md` prompt — model arch
 
 **intent_classifier** is the single policy gate — it rejects harmful content, injection attempts, off-topic queries, and "write me a prompt from scratch" requests as `IRRELEVANT`. Only inputs that are existing prompts to be improved pass through as `OPTIMIZE`.
 
-Graph state is persisted to PostgreSQL via `AsyncPostgresSaver` (`src/app/graph/checkpointer.py`), keyed by `graph_thread_id`.
+Graph state is persisted to PostgreSQL via `AsyncPostgresSaver` (`src/promptly/graph/checkpointer.py`), keyed by `graph_thread_id`.
 
 ### Prompts Directory
 
-All LLM system prompts live in `prompts/` as `.md` files and are loaded once at module startup via `src/app/graph/prompts.py`. Edit prompts here to change optimization behaviour — no code changes needed.
+All LLM system prompts live in `prompts/` as `.md` files and are loaded once at module startup via `src/promptly/graph/prompts.py`. Edit prompts here to change optimization behaviour — no code changes needed.
 
 | File | Used by | Purpose |
 |------|---------|---------|
@@ -99,17 +99,17 @@ Structure follows `docs/adr/0001-backend-architecture.md` — a modular monolith
 
 | Layer | Location | Purpose |
 |-------|----------|---------|
-| Optimize slice | `src/app/optimize/` | Flagship feature: `api/` (chat router, schemas, exceptions), `core/service.py` (`ChatService`), `workers/tasks.py` (`process_chat_async`); uses the shared `graph/` engine |
-| Feature slices | `src/app/{domain_prompt,prompt_bridge}/` | Self-contained features (`api/core/data/workers`) per ADR-0001 |
-| API routes (thin layers) | `src/app/api/v1/` | CRUD routers: prompts, templates, stats, users, favorites, api_keys, categories, openrouter, health |
-| Services (thin layers) | `src/app/services/` | Business logic for thin-layer features (category, favorite, prompt) |
-| Repositories | `src/app/repositories/` | Async SQLAlchemy data access; extend `BaseRepository[T]` |
-| Models | `src/app/models/` | Shared ORM: `User`, `ChatSession`, `Message`, `PromptVersion`, … |
-| Schemas | `src/app/schemas/` | Pydantic I/O contracts (thin layers) |
-| Config | `src/app/config/` | One settings class per concern (app, db, llm, redis, rate_limit, supabase) |
-| Graph (shared engine) | `src/app/graph/` | LangGraph pipeline (state, builder, checkpointer, nodes, prompts) used by the optimize slice |
-| LLM (shared kernel) | `src/app/llm/` | LLM client + builders, used by graph and the feature slices |
-| Workers | `src/app/workers/` | `celery_app.py` (shared) + `tasks.py` (`score_prompt_async`); per-feature tasks live in each slice's `workers/` |
+| Optimize slice | `src/promptly/optimize/` | Flagship feature: `api/` (chat router, schemas, exceptions), `core/service.py` (`ChatService`), `workers/tasks.py` (`process_chat_async`); uses the shared `graph/` engine |
+| Feature slices | `src/promptly/{domain_prompt,prompt_bridge}/` | Self-contained features (`api/core/data/workers`) per ADR-0001 |
+| API routes (thin layers) | `src/promptly/api/v1/` | CRUD routers: prompts, templates, stats, users, favorites, api_keys, categories, openrouter, health |
+| Services (thin layers) | `src/promptly/services/` | Business logic for thin-layer features (category, favorite, prompt) |
+| Repositories | `src/promptly/repositories/` | Async SQLAlchemy data access; extend `BaseRepository[T]` |
+| Models | `src/promptly/models/` | Shared ORM: `User`, `ChatSession`, `Message`, `PromptVersion`, … |
+| Schemas | `src/promptly/schemas/` | Pydantic I/O contracts (thin layers) |
+| Config | `src/promptly/config/` | One settings class per concern (app, db, llm, redis, rate_limit, supabase) |
+| Graph (shared engine) | `src/promptly/graph/` | LangGraph pipeline (state, builder, checkpointer, nodes, prompts) used by the optimize slice |
+| LLM (shared kernel) | `src/promptly/llm/` | LLM client + builders, used by graph and the feature slices |
+| Workers | `src/promptly/workers/` | `celery_app.py` (shared) + `tasks.py` (`score_prompt_async`); per-feature tasks live in each slice's `workers/` |
 
 ### Data Models
 
@@ -127,7 +127,7 @@ Structure follows `docs/adr/0001-backend-architecture.md` — a modular monolith
 
 ### Auth
 
-`get_current_user()` in `src/app/dependencies.py` accepts either a **Supabase JWT** Bearer token
+`get_current_user()` in `src/promptly/dependencies.py` accepts either a **Supabase JWT** Bearer token
 or a `qac_`-prefixed API key. Supabase JWTs are verified in `core/supabase_auth.py` (ES256 via
 JWKS, with HS256 fallback for legacy tokens). On first login the user row is provisioned lazily
 from the verified JWT claims (`supabase_user_id`, `email`, `full_name`) — no webhook required.
@@ -141,7 +141,7 @@ are user-scoped via `api_keys.created_by`.
 
 ### Configuration
 
-Settings are split by concern in `src/app/config/`. Copy `.env.example` to `.env`. Key variables:
+Settings are split by concern in `src/promptly/config/`. Copy `.env.example` to `.env`. Key variables:
 
 - `OPENROUTER_API_KEY` — required for all LLM calls (routes through OpenRouter)
 - `COUNCIL_MODELS` — override the 4 model slugs; index order maps to strategy
@@ -150,9 +150,9 @@ Settings are split by concern in `src/app/config/`. Copy `.env.example` to `.env
 
 ### Redis Usage
 
-Redis serves two purposes, both via `src/app/db/redis.py`:
+Redis serves two purposes, both via `src/promptly/db/redis.py`:
 - **Celery broker/backend** — task queue and result storage
-- **Job state cache** (`src/app/core/cache.py`) — `chat:job:{id}:status` and `chat:job:{id}` keys track the lifecycle (queued → started → completed/failed) so the FastAPI poll endpoint never touches Celery internals
+- **Job state cache** (`src/promptly/core/cache.py`) — `chat:job:{id}:status` and `chat:job:{id}` keys track the lifecycle (queued → started → completed/failed) so the FastAPI poll endpoint never touches Celery internals
 
 The module-level `ConnectionPool` in `db/redis.py` must be reset at the start of each Celery task (`reset_connection_pool()`) because `asyncio.run()` closes the event loop between tasks, invalidating the pool's connections.
 

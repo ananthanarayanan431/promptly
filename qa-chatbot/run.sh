@@ -95,7 +95,7 @@ run_migrations() {
 
 start_dev() {
     log_info "Starting FastAPI in DEV mode (hot-reload, 1 worker)..."
-    uv run uvicorn app.main:app \
+    uv run uvicorn promptly.main:app \
         --host "$APP_HOST" \
         --port "$APP_PORT" \
         --reload \
@@ -105,7 +105,7 @@ start_dev() {
 
 start_prod() {
     log_info "Starting FastAPI in PROD mode ($WORKERS workers)..."
-    uv run uvicorn app.main:app \
+    uv run uvicorn promptly.main:app \
         --host "$APP_HOST" \
         --port "$APP_PORT" \
         --workers "$WORKERS" \
@@ -115,7 +115,7 @@ start_prod() {
 
 start_worker() {
     log_info "Starting Celery worker..."
-    uv run celery -A app.workers.celery_app worker \
+    uv run celery -A promptly.workers.celery_app worker \
         --loglevel=info \
         --concurrency=4
 }

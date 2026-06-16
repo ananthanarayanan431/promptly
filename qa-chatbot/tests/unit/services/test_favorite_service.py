@@ -4,9 +4,9 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.prompt_version import PromptVersion
-from app.models.user import User
-from app.services.favorite_service import FavoriteService
+from promptly.models.prompt_version import PromptVersion
+from promptly.models.user import User
+from promptly.services.favorite_service import FavoriteService
 
 
 async def _seed(db: AsyncSession) -> tuple[User, PromptVersion]:
@@ -87,7 +87,7 @@ async def test_like_rejects_other_users_version(db_session: AsyncSession) -> Non
 
 
 def test_extract_json_object_plain() -> None:
-    from app.services.favorite_service import _extract_json_object
+    from promptly.services.favorite_service import _extract_json_object
 
     assert _extract_json_object('{"tags": ["a"], "category": "Writing"}') == {
         "tags": ["a"],
@@ -96,13 +96,13 @@ def test_extract_json_object_plain() -> None:
 
 
 def test_extract_json_object_fenced() -> None:
-    from app.services.favorite_service import _extract_json_object
+    from promptly.services.favorite_service import _extract_json_object
 
     raw = '```json\n{"tags": [], "category": "Other"}\n```'
     assert _extract_json_object(raw) == {"tags": [], "category": "Other"}
 
 
 def test_extract_json_object_garbage_returns_empty() -> None:
-    from app.services.favorite_service import _extract_json_object
+    from promptly.services.favorite_service import _extract_json_object
 
     assert _extract_json_object("totally not json") == {}

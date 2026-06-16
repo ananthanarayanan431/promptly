@@ -6,10 +6,10 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.favorite_prompt import FavoritePrompt
-from app.models.prompt_version import PromptVersion
-from app.models.user import User
-from app.repositories.favorite_repo import FavoriteRepository
+from promptly.models.favorite_prompt import FavoritePrompt
+from promptly.models.prompt_version import PromptVersion
+from promptly.models.user import User
+from promptly.repositories.favorite_repo import FavoriteRepository
 
 
 async def _make_user(db: AsyncSession, email: str = "alice@test.com") -> User:

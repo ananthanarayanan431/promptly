@@ -8,8 +8,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.core.exceptions import GuardrailException, LLMException
-from app.services.prompt_service import PromptService, _extract_json, _get_text_content
+from promptly.core.exceptions import GuardrailException, LLMException
+from promptly.services.prompt_service import PromptService, _extract_json, _get_text_content
 
 # ── Pure helper tests ──────────────────────────────────────────────────────────
 
@@ -101,9 +101,9 @@ async def test_health_score_returns_parsed_json() -> None:
     mock_analyser = _make_analyser_mock(json.dumps(_GOOD_HEALTH_JSON))
 
     with (
-        patch("app.services.prompt_service._get_analyser", return_value=mock_analyser),
+        patch("promptly.services.prompt_service._get_analyser", return_value=mock_analyser),
         patch(
-            "app.services.prompt_service.guardrails_node",
+            "promptly.services.prompt_service.guardrails_node",
             new=AsyncMock(return_value={"error": None}),
         ),
     ):
@@ -124,9 +124,9 @@ async def test_health_score_with_markdown_fenced_json() -> None:
     mock_analyser = _make_analyser_mock(raw)
 
     with (
-        patch("app.services.prompt_service._get_analyser", return_value=mock_analyser),
+        patch("promptly.services.prompt_service._get_analyser", return_value=mock_analyser),
         patch(
-            "app.services.prompt_service.guardrails_node",
+            "promptly.services.prompt_service.guardrails_node",
             new=AsyncMock(return_value={"error": None}),
         ),
     ):
@@ -144,9 +144,9 @@ async def test_health_score_empty_response_raises_llm_exception() -> None:
     mock_analyser = _make_analyser_mock("")
 
     with (
-        patch("app.services.prompt_service._get_analyser", return_value=mock_analyser),
+        patch("promptly.services.prompt_service._get_analyser", return_value=mock_analyser),
         patch(
-            "app.services.prompt_service.guardrails_node",
+            "promptly.services.prompt_service.guardrails_node",
             new=AsyncMock(return_value={"error": None}),
         ),
         pytest.raises(LLMException, match="empty response"),
@@ -163,9 +163,9 @@ async def test_health_score_invalid_json_raises_llm_exception() -> None:
     mock_analyser = _make_analyser_mock("not valid json at all")
 
     with (
-        patch("app.services.prompt_service._get_analyser", return_value=mock_analyser),
+        patch("promptly.services.prompt_service._get_analyser", return_value=mock_analyser),
         patch(
-            "app.services.prompt_service.guardrails_node",
+            "promptly.services.prompt_service.guardrails_node",
             new=AsyncMock(return_value={"error": None}),
         ),
         pytest.raises(LLMException, match="not valid JSON"),
@@ -182,7 +182,7 @@ async def test_health_score_guardrail_failure_raises_guardrail_exception() -> No
 
     with (
         patch(
-            "app.services.prompt_service.guardrails_node",
+            "promptly.services.prompt_service.guardrails_node",
             new=AsyncMock(return_value={"error": "Injection attempt detected"}),
         ),
         pytest.raises(GuardrailException),
@@ -202,9 +202,9 @@ async def test_advisory_returns_parsed_json() -> None:
     mock_analyser = _make_analyser_mock(json.dumps(_GOOD_ADVISORY_JSON))
 
     with (
-        patch("app.services.prompt_service._get_analyser", return_value=mock_analyser),
+        patch("promptly.services.prompt_service._get_analyser", return_value=mock_analyser),
         patch(
-            "app.services.prompt_service.guardrails_node",
+            "promptly.services.prompt_service.guardrails_node",
             new=AsyncMock(return_value={"error": None}),
         ),
     ):
@@ -225,9 +225,9 @@ async def test_advisory_fenced_json() -> None:
     mock_analyser = _make_analyser_mock(raw)
 
     with (
-        patch("app.services.prompt_service._get_analyser", return_value=mock_analyser),
+        patch("promptly.services.prompt_service._get_analyser", return_value=mock_analyser),
         patch(
-            "app.services.prompt_service.guardrails_node",
+            "promptly.services.prompt_service.guardrails_node",
             new=AsyncMock(return_value={"error": None}),
         ),
     ):
@@ -245,9 +245,9 @@ async def test_advisory_empty_response_raises_llm_exception() -> None:
     mock_analyser = _make_analyser_mock("")
 
     with (
-        patch("app.services.prompt_service._get_analyser", return_value=mock_analyser),
+        patch("promptly.services.prompt_service._get_analyser", return_value=mock_analyser),
         patch(
-            "app.services.prompt_service.guardrails_node",
+            "promptly.services.prompt_service.guardrails_node",
             new=AsyncMock(return_value={"error": None}),
         ),
         pytest.raises(LLMException, match="empty response"),
@@ -264,9 +264,9 @@ async def test_advisory_invalid_json_raises_llm_exception() -> None:
     mock_analyser = _make_analyser_mock("not valid json")
 
     with (
-        patch("app.services.prompt_service._get_analyser", return_value=mock_analyser),
+        patch("promptly.services.prompt_service._get_analyser", return_value=mock_analyser),
         patch(
-            "app.services.prompt_service.guardrails_node",
+            "promptly.services.prompt_service.guardrails_node",
             new=AsyncMock(return_value={"error": None}),
         ),
         pytest.raises(LLMException, match="not valid JSON"),
@@ -283,7 +283,7 @@ async def test_advisory_guardrail_failure_raises_guardrail_exception() -> None:
 
     with (
         patch(
-            "app.services.prompt_service.guardrails_node",
+            "promptly.services.prompt_service.guardrails_node",
             new=AsyncMock(return_value={"error": "Blocked: harmful content"}),
         ),
         pytest.raises(GuardrailException),
@@ -303,9 +303,9 @@ async def test_advisory_content_block_list_response() -> None:
     mock.ainvoke = AsyncMock(return_value=resp)
 
     with (
-        patch("app.services.prompt_service._get_analyser", return_value=mock),
+        patch("promptly.services.prompt_service._get_analyser", return_value=mock),
         patch(
-            "app.services.prompt_service.guardrails_node",
+            "promptly.services.prompt_service.guardrails_node",
             new=AsyncMock(return_value={"error": None}),
         ),
     ):

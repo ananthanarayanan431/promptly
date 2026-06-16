@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from httpx import AsyncClient
 
-from app.core.cache import set_job_owner, set_job_result, set_job_status
+from promptly.core.cache import set_job_owner, set_job_result, set_job_status
 
 
 async def _submit_chat(
@@ -16,7 +16,7 @@ async def _submit_chat(
     prompt: str = "You are a helpful assistant.",
 ) -> str:
     """Submit a chat job and return the session_id."""
-    with patch("app.optimize.api.router.process_chat_async") as mock_task:
+    with patch("promptly.optimize.api.router.process_chat_async") as mock_task:
         mock_task.apply_async.return_value = MagicMock(id="fake-celery-id")
         res = await client.post(
             "/api/v1/chat/",

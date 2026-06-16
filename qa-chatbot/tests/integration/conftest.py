@@ -8,8 +8,8 @@ from faker import Faker
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.prompt_category import PromptCategory
-from app.models.user import User
+from promptly.models.prompt_category import PromptCategory
+from promptly.models.user import User
 
 fake = Faker()
 
@@ -50,7 +50,7 @@ def mock_rate_limit_redis(monkeypatch: pytest.MonkeyPatch) -> None:
     mock_redis = MagicMock()
     mock_redis.pipeline = MagicMock(return_value=mock_pipe)
     monkeypatch.setattr(
-        "app.core.middleware.get_redis_client",
+        "promptly.core.middleware.get_redis_client",
         AsyncMock(return_value=mock_redis),
     )
 
@@ -78,10 +78,10 @@ def mock_cache_redis(monkeypatch: pytest.MonkeyPatch) -> None:
     mock_redis.set = AsyncMock(side_effect=_set)
     mock_redis.get = AsyncMock(side_effect=_get)
     mock_redis.setex = AsyncMock(side_effect=_setex)
-    monkeypatch.setattr("app.db.redis.get_redis_client", AsyncMock(return_value=mock_redis))
-    monkeypatch.setattr("app.core.cache.get_redis_client", AsyncMock(return_value=mock_redis))
+    monkeypatch.setattr("promptly.db.redis.get_redis_client", AsyncMock(return_value=mock_redis))
+    monkeypatch.setattr("promptly.core.cache.get_redis_client", AsyncMock(return_value=mock_redis))
     monkeypatch.setattr(
-        "app.prompt_bridge.infrastructure.cache.get_redis_client",
+        "promptly.prompt_bridge.infrastructure.cache.get_redis_client",
         AsyncMock(return_value=mock_redis),
     )
 

@@ -8,8 +8,8 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.message import Message
-from app.models.session import ChatSession
+from promptly.models.message import Message
+from promptly.models.session import ChatSession
 
 _METRIC = {"score": 7, "rationale": "Good"}
 _HEALTH_SCORE_JSON: dict[str, Any] = {
@@ -92,9 +92,9 @@ async def test_dashboard_stats_usage_reflected_after_health_score(
     mock.ainvoke = AsyncMock(return_value=resp)
 
     with (
-        patch("app.services.prompt_service._get_analyser", return_value=mock),
+        patch("promptly.services.prompt_service._get_analyser", return_value=mock),
         patch(
-            "app.services.prompt_service.guardrails_node",
+            "promptly.services.prompt_service.guardrails_node",
             new=AsyncMock(return_value={"error": None}),
         ),
     ):

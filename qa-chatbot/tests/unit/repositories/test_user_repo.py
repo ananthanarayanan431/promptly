@@ -3,8 +3,8 @@ import uuid
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.user import User
-from app.repositories.user_repo import UserRepository
+from promptly.models.user import User
+from promptly.repositories.user_repo import UserRepository
 
 
 async def _make_user(

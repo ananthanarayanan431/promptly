@@ -82,7 +82,7 @@ async def test_submit_transfer_creates_job(client: AsyncClient, make_user) -> No
     mock_celery = MagicMock()
     mock_celery.id = str(uuid.uuid4())
     with patch(
-        "app.prompt_bridge.api.router.run_prompt_transfer.apply_async",
+        "promptly.prompt_bridge.api.router.run_prompt_transfer.apply_async",
         return_value=mock_celery,
     ):
         res = await client.post(
@@ -101,7 +101,7 @@ async def test_submit_transfer_job_appears_in_list(client: AsyncClient, make_use
     mock_celery = MagicMock()
     mock_celery.id = str(uuid.uuid4())
     with patch(
-        "app.prompt_bridge.api.router.run_prompt_transfer.apply_async",
+        "promptly.prompt_bridge.api.router.run_prompt_transfer.apply_async",
         return_value=mock_celery,
     ):
         await client.post("/api/v1/prompt-bridge/transfer", json=_TRANSFER_BODY, headers=headers)
@@ -127,7 +127,7 @@ async def test_poll_job_other_user_not_found(client: AsyncClient, make_user) -> 
     mock_celery = MagicMock()
     mock_celery.id = str(uuid.uuid4())
     with patch(
-        "app.prompt_bridge.api.router.run_prompt_transfer.apply_async",
+        "promptly.prompt_bridge.api.router.run_prompt_transfer.apply_async",
         return_value=mock_celery,
     ):
         create_res = await client.post(
@@ -145,7 +145,7 @@ async def test_poll_job_queued_status(client: AsyncClient, make_user) -> None:
     mock_celery = MagicMock()
     mock_celery.id = str(uuid.uuid4())
     with patch(
-        "app.prompt_bridge.api.router.run_prompt_transfer.apply_async",
+        "promptly.prompt_bridge.api.router.run_prompt_transfer.apply_async",
         return_value=mock_celery,
     ):
         create_res = await client.post(
@@ -173,7 +173,7 @@ async def test_delete_queued_job_blocked(client: AsyncClient, make_user) -> None
     mock_celery = MagicMock()
     mock_celery.id = str(uuid.uuid4())
     with patch(
-        "app.prompt_bridge.api.router.run_prompt_transfer.apply_async",
+        "promptly.prompt_bridge.api.router.run_prompt_transfer.apply_async",
         return_value=mock_celery,
     ):
         await client.post("/api/v1/prompt-bridge/transfer", json=_TRANSFER_BODY, headers=headers)
@@ -224,7 +224,7 @@ async def _submit_transfer(client: AsyncClient, headers: dict[str, str]) -> tupl
     mock_celery = MagicMock()
     mock_celery.id = str(uuid.uuid4())
     with patch(
-        "app.prompt_bridge.api.router.run_prompt_transfer.apply_async",
+        "promptly.prompt_bridge.api.router.run_prompt_transfer.apply_async",
         return_value=mock_celery,
     ):
         res = await client.post(

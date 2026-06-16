@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from app.graph.nodes.quality_gate import _is_converged, _parse_gate_response
+from promptly.graph.nodes.quality_gate import _is_converged, _parse_gate_response
 
 
 def test_parse_gate_response_plain_json():

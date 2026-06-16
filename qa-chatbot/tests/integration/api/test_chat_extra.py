@@ -22,7 +22,8 @@ def _mock_naming_llm(name: str = "TEST PROMPT") -> MagicMock:
 async def test_suggest_name_returns_name(client: AsyncClient, make_user) -> None:
     _, headers = await make_user()
     with patch(
-        "app.optimize.api.router.build_naming_llm", return_value=_mock_naming_llm("CODE REVIEWER")
+        "promptly.optimize.api.router.build_naming_llm",
+        return_value=_mock_naming_llm("CODE REVIEWER"),
     ):
         res = await client.post(
             "/api/v1/chat/suggest-name",
@@ -47,7 +48,7 @@ async def test_suggest_name_timeout_raises_503(client: AsyncClient, make_user) -
     _, headers = await make_user()
     mock_llm = MagicMock()
     mock_llm.ainvoke = AsyncMock(side_effect=TimeoutError)
-    with patch("app.optimize.api.router.build_naming_llm", return_value=mock_llm):
+    with patch("promptly.optimize.api.router.build_naming_llm", return_value=mock_llm):
         res = await client.post(
             "/api/v1/chat/suggest-name",
             json={"prompt": "You are a helpful assistant. Answer questions clearly."},
@@ -60,7 +61,8 @@ async def test_suggest_name_timeout_raises_503(client: AsyncClient, make_user) -
 async def test_save_version_creates_prompt_family(client: AsyncClient, make_user) -> None:
     _, headers = await make_user()
     with patch(
-        "app.optimize.api.router.build_naming_llm", return_value=_mock_naming_llm("EMAIL WRITER")
+        "promptly.optimize.api.router.build_naming_llm",
+        return_value=_mock_naming_llm("EMAIL WRITER"),
     ):
         res = await client.post(
             "/api/v1/chat/save-version",
@@ -96,7 +98,7 @@ async def test_save_version_timeout_raises_503(client: AsyncClient, make_user) -
     _, headers = await make_user()
     mock_llm = MagicMock()
     mock_llm.ainvoke = AsyncMock(side_effect=TimeoutError)
-    with patch("app.optimize.api.router.build_naming_llm", return_value=mock_llm):
+    with patch("promptly.optimize.api.router.build_naming_llm", return_value=mock_llm):
         res = await client.post(
             "/api/v1/chat/save-version",
             json={
@@ -117,7 +119,7 @@ async def test_create_chat_with_prompt_id(client: AsyncClient, make_user) -> Non
 
     # First create a prompt version
     with patch(
-        "app.optimize.api.router.build_naming_llm", return_value=_mock_naming_llm("MY PROMPT")
+        "promptly.optimize.api.router.build_naming_llm", return_value=_mock_naming_llm("MY PROMPT")
     ):
         save_res = await client.post(
             "/api/v1/chat/save-version",
@@ -130,7 +132,7 @@ async def test_create_chat_with_prompt_id(client: AsyncClient, make_user) -> Non
     prompt_id = save_res.json()["data"]["prompt_id"]
 
     # Submit optimization using prompt_id
-    with patch("app.optimize.api.router.process_chat_async") as mock_task:
+    with patch("promptly.optimize.api.router.process_chat_async") as mock_task:
         mock_task.apply_async.return_value = MagicMock(id="fake-celery-id")
         res = await client.post(
             "/api/v1/chat/",
@@ -161,7 +163,7 @@ async def test_create_chat_celery_failure_refunds_credits(
     user, headers = await make_user()
     initial_credits = user.credits
 
-    with patch("app.optimize.api.router.process_chat_async") as mock_task:
+    with patch("promptly.optimize.api.router.process_chat_async") as mock_task:
         mock_task.apply_async.side_effect = RuntimeError("Celery down")
         res = await client.post(
             "/api/v1/chat/",
@@ -179,7 +181,7 @@ async def test_create_chat_celery_failure_refunds_credits(
 @pytest.mark.asyncio
 async def test_create_chat_with_category_slug(client: AsyncClient, make_user) -> None:
     _, headers = await make_user()
-    with patch("app.optimize.api.router.process_chat_async") as mock_task:
+    with patch("promptly.optimize.api.router.process_chat_async") as mock_task:
         mock_task.apply_async.return_value = MagicMock(id="fake-celery-id")
         res = await client.post(
             "/api/v1/chat/",
@@ -209,7 +211,7 @@ async def test_create_chat_with_invalid_category_slug(client: AsyncClient, make_
 @pytest.mark.asyncio
 async def test_create_chat_with_name_and_feedback(client: AsyncClient, make_user) -> None:
     _, headers = await make_user()
-    with patch("app.optimize.api.router.process_chat_async") as mock_task:
+    with patch("promptly.optimize.api.router.process_chat_async") as mock_task:
         mock_task.apply_async.return_value = MagicMock(id="fake-celery-id")
         res = await client.post(
             "/api/v1/chat/",

@@ -1,0 +1,327 @@
+from __future__ import annotations
+
+import json
+import math
+import re
+import uuid
+from typing import Any
+from uuid import UUID
+
+from openai import APIStatusError as OpenAIAPIError
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from promptly.core.exceptions import GuardrailException, LLMException, NotFoundException
+from promptly.graph.nodes.guardrails import guardrails_node
+from promptly.graph.prompts import prompt_advisory_messages, prompt_health_score_messages
+from promptly.graph.state import GraphState, make_graph_state
+from promptly.llm import LLMClient
+from promptly.llm.analysis import build_analyser
+from promptly.models.favorite_prompt import FavoritePrompt
+from promptly.models.prompt_version import PromptVersion
+from promptly.repositories.prompt_version_repo import PromptVersionRepository
+from promptly.utils.log import get_logger
+
+log = get_logger(__name__)
+
+_analyser: LLMClient | None = None
+
+
+def _get_analyser() -> LLMClient:
+    global _analyser
+    if _analyser is None:
+        _analyser = build_analyser()
+    return _analyser
+
+
+def _get_text_content(content: str | list | None) -> str:  # type: ignore[type-arg]
+    """
+    Normalise an AIMessage.content to a plain string.
+
+    In langchain_openai ≥1.x / openai ≥2.x the field can be:
+      - str   — normal text response
+      - list  — list of content blocks e.g. [{"type": "text", "text": "..."}]
+      - None  — filtered / quota exceeded
+    """
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    parts: list[str] = []
+    for block in content:
+        if isinstance(block, str):
+            parts.append(block)
+        elif isinstance(block, dict) and block.get("type") == "text":
+            text = block.get("text")
+            if isinstance(text, str):
+                parts.append(text)
+    return "".join(parts)
+
+
+def _extract_json(raw: str) -> str:
+    """
+    Extract a JSON object from a model response that may be wrapped in markdown fences.
+
+    Strategy:
+      1. If the response contains ```...``` fences, pull the content from inside them.
+      2. Otherwise, find the first '{' and last '}' and return that slice.
+      3. Fall back to returning the stripped string as-is so json.loads surfaces
+         a clear parse error rather than a confusing empty-string error.
+    """
+    # 1. Strip markdown fences (```json ... ``` or ``` ... ```)
+    fence_match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", raw)
+    if fence_match:
+        return fence_match.group(1).strip()
+
+    # 2. Find the outermost { ... } in case the model added preamble text
+    brace_start = raw.find("{")
+    brace_end = raw.rfind("}")
+    if brace_start != -1 and brace_end > brace_start:
+        return raw[brace_start : brace_end + 1]
+
+    # 3. Return stripped string — json.loads will raise a clear JSONDecodeError
+    return raw.strip()
+
+
+class PromptService:
+    """
+    Handles standalone prompt analysis — no council vote, no DB persistence.
+    Used by the /prompts/health-score and /prompts/advisory endpoints.
+    """
+
+    def __init__(self, db: AsyncSession) -> None:
+        self.db = db
+
+    async def _run_guardrails(self, raw_prompt: str, user_id: str) -> GraphState:
+        state = make_graph_state(raw_prompt=raw_prompt, session_id="", user_id=user_id)
+        result = await guardrails_node(state)
+        if result.get("error"):
+            raise GuardrailException(detail=result["error"])
+        state.update(result)  # type: ignore[typeddict-item]
+        return state
+
+    async def health_score(self, prompt: str, user_id: str) -> dict[str, Any]:
+        await self._run_guardrails(prompt, user_id)
+
+        try:
+            response = await _get_analyser().ainvoke(prompt_health_score_messages(prompt))
+        except OpenAIAPIError as exc:
+            log.error(
+                "openrouter_api_error",
+                operation="health_score",
+                status=exc.status_code,
+                body=str(exc.body),
+            )  # noqa: E501
+            raise LLMException(detail=f"OpenRouter error {exc.status_code}: {exc.message}") from exc
+
+        raw = _get_text_content(response.content).strip()
+        if not raw:
+            raise LLMException(
+                detail=(
+                    "LLM returned an empty response"
+                    " — check your OpenRouter API key and model availability."
+                )
+            )
+        extracted = _extract_json(raw)
+        try:
+            scores = json.loads(extracted)
+        except json.JSONDecodeError as exc:
+            log.error(
+                "llm_json_parse_failed", operation="health_score", error=str(exc), raw_len=len(raw)
+            )  # noqa: E501
+            raise LLMException(detail=f"LLM response was not valid JSON: {exc}") from exc
+        return {"prompt": prompt, **scores}
+
+    async def advisory(self, prompt: str, user_id: str) -> dict[str, Any]:
+        await self._run_guardrails(prompt, user_id)
+
+        try:
+            response = await _get_analyser().ainvoke(prompt_advisory_messages(prompt))
+        except OpenAIAPIError as exc:
+            log.error(
+                "openrouter_api_error",
+                operation="advisory",
+                status=exc.status_code,
+                body=str(exc.body),
+            )  # noqa: E501
+            raise LLMException(detail=f"OpenRouter error {exc.status_code}: {exc.message}") from exc
+
+        raw = _get_text_content(response.content).strip()
+        log.debug(
+            "advisory_raw_content", content_type=type(response.content).__name__, len=len(raw)
+        )  # noqa: E501
+        if not raw:
+            raise LLMException(
+                detail=(
+                    "LLM returned an empty response"
+                    " — check your OpenRouter API key and model availability."
+                )
+            )
+        try:
+            advice = json.loads(_extract_json(raw))
+        except json.JSONDecodeError as exc:
+            raise LLMException(detail=f"LLM response was not valid JSON: {exc}") from exc
+        return {"prompt": prompt, **advice}
+
+
+class PromptVersioningService:
+    """
+    Manages named, versioned prompts.
+
+    Each prompt family shares a stable `prompt_id`. Versions start at 1 (the raw
+    user input) and increment each time the user optimizes through the LangGraph
+    council pipeline.
+    """
+
+    def __init__(self, db: AsyncSession) -> None:
+        self.db = db
+        self.repo = PromptVersionRepository(db)
+
+    @staticmethod
+    def _fmt(v: Any) -> dict[str, Any]:  # noqa: ANN401
+        return {
+            "version_id": str(v.id),
+            "prompt_id": str(v.prompt_id),
+            "name": v.name,
+            "version": v.version,
+            "content": v.content,
+            "created_at": v.created_at.isoformat(),
+            "is_favorited": False,
+            "favorite_id": None,
+        }
+
+    async def _favorites_by_version_id(
+        self, user_id: UUID, version_ids: list[UUID]
+    ) -> dict[UUID, FavoritePrompt]:
+        """Return a mapping of prompt_version_id → FavoritePrompt for the given user."""
+        if not version_ids:
+            return {}
+        result = await self.db.execute(
+            select(FavoritePrompt).where(
+                FavoritePrompt.user_id == user_id,
+                FavoritePrompt.prompt_version_id.in_(version_ids),
+            )
+        )
+        return {fav.prompt_version_id: fav for fav in result.scalars().all()}
+
+    async def create(self, name: str, content: str, user_id: str) -> dict[str, Any]:
+        """
+        Save a prompt under a given name.
+
+        - If the name is new for this user → issues a fresh prompt_id and starts at v1.
+        - If the name already exists → reuses the same prompt_id and appends the next
+          version number, so repeated submissions with the same name always continue
+          the same version lineage (v1 → v2 → v3 …).
+
+        Raises:
+            GuardrailException if the content fails safety checks.
+        """
+        state = make_graph_state(raw_prompt=content, session_id="", user_id=user_id)
+        guardrail_result = await guardrails_node(state)
+        if guardrail_result.get("error"):
+            raise GuardrailException(detail=guardrail_result["error"])
+
+        # Look up whether this name already has a version history for this user
+        existing = await self.repo.get_latest_by_name(name, UUID(user_id))
+        if existing:
+            prompt_id = existing.prompt_id
+            next_version = existing.version + 1
+        else:
+            prompt_id = uuid.uuid4()
+            next_version = 1
+
+        v = await self.repo.create_version(
+            prompt_id=prompt_id,
+            user_id=UUID(user_id),
+            name=name,
+            version=next_version,
+            content=content,
+        )
+        favs = await self._favorites_by_version_id(UUID(user_id), [v.id])
+        version_dict = self._fmt(v)
+        if v.id in favs:
+            version_dict["is_favorited"] = True
+            version_dict["favorite_id"] = str(favs[v.id].id)
+        return {"prompt_id": str(prompt_id), "version": version_dict}
+
+    async def list_families(
+        self,
+        user_id: str,
+        *,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> dict[str, Any]:
+        """
+        Return a paginated list of prompt families for a user, most-recently
+        updated first. Each family includes its full version history.
+        """
+        uid = UUID(user_id)
+        offset = (page - 1) * page_size
+
+        total = await self.repo.count_families(uid)
+        family_ids = await self.repo.get_family_ids_page(uid, limit=page_size, offset=offset)
+
+        families: list[dict[str, Any]] = []
+        if family_ids:
+            all_versions = await self.db.execute(
+                select(PromptVersion)
+                .where(
+                    PromptVersion.user_id == uid,
+                    PromptVersion.prompt_id.in_(family_ids),
+                )
+                .order_by(PromptVersion.prompt_id, PromptVersion.version.asc())
+            )
+            versions_flat = list(all_versions.scalars().all())
+
+            version_ids = [v.id for v in versions_flat]
+            favs = await self._favorites_by_version_id(uid, version_ids)
+
+            grouped: dict[str, dict[str, Any]] = {}
+            for v in versions_flat:
+                key = str(v.prompt_id)
+                if key not in grouped:
+                    grouped[key] = {"prompt_id": key, "name": v.name, "versions": []}
+                version_dict = self._fmt(v)
+                if v.id in favs:
+                    version_dict["is_favorited"] = True
+                    version_dict["favorite_id"] = str(favs[v.id].id)
+                grouped[key]["versions"].append(version_dict)
+
+            # Restore the SQL-ordered page order (family_ids is already sorted)
+            families = [grouped[str(fid)] for fid in family_ids if str(fid) in grouped]
+
+        return {
+            "page": page,
+            "page_size": page_size,
+            "total": total,
+            "total_pages": math.ceil(total / page_size) if total else 0,
+            "families": families,
+        }
+
+    async def list_versions(self, prompt_id: UUID, user_id: str) -> dict[str, Any]:
+        """
+        Return all versions of a prompt in ascending order.
+
+        Raises:
+            NotFoundException if prompt_id does not exist or belongs to another user.
+        """
+        versions = await self.repo.get_all_by_prompt_id(prompt_id, UUID(user_id))
+        if not versions:
+            raise NotFoundException(detail="Prompt not found.")
+
+        version_ids = [v.id for v in versions]
+        favs = await self._favorites_by_version_id(UUID(user_id), version_ids)
+
+        version_list = []
+        for v in versions:
+            version_dict = self._fmt(v)
+            if v.id in favs:
+                version_dict["is_favorited"] = True
+                version_dict["favorite_id"] = str(favs[v.id].id)
+            version_list.append(version_dict)
+
+        return {
+            "prompt_id": str(prompt_id),
+            "name": versions[0].name,
+            "versions": version_list,
+        }

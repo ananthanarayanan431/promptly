@@ -4,8 +4,8 @@ from uuid import uuid4
 import pytest
 from fastapi import Request
 
-from app.core.rate_limit import RateLimiter
-from app.core.user_context import UserContext
+from promptly.core.rate_limit import RateLimiter
+from promptly.core.user_context import UserContext
 
 
 def _make_request(path: str = "/api/v1/chat/") -> Request:
@@ -47,7 +47,7 @@ async def test_rate_limiter_passes_under_limit() -> None:
 
     mock_redis, _ = _make_redis_mock([5, True])
 
-    with patch("app.core.rate_limit.get_redis_client", AsyncMock(return_value=mock_redis)):
+    with patch("promptly.core.rate_limit.get_redis_client", AsyncMock(return_value=mock_redis)):
         # Should not raise
         await limiter(request, user)
 
@@ -62,7 +62,7 @@ async def test_rate_limiter_raises_429_at_limit() -> None:
 
     mock_redis, _ = _make_redis_mock([11, True])
 
-    with patch("app.core.rate_limit.get_redis_client", AsyncMock(return_value=mock_redis)):
+    with patch("promptly.core.rate_limit.get_redis_client", AsyncMock(return_value=mock_redis)):
         with pytest.raises(HTTPException) as exc_info:
             await limiter(request, user)
 
@@ -79,7 +79,7 @@ async def test_rate_limiter_uses_user_id_as_key() -> None:
 
     mock_redis, mock_pipe = _make_redis_mock([1, True])
 
-    with patch("app.core.rate_limit.get_redis_client", AsyncMock(return_value=mock_redis)):
+    with patch("promptly.core.rate_limit.get_redis_client", AsyncMock(return_value=mock_redis)):
         await limiter(request, user)
 
     # Verify the pipeline was called with the correct key
@@ -111,7 +111,7 @@ async def test_rate_limiter_uses_route_template_when_available() -> None:
 
     mock_redis, mock_pipe = _make_redis_mock([1, True])
 
-    with patch("app.core.rate_limit.get_redis_client", AsyncMock(return_value=mock_redis)):
+    with patch("promptly.core.rate_limit.get_redis_client", AsyncMock(return_value=mock_redis)):
         await limiter(request, user)
 
     key_used = mock_pipe.incr.call_args[0][0]
@@ -127,6 +127,6 @@ async def test_rate_limiter_exactly_at_limit_passes() -> None:
 
     mock_redis, _ = _make_redis_mock([10, True])
 
-    with patch("app.core.rate_limit.get_redis_client", AsyncMock(return_value=mock_redis)):
+    with patch("promptly.core.rate_limit.get_redis_client", AsyncMock(return_value=mock_redis)):
         # Exactly at limit should still pass (> not >=)
         await limiter(request, user)

@@ -81,9 +81,9 @@ async def test_health_score_success(client: AsyncClient, make_user) -> None:
     mock = _make_analyser_mock(json.dumps(_HEALTH_SCORE_JSON))
 
     with (
-        patch("app.services.prompt_service._get_analyser", return_value=mock),
+        patch("promptly.services.prompt_service._get_analyser", return_value=mock),
         patch(
-            "app.services.prompt_service.guardrails_node",
+            "promptly.services.prompt_service.guardrails_node",
             new=AsyncMock(return_value={"error": None}),
         ),
     ):
@@ -119,9 +119,9 @@ async def test_advisory_success(client: AsyncClient, make_user) -> None:
     mock = _make_analyser_mock(json.dumps(_ADVISORY_JSON))
 
     with (
-        patch("app.services.prompt_service._get_analyser", return_value=mock),
+        patch("promptly.services.prompt_service._get_analyser", return_value=mock),
         patch(
-            "app.services.prompt_service.guardrails_node",
+            "promptly.services.prompt_service.guardrails_node",
             new=AsyncMock(return_value={"error": None}),
         ),
     ):
@@ -158,7 +158,7 @@ async def test_diff_returns_hunks(client: AsyncClient, make_user) -> None:
     prompt_id = res.json()["data"]["prompt_id"]
 
     # Create a second version by using the prompt_id in chat
-    with patch("app.optimize.api.router.process_chat_async") as mock_task:
+    with patch("promptly.optimize.api.router.process_chat_async") as mock_task:
         mock_task.apply_async.return_value = MagicMock(id="fake-celery-id")
         await client.post(
             "/api/v1/chat/",

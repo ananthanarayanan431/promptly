@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from app.graph.nodes.critic import _collect_quality_gaps, _parse_critique
+from promptly.graph.nodes.critic import _collect_quality_gaps, _parse_critique
 
 
 def test_parse_critique_plain_json():

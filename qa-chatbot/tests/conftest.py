@@ -6,13 +6,13 @@ from fastapi import Depends, Request
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.core.exceptions import UnauthorizedException
-from app.core.user_context import UserContext
-from app.db.session import get_async_session
-from app.dependencies import get_current_user, get_db
-from app.main import create_app
-from app.models.base import Base
-from app.repositories.user_repo import UserRepository
+from promptly.core.exceptions import UnauthorizedException
+from promptly.core.user_context import UserContext
+from promptly.db.session import get_async_session
+from promptly.dependencies import get_current_user, get_db
+from promptly.main import create_app
+from promptly.models.base import Base
+from promptly.repositories.user_repo import UserRepository
 
 TEST_DB_URL = "postgresql+asyncpg://postgres:postgres@localhost:5433/qa_chatbot_test"
 

@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.graph.nodes.guardrails import (
+from promptly.graph.nodes.guardrails import (
     MAX_PROMPT_LENGTH,
     _check_blocked_keywords,
     _check_empty,
@@ -10,7 +10,7 @@ from app.graph.nodes.guardrails import (
     _check_length,
     guardrails_node,
 )
-from app.graph.state import GraphState
+from promptly.graph.state import GraphState
 
 
 def _make_state(raw_prompt: str) -> GraphState:

@@ -6,8 +6,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.graph.nodes import council_vote as council_vote_module
-from app.graph.nodes.council_vote import _extract_quality_gaps, council_vote_node
+from promptly.graph.nodes import council_vote as council_vote_module
+from promptly.graph.nodes.council_vote import _extract_quality_gaps, council_vote_node
 
 _BASE_STATE: dict[str, Any] = {
     "raw_prompt": "You are a helpful assistant. Answer questions clearly.",
@@ -279,7 +279,7 @@ async def test_council_vote_push_job_progress_per_model(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     push_mock = AsyncMock()
-    monkeypatch.setattr("app.graph.nodes.council_vote.push_job_progress", push_mock)
+    monkeypatch.setattr("promptly.graph.nodes.council_vote.push_job_progress", push_mock)
 
     mocks = _make_four_models()
     state = copy.deepcopy(_BASE_STATE)

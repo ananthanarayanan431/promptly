@@ -1,6 +1,6 @@
 """Unit tests for the diff utility (pure logic)."""
 
-from app.utils.diff import compute_diff
+from promptly.utils.diff import compute_diff
 
 
 def test_compute_diff_identical_texts():
