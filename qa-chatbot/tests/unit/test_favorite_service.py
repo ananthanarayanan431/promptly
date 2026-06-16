@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.services.favorite_service import FavoriteService, _extract_json_object
+from promptly.services.favorite_service import FavoriteService, _extract_json_object
 
 # ── _extract_json_object pure tests ───────────────────────────────────────────
 
@@ -72,7 +72,7 @@ async def test_generate_tags_valid_response() -> None:
     svc = FavoriteService(db)
     tagger = _make_tagger_mock({"tags": ["python", "coding", "api"], "category": "Coding"})
 
-    with patch("app.services.favorite_service.build_tagger", return_value=tagger):
+    with patch("promptly.services.favorite_service.build_tagger", return_value=tagger):
         tags, category = await svc._generate_tags("Write Python code for API endpoints.")
 
     assert "python" in tags
@@ -85,7 +85,7 @@ async def test_generate_tags_trims_and_lowercases() -> None:
     svc = FavoriteService(db)
     tagger = _make_tagger_mock({"tags": ["  Writing  ", "BLOG"], "category": "Writing"})
 
-    with patch("app.services.favorite_service.build_tagger", return_value=tagger):
+    with patch("promptly.services.favorite_service.build_tagger", return_value=tagger):
         tags, category = await svc._generate_tags("Write a blog post.")
 
     assert "writing" in tags
@@ -98,7 +98,7 @@ async def test_generate_tags_caps_at_four() -> None:
     svc = FavoriteService(db)
     tagger = _make_tagger_mock({"tags": ["a", "b", "c", "d", "e", "f"], "category": "Other"})
 
-    with patch("app.services.favorite_service.build_tagger", return_value=tagger):
+    with patch("promptly.services.favorite_service.build_tagger", return_value=tagger):
         tags, _ = await svc._generate_tags("Some prompt.")
 
     assert len(tags) <= 4
@@ -110,7 +110,7 @@ async def test_generate_tags_invalid_category_falls_back_to_other() -> None:
     svc = FavoriteService(db)
     tagger = _make_tagger_mock({"tags": [], "category": "UNKNOWN_CATEGORY"})
 
-    with patch("app.services.favorite_service.build_tagger", return_value=tagger):
+    with patch("promptly.services.favorite_service.build_tagger", return_value=tagger):
         _, category = await svc._generate_tags("Some prompt.")
 
     assert category == "Other"
@@ -122,7 +122,7 @@ async def test_generate_tags_empty_tags_list() -> None:
     svc = FavoriteService(db)
     tagger = _make_tagger_mock({"tags": [], "category": "Analysis"})
 
-    with patch("app.services.favorite_service.build_tagger", return_value=tagger):
+    with patch("promptly.services.favorite_service.build_tagger", return_value=tagger):
         tags, category = await svc._generate_tags("Analyze the data.")
 
     assert tags == set()
@@ -135,7 +135,7 @@ async def test_generate_tags_ignores_non_string_tags() -> None:
     svc = FavoriteService(db)
     tagger = _make_tagger_mock({"tags": [1, None, "valid"], "category": "Other"})
 
-    with patch("app.services.favorite_service.build_tagger", return_value=tagger):
+    with patch("promptly.services.favorite_service.build_tagger", return_value=tagger):
         tags, _ = await svc._generate_tags("Some prompt.")
 
     assert "valid" in tags
@@ -151,7 +151,7 @@ async def test_generate_tags_fenced_json_response() -> None:
     resp.content = '```json\n{"tags": ["writing"], "category": "Writing"}\n```'
     mock.ainvoke = AsyncMock(return_value=resp)
 
-    with patch("app.services.favorite_service.build_tagger", return_value=mock):
+    with patch("promptly.services.favorite_service.build_tagger", return_value=mock):
         tags, category = await svc._generate_tags("Write a blog post.")
 
     assert "writing" in tags
@@ -165,6 +165,6 @@ async def test_generate_tags_timeout_is_propagated() -> None:
     mock = MagicMock()
     mock.ainvoke = AsyncMock(side_effect=asyncio.TimeoutError)
 
-    with patch("app.services.favorite_service.build_tagger", return_value=mock):
+    with patch("promptly.services.favorite_service.build_tagger", return_value=mock):
         with pytest.raises((asyncio.TimeoutError, Exception)):
             await svc._generate_tags("Some prompt.")

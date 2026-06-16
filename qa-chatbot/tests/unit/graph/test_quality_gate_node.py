@@ -6,8 +6,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.graph.nodes import quality_gate as quality_gate_module
-from app.graph.nodes.quality_gate import quality_gate_node
+from promptly.graph.nodes import quality_gate as quality_gate_module
+from promptly.graph.nodes.quality_gate import quality_gate_node
 
 _BASE_STATE: dict[str, Any] = {
     "raw_prompt": "You are a helpful assistant. Answer questions clearly.",
@@ -193,7 +193,7 @@ async def test_quality_gate_push_job_progress_called_with_decision(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     push_mock = AsyncMock()
-    monkeypatch.setattr("app.graph.nodes.quality_gate.push_job_progress", push_mock)
+    monkeypatch.setattr("promptly.graph.nodes.quality_gate.push_job_progress", push_mock)
 
     mock = _make_mock_gate(_OK_RESPONSE)
     state = copy.deepcopy(_BASE_STATE)
@@ -268,7 +268,7 @@ async def test_quality_gate_hard_ceiling_push_job_progress(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     push_mock = AsyncMock()
-    monkeypatch.setattr("app.graph.nodes.quality_gate.push_job_progress", push_mock)
+    monkeypatch.setattr("promptly.graph.nodes.quality_gate.push_job_progress", push_mock)
 
     state = copy.deepcopy(_BASE_STATE)
     state["iteration_count"] = 2

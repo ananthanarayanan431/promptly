@@ -13,11 +13,11 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.user_context import UserContext
-from app.db.session import get_async_session
-from app.dependencies import get_current_user, get_db
-from app.main import create_app
-from app.models.user import User
+from promptly.core.user_context import UserContext
+from promptly.db.session import get_async_session
+from promptly.dependencies import get_current_user, get_db
+from promptly.main import create_app
+from promptly.models.user import User
 
 _MINIMAL_PDF = b"%PDF-1.4 fake pdf content for testing purposes"
 _VALID_PROMPT = "You are a helpful assistant. Answer questions based on the provided context."
@@ -39,7 +39,7 @@ def _make_user_context(
 def _minio_patch() -> Any:
     """Return a context-manager mock that silences MinIO calls."""
     return patch.multiple(
-        "app.domain_prompt.api.router",
+        "promptly.domain_prompt.api.router",
         upload_bytes=MagicMock(),
         upload_text=MagicMock(),
         download_text=MagicMock(return_value=""),
@@ -173,7 +173,7 @@ async def _create_domain_with_dataset(
     data = {"name": name}
     with (
         _minio_patch(),
-        patch("app.domain_prompt.api.router.prepare_domain_dataset.apply_async"),
+        patch("promptly.domain_prompt.api.router.prepare_domain_dataset.apply_async"),
         patch("anyio.to_thread.run_sync", side_effect=lambda fn, *args, **kwargs: None),
     ):
         res = await client.post("/api/v1/domain-prompts/", files=files, data=data)
@@ -254,7 +254,7 @@ async def test_create_domain_success(authed_client: AsyncClient) -> None:
 
     with (
         _minio_patch(),
-        patch("app.domain_prompt.api.router.prepare_domain_dataset.apply_async"),
+        patch("promptly.domain_prompt.api.router.prepare_domain_dataset.apply_async"),
         patch("anyio.to_thread.run_sync", side_effect=lambda fn, *args, **kwargs: None),
     ):
         res = await authed_client.post("/api/v1/domain-prompts/", files=files, data=data)
@@ -272,7 +272,7 @@ async def test_create_domain_appears_in_list(authed_client: AsyncClient) -> None
 
     with (
         _minio_patch(),
-        patch("app.domain_prompt.api.router.prepare_domain_dataset.apply_async"),
+        patch("promptly.domain_prompt.api.router.prepare_domain_dataset.apply_async"),
         patch("anyio.to_thread.run_sync", side_effect=lambda fn, *args, **kwargs: None),
     ):
         await authed_client.post("/api/v1/domain-prompts/", files=files, data=data)
@@ -290,7 +290,7 @@ async def test_get_domain_after_create(authed_client: AsyncClient) -> None:
 
     with (
         _minio_patch(),
-        patch("app.domain_prompt.api.router.prepare_domain_dataset.apply_async"),
+        patch("promptly.domain_prompt.api.router.prepare_domain_dataset.apply_async"),
         patch("anyio.to_thread.run_sync", side_effect=lambda fn, *args, **kwargs: None),
     ):
         create_res = await authed_client.post("/api/v1/domain-prompts/", files=files, data=data)
@@ -311,7 +311,7 @@ async def test_get_domain_other_user_not_found(
 
     with (
         _minio_patch(),
-        patch("app.domain_prompt.api.router.prepare_domain_dataset.apply_async"),
+        patch("promptly.domain_prompt.api.router.prepare_domain_dataset.apply_async"),
         patch("anyio.to_thread.run_sync", side_effect=lambda fn, *args, **kwargs: None),
     ):
         create_res = await authed_client.post("/api/v1/domain-prompts/", files=files, data=data)
@@ -335,7 +335,7 @@ async def test_poll_domain_job_queued(authed_client: AsyncClient) -> None:
 
     with (
         _minio_patch(),
-        patch("app.domain_prompt.api.router.prepare_domain_dataset.apply_async"),
+        patch("promptly.domain_prompt.api.router.prepare_domain_dataset.apply_async"),
         patch("anyio.to_thread.run_sync", side_effect=lambda fn, *args, **kwargs: None),
     ):
         create_res = await authed_client.post("/api/v1/domain-prompts/", files=files, data=data)
@@ -353,7 +353,7 @@ async def test_delete_domain_success(authed_client: AsyncClient, db_session: Asy
 
     with (
         _minio_patch(),
-        patch("app.domain_prompt.api.router.prepare_domain_dataset.apply_async"),
+        patch("promptly.domain_prompt.api.router.prepare_domain_dataset.apply_async"),
         patch("anyio.to_thread.run_sync", side_effect=lambda fn, *args, **kwargs: None),
     ):
         create_res = await authed_client.post("/api/v1/domain-prompts/", files=files, data=data)
@@ -381,7 +381,7 @@ async def test_domain_runs_empty_after_create(authed_client: AsyncClient) -> Non
 
     with (
         _minio_patch(),
-        patch("app.domain_prompt.api.router.prepare_domain_dataset.apply_async"),
+        patch("promptly.domain_prompt.api.router.prepare_domain_dataset.apply_async"),
         patch("anyio.to_thread.run_sync", side_effect=lambda fn, *args, **kwargs: None),
     ):
         create_res = await authed_client.post("/api/v1/domain-prompts/", files=files, data=data)
@@ -409,7 +409,7 @@ async def test_get_dataset_rows_empty_when_no_dataset_key(authed_client: AsyncCl
     domain_id, _ = await _create_domain_with_dataset(authed_client, name="Empty Dataset")
 
     with patch(
-        "app.domain_prompt.api.router.download_text",
+        "promptly.domain_prompt.api.router.download_text",
         return_value="",
     ):
         res = await authed_client.get(f"/api/v1/domain-prompts/{domain_id}/dataset")
@@ -437,7 +437,7 @@ async def test_update_dataset_success(authed_client: AsyncClient) -> None:
         {"question": "What is AI?", "answer": "Artificial Intelligence"},
         {"question": "What is ML?", "answer": "Machine Learning"},
     ]
-    with patch("app.domain_prompt.api.router.upload_text"):
+    with patch("promptly.domain_prompt.api.router.upload_text"):
         res = await authed_client.put(
             f"/api/v1/domain-prompts/{domain_id}/dataset",
             json={"rows": new_rows},
@@ -492,7 +492,7 @@ async def test_tournament_state_no_state_yet_returns_404(authed_client: AsyncCli
     domain_id, _ = await _create_domain_with_dataset(authed_client, name="Tournament State")
 
     with patch(
-        "app.domain_prompt.api.router.get_dp_tournament_state",
+        "promptly.domain_prompt.api.router.get_dp_tournament_state",
         return_value=None,
     ):
         res = await authed_client.get(f"/api/v1/domain-prompts/{domain_id}/tournament-state")
@@ -521,7 +521,7 @@ async def test_optimize_domain_insufficient_credits(
 ) -> None:
     from sqlalchemy import update
 
-    from app.domain_prompt.data.models import DomainDataset, DomainPrompt, DomainPromptStatus
+    from promptly.domain_prompt.data.models import DomainDataset, DomainPrompt, DomainPromptStatus
 
     # Create the domain with the full-credits client first
     domain_id, _ = await _create_domain_with_dataset(authed_client, name="Low Credits Domain")
@@ -574,7 +574,7 @@ async def test_stop_domain_optimizing_resets_to_failed(
     """Domain stuck in 'optimizing' with no dataset reverts to 'failed' on stop."""
     from sqlalchemy import update
 
-    from app.domain_prompt.data.models import DomainPrompt, DomainPromptStatus
+    from promptly.domain_prompt.data.models import DomainPrompt, DomainPromptStatus
 
     domain_id, _ = await _create_domain_with_dataset(authed_client, name="Stop Optimizing")
 
@@ -598,7 +598,7 @@ async def test_stop_domain_preparing_with_dataset_resets_to_completed(
     """Domain stuck in 'preparing_dataset' with dataset_key reverts to 'completed'."""
     from sqlalchemy import update
 
-    from app.domain_prompt.data.models import DomainDataset, DomainPrompt, DomainPromptStatus
+    from promptly.domain_prompt.data.models import DomainDataset, DomainPrompt, DomainPromptStatus
 
     domain_id, _ = await _create_domain_with_dataset(authed_client, name="Stop Preparing")
 
@@ -628,7 +628,7 @@ async def test_cancel_run_keeps_domain_ready_when_dataset_exists(
     'completed' (Ready) — not 'cancelled' — so it stays reusable for future runs."""
     from sqlalchemy import update
 
-    from app.domain_prompt.data.models import DomainDataset, DomainPrompt, DomainPromptStatus
+    from promptly.domain_prompt.data.models import DomainDataset, DomainPrompt, DomainPromptStatus
 
     domain_id, _ = await _create_domain_with_dataset(authed_client, name="Cancel Keeps Ready")
 
@@ -648,14 +648,16 @@ async def test_cancel_run_keeps_domain_ready_when_dataset_exists(
     # An active job exists -> the _do_cancel path. Stub the Redis/Celery cancel helpers.
     with (
         patch(
-            "app.domain_prompt.api.router.get_dp_domain_active_job",
+            "promptly.domain_prompt.api.router.get_dp_domain_active_job",
             AsyncMock(return_value="job-1"),
         ),
-        patch("app.domain_prompt.api.router.get_dp_celery_task_id", AsyncMock(return_value=None)),
-        patch("app.domain_prompt.api.router.set_dp_job_cancel", AsyncMock()),
-        patch("app.domain_prompt.api.router.set_dp_job_status", AsyncMock()),
-        patch("app.domain_prompt.api.router.set_dp_job_result", AsyncMock()),
-        patch("app.domain_prompt.api.router.clear_dp_domain_active_job", AsyncMock()),
+        patch(
+            "promptly.domain_prompt.api.router.get_dp_celery_task_id", AsyncMock(return_value=None)
+        ),
+        patch("promptly.domain_prompt.api.router.set_dp_job_cancel", AsyncMock()),
+        patch("promptly.domain_prompt.api.router.set_dp_job_status", AsyncMock()),
+        patch("promptly.domain_prompt.api.router.set_dp_job_result", AsyncMock()),
+        patch("promptly.domain_prompt.api.router.clear_dp_domain_active_job", AsyncMock()),
     ):
         res = await authed_client.post(f"/api/v1/domain-prompts/{domain_id}/cancel")
     assert res.status_code == 200
@@ -685,7 +687,7 @@ async def test_tournament_state_returns_state(authed_client: AsyncClient) -> Non
         "question": "Is this prompt better?",
     }
     with patch(
-        "app.domain_prompt.api.router.get_dp_tournament_state",
+        "promptly.domain_prompt.api.router.get_dp_tournament_state",
         return_value=fake_state,
     ):
         res = await authed_client.get(f"/api/v1/domain-prompts/{domain_id}/tournament-state")
@@ -700,7 +702,7 @@ async def test_augment_dataset_queues_job(
     """Domain with dataset_key returns 202 with job_id."""
     from sqlalchemy import update
 
-    from app.domain_prompt.data.models import DomainDataset
+    from promptly.domain_prompt.data.models import DomainDataset
 
     domain_id, _ = await _create_domain_with_dataset(authed_client, name="Augment With Key")
 
@@ -712,7 +714,7 @@ async def test_augment_dataset_queues_job(
     )
     await db_session.commit()
 
-    with patch("app.domain_prompt.api.router.augment_domain_dataset.apply_async"):
+    with patch("promptly.domain_prompt.api.router.augment_domain_dataset.apply_async"):
         res = await authed_client.post(
             f"/api/v1/domain-prompts/{domain_id}/dataset/augment",
             json={"count": 5},
@@ -728,7 +730,7 @@ async def test_optimize_domain_queues_job(
     """Domain with sufficient credits and dataset_key returns 202."""
     from sqlalchemy import update
 
-    from app.domain_prompt.data.models import DomainDataset, DomainPrompt, DomainPromptStatus
+    from promptly.domain_prompt.data.models import DomainDataset, DomainPrompt, DomainPromptStatus
 
     domain_id, _ = await _create_domain_with_dataset(authed_client, name="Optimize With Key")
 
@@ -745,7 +747,7 @@ async def test_optimize_domain_queues_job(
     )
     await db_session.commit()
 
-    with patch("app.domain_prompt.api.router.run_domain_optimization.apply_async"):
+    with patch("promptly.domain_prompt.api.router.run_domain_optimization.apply_async"):
         res = await authed_client.post(
             f"/api/v1/domain-prompts/{domain_id}/optimize",
             json={"prompt": _VALID_PROMPT},
@@ -760,7 +762,7 @@ async def test_optimize_domain_already_running_returns_409(
 ) -> None:
     from sqlalchemy import update
 
-    from app.domain_prompt.data.models import DomainPrompt, DomainPromptStatus
+    from promptly.domain_prompt.data.models import DomainPrompt, DomainPromptStatus
 
     domain_id, _ = await _create_domain_with_dataset(authed_client, name="Optimize Already Running")
 
@@ -785,7 +787,7 @@ async def test_optimize_domain_no_dataset_returns_409(
     """Optimizing a domain with no dataset_key returns 409 (not ready)."""
     from sqlalchemy import update
 
-    from app.domain_prompt.data.models import DomainPrompt, DomainPromptStatus
+    from promptly.domain_prompt.data.models import DomainPrompt, DomainPromptStatus
 
     domain_id, _ = await _create_domain_with_dataset(authed_client, name="Optimize No Dataset")
 

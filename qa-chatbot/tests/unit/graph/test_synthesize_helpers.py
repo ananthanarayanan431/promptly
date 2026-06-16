@@ -1,6 +1,6 @@
 """Unit tests for synthesize node helper functions (pure logic, no LLM)."""
 
-from app.graph.nodes.synthesize import _build_critiques_block, _build_proposals_block
+from promptly.graph.nodes.synthesize import _build_critiques_block, _build_proposals_block
 
 
 def test_build_proposals_block_single():

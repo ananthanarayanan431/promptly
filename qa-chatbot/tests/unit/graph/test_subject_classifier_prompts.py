@@ -1,6 +1,6 @@
 """Tests for subject_classifier prompt builder and subject_analysis_block formatter."""
 
-from app.graph.prompts.subject_classifier import (
+from promptly.graph.prompts.subject_classifier import (
     subject_analysis_block,
     subject_classifier_messages,
 )

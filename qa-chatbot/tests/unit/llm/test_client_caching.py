@@ -7,9 +7,9 @@ Anthropic models only, gated by PROMPT_CACHE_ENABLED.
 
 import pytest
 
-from app.llm import _client
-from app.llm._client import _CachingChatOpenAI, _is_anthropic
-from app.llm.settings import get_llm_settings
+from promptly.llm import _client
+from promptly.llm._client import _CachingChatOpenAI, _is_anthropic
+from promptly.llm.settings import get_llm_settings
 
 
 @pytest.fixture(autouse=True)

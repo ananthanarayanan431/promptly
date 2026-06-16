@@ -10,7 +10,7 @@ async def test_chat_deducts_10_credits(
     client: AsyncClient, db_session: AsyncSession, make_user
 ) -> None:
     user, headers = await make_user(credits=100)
-    with patch("app.optimize.api.router.process_chat_async") as mock_task:
+    with patch("promptly.optimize.api.router.process_chat_async") as mock_task:
         mock_task.apply_async.return_value = MagicMock(id="fake-celery-id")
         res = await client.post(
             "/api/v1/chat/",
@@ -38,7 +38,7 @@ async def test_bridge_transfer_deducts_5_credits(
     client: AsyncClient, db_session: AsyncSession, make_user
 ) -> None:
     user, headers = await make_user(credits=100)
-    with patch("app.prompt_bridge.api.router.run_prompt_transfer") as mock_task:
+    with patch("promptly.prompt_bridge.api.router.run_prompt_transfer") as mock_task:
         mock_task.apply_async.return_value = MagicMock(id="fake-celery-id")
         res = await client.post(
             "/api/v1/prompt-bridge/transfer",

@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from app.schemas.favorite import (
+from promptly.schemas.favorite import (
     FavoriteCategory,
     FavoriteCreateRequest,
     FavoriteResponse,

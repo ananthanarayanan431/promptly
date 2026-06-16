@@ -11,7 +11,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.models.base import Base
+from promptly.models.base import Base
 
 TEST_DB_URL = "postgresql+asyncpg://postgres:postgres@localhost:5433/qa_chatbot_test"
 

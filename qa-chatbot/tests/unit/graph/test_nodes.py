@@ -1,12 +1,12 @@
 import asyncio
 from unittest.mock import MagicMock, patch
 
-from app.graph.prompts.council_optimizer import _SYSTEM as COUNCIL_SYSTEM_PROMPT
+from promptly.graph.prompts.council_optimizer import _SYSTEM as COUNCIL_SYSTEM_PROMPT
 
 
 def test_council_vote_all_models_receive_same_system_prompt():
     """All council models must receive the identical system prompt."""
-    from app.graph.nodes import council_vote
+    from promptly.graph.nodes import council_vote
 
     calls: list[list] = []
 
@@ -52,7 +52,7 @@ def test_council_vote_all_models_receive_same_system_prompt():
 
 def test_council_vote_no_strategy_function_exists():
     """The old _get_strategy selector must not exist."""
-    from app.graph.nodes import council_vote
+    from promptly.graph.nodes import council_vote
 
     assert not hasattr(
         council_vote, "_get_strategy"

@@ -5,8 +5,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.graph.nodes import intent_classifier
-from app.graph.nodes.intent_classifier import _REJECTION_IRRELEVANT, intent_classifier_node
+from promptly.graph.nodes import intent_classifier
+from promptly.graph.nodes.intent_classifier import _REJECTION_IRRELEVANT, intent_classifier_node
 
 _BASE_STATE: dict[str, Any] = {
     "raw_prompt": "You are a helpful AI assistant. Answer questions clearly.",
@@ -95,7 +95,7 @@ async def test_intent_classifier_with_job_id(monkeypatch: pytest.MonkeyPatch) ->
     from unittest.mock import AsyncMock
 
     push_mock = AsyncMock()
-    monkeypatch.setattr("app.graph.nodes.intent_classifier.push_job_progress", push_mock)
+    monkeypatch.setattr("promptly.graph.nodes.intent_classifier.push_job_progress", push_mock)
 
     state = {**_BASE_STATE, "job_id": "test-job-123"}
     mock_classifier = _make_mock_classifier("OPTIMIZE")

@@ -3,7 +3,7 @@
 import pytest
 from fastapi import status
 
-from app.core.exceptions import (
+from promptly.core.exceptions import (
     ForbiddenException,
     GuardrailException,
     LLMException,

@@ -1,11 +1,11 @@
-from app.graph.prompts.council_optimizer import council_optimizer_messages
-from app.graph.prompts.critic import critic_messages
-from app.graph.prompts.favorite_auto_tag import favorite_auto_tag_messages
-from app.graph.prompts.intent_classifier import intent_classifier_messages
-from app.graph.prompts.prompt_advisory import prompt_advisory_messages
-from app.graph.prompts.prompt_health_score import prompt_health_score_messages
-from app.graph.prompts.subject_classifier import subject_analysis_block
-from app.graph.prompts.synthesize_best import synthesize_messages
+from promptly.graph.prompts.council_optimizer import council_optimizer_messages
+from promptly.graph.prompts.critic import critic_messages
+from promptly.graph.prompts.favorite_auto_tag import favorite_auto_tag_messages
+from promptly.graph.prompts.intent_classifier import intent_classifier_messages
+from promptly.graph.prompts.prompt_advisory import prompt_advisory_messages
+from promptly.graph.prompts.prompt_health_score import prompt_health_score_messages
+from promptly.graph.prompts.subject_classifier import subject_analysis_block
+from promptly.graph.prompts.synthesize_best import synthesize_messages
 
 
 def test_intent_classifier_messages_structure():
@@ -139,7 +139,7 @@ def test_favorite_auto_tag_messages_user_only():
 
 
 def test_all_builders_importable_from_package():
-    from app.graph.prompts import (  # noqa: PLC0415
+    from promptly.graph.prompts import (  # noqa: PLC0415
         council_optimizer_messages,
         critic_messages,
         favorite_auto_tag_messages,
@@ -204,7 +204,7 @@ def test_critic_messages_without_subject_block_unchanged():
 
 
 def test_synthesize_messages_with_subject_block():
-    from app.graph.prompts.synthesize_best import synthesize_messages
+    from promptly.graph.prompts.synthesize_best import synthesize_messages
 
     block = subject_analysis_block(["A code review prompt."], ["Add severity levels."])
     msgs = synthesize_messages(
@@ -219,7 +219,7 @@ def test_synthesize_messages_with_subject_block():
 
 
 def test_synthesize_messages_subject_block_before_feedback():
-    from app.graph.prompts.synthesize_best import synthesize_messages
+    from promptly.graph.prompts.synthesize_best import synthesize_messages
 
     block = subject_analysis_block(["About."], ["Suggestion."])
     msgs = synthesize_messages(

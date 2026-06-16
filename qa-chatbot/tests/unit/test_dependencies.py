@@ -1,4 +1,4 @@
-"""Unit tests for src/app/dependencies.py — Supabase JWT + API key auth."""
+"""Unit tests for src/promptly/dependencies.py — Supabase JWT + API key auth."""
 
 import hashlib
 import uuid
@@ -7,8 +7,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-from app.core.exceptions import UnauthorizedException
-from app.core.user_context import UserContext
+from promptly.core.exceptions import UnauthorizedException
+from promptly.core.user_context import UserContext
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -81,12 +81,12 @@ async def test_get_current_user_valid_supabase_jwt_returns_user_context() -> Non
     mock_api_key_repo = AsyncMock()
 
     with (
-        patch("app.dependencies.verify_supabase_token", return_value=fake_payload),
-        patch("app.dependencies.UserRepository", return_value=mock_user_repo),
-        patch("app.dependencies.ApiKeyRepository", return_value=mock_api_key_repo),
+        patch("promptly.dependencies.verify_supabase_token", return_value=fake_payload),
+        patch("promptly.dependencies.UserRepository", return_value=mock_user_repo),
+        patch("promptly.dependencies.ApiKeyRepository", return_value=mock_api_key_repo),
         patch("structlog.contextvars.bind_contextvars"),
     ):
-        from app.dependencies import get_current_user
+        from promptly.dependencies import get_current_user
 
         result = await get_current_user(request=request, db=mock_db)
 
@@ -114,13 +114,15 @@ async def test_get_current_user_provisions_user_on_first_login() -> None:
     mock_api_key_repo = AsyncMock()
 
     with (
-        patch("app.dependencies.verify_supabase_token", return_value=fake_payload),
-        patch("app.dependencies.UserRepository", return_value=mock_user_repo),
-        patch("app.dependencies.ApiKeyRepository", return_value=mock_api_key_repo),
-        patch("app.dependencies._provision_user", AsyncMock(return_value=user)) as mock_provision,
+        patch("promptly.dependencies.verify_supabase_token", return_value=fake_payload),
+        patch("promptly.dependencies.UserRepository", return_value=mock_user_repo),
+        patch("promptly.dependencies.ApiKeyRepository", return_value=mock_api_key_repo),
+        patch(
+            "promptly.dependencies._provision_user", AsyncMock(return_value=user)
+        ) as mock_provision,
         patch("structlog.contextvars.bind_contextvars"),
     ):
-        from app.dependencies import get_current_user
+        from promptly.dependencies import get_current_user
 
         result = await get_current_user(request=request, db=mock_db)
 
@@ -142,11 +144,11 @@ async def test_get_current_user_missing_email_claim_raises_unauthorized() -> Non
     mock_api_key_repo = AsyncMock()
 
     with (
-        patch("app.dependencies.verify_supabase_token", return_value=fake_payload),
-        patch("app.dependencies.UserRepository", return_value=mock_user_repo),
-        patch("app.dependencies.ApiKeyRepository", return_value=mock_api_key_repo),
+        patch("promptly.dependencies.verify_supabase_token", return_value=fake_payload),
+        patch("promptly.dependencies.UserRepository", return_value=mock_user_repo),
+        patch("promptly.dependencies.ApiKeyRepository", return_value=mock_api_key_repo),
     ):
-        from app.dependencies import get_current_user
+        from promptly.dependencies import get_current_user
 
         with pytest.raises(UnauthorizedException) as exc_info:
             await get_current_user(request=request, db=mock_db)
@@ -173,11 +175,11 @@ async def test_get_current_user_inactive_user_raises_unauthorized() -> None:
     mock_api_key_repo = AsyncMock()
 
     with (
-        patch("app.dependencies.verify_supabase_token", return_value=fake_payload),
-        patch("app.dependencies.UserRepository", return_value=mock_user_repo),
-        patch("app.dependencies.ApiKeyRepository", return_value=mock_api_key_repo),
+        patch("promptly.dependencies.verify_supabase_token", return_value=fake_payload),
+        patch("promptly.dependencies.UserRepository", return_value=mock_user_repo),
+        patch("promptly.dependencies.ApiKeyRepository", return_value=mock_api_key_repo),
     ):
-        from app.dependencies import get_current_user
+        from promptly.dependencies import get_current_user
 
         with pytest.raises(UnauthorizedException) as exc_info:
             await get_current_user(request=request, db=mock_db)
@@ -207,7 +209,7 @@ async def test_provision_user_recovers_after_concurrent_insert() -> None:
     # after rollback, the winner's committed row is visible by supabase_user_id
     mock_user_repo.get_by_supabase_id.return_value = user
 
-    from app.dependencies import _provision_user
+    from promptly.dependencies import _provision_user
 
     result = await _provision_user(mock_user_repo, "user_race", "race@example.com", "Race User")
 
@@ -231,7 +233,7 @@ async def test_provision_user_claims_existing_row_by_email() -> None:
     mock_user_repo.get_by_email.return_value = legacy
     mock_user_repo.update.return_value = legacy
 
-    from app.dependencies import _provision_user
+    from promptly.dependencies import _provision_user
 
     result = await _provision_user(mock_user_repo, "user_real", "legacy@example.com", None)
 
@@ -250,7 +252,7 @@ async def test_provision_user_raises_when_no_recovery_possible() -> None:
     mock_user_repo.get_by_supabase_id.return_value = None
     mock_user_repo.get_by_email.return_value = None
 
-    from app.dependencies import _provision_user
+    from promptly.dependencies import _provision_user
 
     with pytest.raises(UnauthorizedException):
         await _provision_user(mock_user_repo, "user_x", "x@example.com", None)
@@ -281,11 +283,11 @@ async def test_get_current_user_valid_api_key_returns_user_context() -> None:
     mock_api_key_repo.update_last_used = AsyncMock()
 
     with (
-        patch("app.dependencies.UserRepository", return_value=mock_user_repo),
-        patch("app.dependencies.ApiKeyRepository", return_value=mock_api_key_repo),
+        patch("promptly.dependencies.UserRepository", return_value=mock_user_repo),
+        patch("promptly.dependencies.ApiKeyRepository", return_value=mock_api_key_repo),
         patch("structlog.contextvars.bind_contextvars"),
     ):
-        from app.dependencies import get_current_user
+        from promptly.dependencies import get_current_user
 
         result = await get_current_user(request=request, db=mock_db)
 
@@ -310,10 +312,10 @@ async def test_get_current_user_invalid_api_key_raises_unauthorized() -> None:
     mock_api_key_repo.get_active_by_hash.return_value = None
 
     with (
-        patch("app.dependencies.UserRepository", return_value=mock_user_repo),
-        patch("app.dependencies.ApiKeyRepository", return_value=mock_api_key_repo),
+        patch("promptly.dependencies.UserRepository", return_value=mock_user_repo),
+        patch("promptly.dependencies.ApiKeyRepository", return_value=mock_api_key_repo),
     ):
-        from app.dependencies import get_current_user
+        from promptly.dependencies import get_current_user
 
         with pytest.raises(UnauthorizedException) as exc_info:
             await get_current_user(request=request, db=mock_db)
@@ -334,10 +336,10 @@ async def test_get_current_user_missing_header_raises_unauthorized() -> None:
     mock_db = AsyncMock()
 
     with (
-        patch("app.dependencies.UserRepository"),
-        patch("app.dependencies.ApiKeyRepository"),
+        patch("promptly.dependencies.UserRepository"),
+        patch("promptly.dependencies.ApiKeyRepository"),
     ):
-        from app.dependencies import get_current_user
+        from promptly.dependencies import get_current_user
 
         with pytest.raises(UnauthorizedException) as exc_info:
             await get_current_user(request=request, db=mock_db)
@@ -353,10 +355,10 @@ async def test_get_current_user_non_bearer_header_raises_unauthorized() -> None:
     mock_db = AsyncMock()
 
     with (
-        patch("app.dependencies.UserRepository"),
-        patch("app.dependencies.ApiKeyRepository"),
+        patch("promptly.dependencies.UserRepository"),
+        patch("promptly.dependencies.ApiKeyRepository"),
     ):
-        from app.dependencies import get_current_user
+        from promptly.dependencies import get_current_user
 
         with pytest.raises(UnauthorizedException):
             await get_current_user(request=request, db=mock_db)

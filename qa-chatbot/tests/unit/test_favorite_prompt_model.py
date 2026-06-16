@@ -1,6 +1,6 @@
 import uuid
 
-from app.models.favorite_prompt import FavoritePrompt
+from promptly.models.favorite_prompt import FavoritePrompt
 
 
 def test_favorite_prompt_defaults() -> None:

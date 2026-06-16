@@ -4,8 +4,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.config.rate_limit import get_rate_limit_settings
-from app.core.middleware import RateLimitMiddleware
+from promptly.config.rate_limit import get_rate_limit_settings
+from promptly.core.middleware import RateLimitMiddleware
 
 
 def _make_app_with_middleware() -> FastAPI:
@@ -48,7 +48,7 @@ def mock_redis_over_limit() -> MagicMock:
 def test_health_endpoint_bypasses_rate_limit(mock_redis_over_limit: MagicMock) -> None:
     app = _make_app_with_middleware()
     with patch(
-        "app.core.middleware.get_redis_client", AsyncMock(return_value=mock_redis_over_limit)
+        "promptly.core.middleware.get_redis_client", AsyncMock(return_value=mock_redis_over_limit)
     ):
         client = TestClient(app, raise_server_exceptions=False)
         response = client.get("/api/v1/health")
@@ -58,7 +58,7 @@ def test_health_endpoint_bypasses_rate_limit(mock_redis_over_limit: MagicMock) -
 def test_ready_endpoint_bypasses_rate_limit(mock_redis_over_limit: MagicMock) -> None:
     app = _make_app_with_middleware()
     with patch(
-        "app.core.middleware.get_redis_client", AsyncMock(return_value=mock_redis_over_limit)
+        "promptly.core.middleware.get_redis_client", AsyncMock(return_value=mock_redis_over_limit)
     ):
         client = TestClient(app, raise_server_exceptions=False)
         response = client.get("/api/v1/ready")
@@ -68,7 +68,7 @@ def test_ready_endpoint_bypasses_rate_limit(mock_redis_over_limit: MagicMock) ->
 def test_normal_route_passes_under_global_limit(mock_redis_under_limit: MagicMock) -> None:
     app = _make_app_with_middleware()
     with patch(
-        "app.core.middleware.get_redis_client", AsyncMock(return_value=mock_redis_under_limit)
+        "promptly.core.middleware.get_redis_client", AsyncMock(return_value=mock_redis_under_limit)
     ):
         client = TestClient(app, raise_server_exceptions=False)
         response = client.get("/api/v1/users/me")

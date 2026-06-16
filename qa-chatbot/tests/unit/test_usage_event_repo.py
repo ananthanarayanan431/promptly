@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.repositories.usage_event_repo import UsageEventRepository, month_start_utc
+from promptly.repositories.usage_event_repo import UsageEventRepository, month_start_utc
 
 # ── month_start_utc pure tests ─────────────────────────────────────────────────
 

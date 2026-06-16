@@ -5,8 +5,8 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.prompt_version import PromptVersion
-from app.models.user import User
+from promptly.models.prompt_version import PromptVersion
+from promptly.models.user import User
 
 
 async def _make_version(
@@ -32,7 +32,7 @@ async def test_post_favorites_creates(
     pv = await _make_version(db_session, user)
 
     with patch(
-        "app.services.favorite_service.FavoriteService._generate_tags",
+        "promptly.services.favorite_service.FavoriteService._generate_tags",
         AsyncMock(return_value=({"email"}, "Writing")),
     ):
         res = await client.post(
@@ -57,7 +57,7 @@ async def test_post_favorites_idempotent(
     pv = await _make_version(db_session, user)
 
     with patch(
-        "app.services.favorite_service.FavoriteService._generate_tags",
+        "promptly.services.favorite_service.FavoriteService._generate_tags",
         AsyncMock(return_value=(set(), "Other")),
     ):
         first = await client.post(
@@ -106,7 +106,7 @@ async def test_delete_favorite_by_id(
     pv = await _make_version(db_session, user)
 
     with patch(
-        "app.services.favorite_service.FavoriteService._generate_tags",
+        "promptly.services.favorite_service.FavoriteService._generate_tags",
         AsyncMock(return_value=(set(), "Other")),
     ):
         created = await client.post(
@@ -129,7 +129,7 @@ async def test_delete_by_version(client: AsyncClient, db_session: AsyncSession, 
     pv = await _make_version(db_session, user)
 
     with patch(
-        "app.services.favorite_service.FavoriteService._generate_tags",
+        "promptly.services.favorite_service.FavoriteService._generate_tags",
         AsyncMock(return_value=(set(), "Other")),
     ):
         await client.post(
@@ -154,7 +154,7 @@ async def test_status_endpoint(client: AsyncClient, db_session: AsyncSession, ma
     assert res.json()["data"] == {"is_favorited": False, "prompt_store_id": None}
 
     with patch(
-        "app.services.favorite_service.FavoriteService._generate_tags",
+        "promptly.services.favorite_service.FavoriteService._generate_tags",
         AsyncMock(return_value=(set(), "Other")),
     ):
         created = await client.post(
@@ -181,7 +181,7 @@ async def test_list_filter_sort_paginate(
     pv2 = await _make_version(db_session, user, "python quicksort")
 
     with patch(
-        "app.services.favorite_service.FavoriteService._generate_tags",
+        "promptly.services.favorite_service.FavoriteService._generate_tags",
         AsyncMock(side_effect=[({"fruit"}, "Writing"), ({"python"}, "Coding")]),
     ):
         await client.post(
@@ -219,7 +219,7 @@ async def test_patch_updates_allowed_fields(
     user, headers = await make_user()
     pv = await _make_version(db_session, user)
     with patch(
-        "app.services.favorite_service.FavoriteService._generate_tags",
+        "promptly.services.favorite_service.FavoriteService._generate_tags",
         AsyncMock(return_value=(set(), "Other")),
     ):
         created = await client.post(
@@ -254,7 +254,7 @@ async def test_patch_validates_category(
     user, headers = await make_user()
     pv = await _make_version(db_session, user)
     with patch(
-        "app.services.favorite_service.FavoriteService._generate_tags",
+        "promptly.services.favorite_service.FavoriteService._generate_tags",
         AsyncMock(return_value=(set(), "Other")),
     ):
         created = await client.post(
@@ -279,7 +279,7 @@ async def test_use_endpoint_increments(
     user, headers = await make_user()
     pv = await _make_version(db_session, user)
     with patch(
-        "app.services.favorite_service.FavoriteService._generate_tags",
+        "promptly.services.favorite_service.FavoriteService._generate_tags",
         AsyncMock(return_value=(set(), "Other")),
     ):
         created = await client.post(
@@ -306,7 +306,7 @@ async def test_tags_endpoint_is_user_scoped(
     pv_a = await _make_version(db_session, user_a)
     pv_b = await _make_version(db_session, user_b)
     with patch(
-        "app.services.favorite_service.FavoriteService._generate_tags",
+        "promptly.services.favorite_service.FavoriteService._generate_tags",
         AsyncMock(side_effect=[({"alpha", "beta"}, "Other"), ({"gamma"}, "Other")]),
     ):
         await client.post(
@@ -363,7 +363,7 @@ async def test_get_favorite_by_id_returns_favorite(
     pv = await _make_version(db_session, user)
 
     with patch(
-        "app.services.favorite_service.FavoriteService._generate_tags",
+        "promptly.services.favorite_service.FavoriteService._generate_tags",
         AsyncMock(return_value=(set(), "Other")),
     ):
         created = await client.post(
@@ -405,7 +405,7 @@ async def test_unlike_by_version_then_status_is_false(
     pv = await _make_version(db_session, user)
 
     with patch(
-        "app.services.favorite_service.FavoriteService._generate_tags",
+        "promptly.services.favorite_service.FavoriteService._generate_tags",
         AsyncMock(return_value=(set(), "Other")),
     ):
         await client.post(
@@ -432,7 +432,7 @@ async def test_update_favorite_note_and_is_pinned(
     pv = await _make_version(db_session, user)
 
     with patch(
-        "app.services.favorite_service.FavoriteService._generate_tags",
+        "promptly.services.favorite_service.FavoriteService._generate_tags",
         AsyncMock(return_value=(set(), "Other")),
     ):
         created = await client.post(
@@ -461,7 +461,7 @@ async def test_use_favorite_increments_use_count(
     pv = await _make_version(db_session, user)
 
     with patch(
-        "app.services.favorite_service.FavoriteService._generate_tags",
+        "promptly.services.favorite_service.FavoriteService._generate_tags",
         AsyncMock(return_value=(set(), "Other")),
     ):
         created = await client.post(

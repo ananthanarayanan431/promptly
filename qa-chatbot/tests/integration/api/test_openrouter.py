@@ -57,12 +57,12 @@ async def test_get_models_returns_list(client: AsyncClient, make_user) -> None:
     mock_client.__aexit__ = AsyncMock(return_value=None)
 
     # Reset module-level cache
-    import app.api.v1.openrouter as openrouter_mod
+    import promptly.api.v1.openrouter as openrouter_mod
 
     openrouter_mod._models_cache = []
     openrouter_mod._models_cache_ts = 0.0
 
-    with patch("app.api.v1.openrouter.httpx.AsyncClient", return_value=mock_client):
+    with patch("promptly.api.v1.openrouter.httpx.AsyncClient", return_value=mock_client):
         res = await client.get("/api/v1/openrouter/models", headers=headers)
 
     assert res.status_code == 200
@@ -86,12 +86,12 @@ async def test_get_models_returns_cached(client: AsyncClient, make_user) -> None
     mock_client.__aenter__ = AsyncMock(return_value=mock_client)
     mock_client.__aexit__ = AsyncMock(return_value=None)
 
-    import app.api.v1.openrouter as openrouter_mod
+    import promptly.api.v1.openrouter as openrouter_mod
 
     openrouter_mod._models_cache = []
     openrouter_mod._models_cache_ts = 0.0
 
-    with patch("app.api.v1.openrouter.httpx.AsyncClient", return_value=mock_client):
+    with patch("promptly.api.v1.openrouter.httpx.AsyncClient", return_value=mock_client):
         await client.get("/api/v1/openrouter/models", headers=headers)
         res2 = await client.get("/api/v1/openrouter/models", headers=headers)
 
@@ -111,12 +111,12 @@ async def test_get_models_http_error_returns_502(client: AsyncClient, make_user)
     mock_client.__aenter__ = AsyncMock(return_value=mock_client)
     mock_client.__aexit__ = AsyncMock(return_value=None)
 
-    import app.api.v1.openrouter as openrouter_mod
+    import promptly.api.v1.openrouter as openrouter_mod
 
     openrouter_mod._models_cache = []
     openrouter_mod._models_cache_ts = 0.0
 
-    with patch("app.api.v1.openrouter.httpx.AsyncClient", return_value=mock_client):
+    with patch("promptly.api.v1.openrouter.httpx.AsyncClient", return_value=mock_client):
         res = await client.get("/api/v1/openrouter/models", headers=headers)
 
     assert res.status_code == 502
@@ -141,7 +141,7 @@ async def test_get_openrouter_stats_returns_data(client: AsyncClient, make_user)
     mock_client.__aenter__ = AsyncMock(return_value=mock_client)
     mock_client.__aexit__ = AsyncMock(return_value=None)
 
-    with patch("app.api.v1.openrouter.httpx.AsyncClient", return_value=mock_client):
+    with patch("promptly.api.v1.openrouter.httpx.AsyncClient", return_value=mock_client):
         res = await client.get("/api/v1/openrouter/stats", headers=headers)
 
     assert res.status_code == 200
@@ -164,7 +164,7 @@ async def test_get_openrouter_stats_502_on_api_error(client: AsyncClient, make_u
     mock_client.__aenter__ = AsyncMock(return_value=mock_client)
     mock_client.__aexit__ = AsyncMock(return_value=None)
 
-    with patch("app.api.v1.openrouter.httpx.AsyncClient", return_value=mock_client):
+    with patch("promptly.api.v1.openrouter.httpx.AsyncClient", return_value=mock_client):
         res = await client.get("/api/v1/openrouter/stats", headers=headers)
 
     assert res.status_code == 502

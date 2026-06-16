@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from app.optimize.api.schemas import ChatRequest, MessageOut, ReasoningBlock
+from promptly.optimize.api.schemas import ChatRequest, MessageOut, ReasoningBlock
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.graph.nodes.performance_gate import _scores_satisfy_bar, performance_gate_node
+from promptly.graph.nodes.performance_gate import _scores_satisfy_bar, performance_gate_node
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -128,7 +128,7 @@ async def test_gate_fires_when_all_strong():
     mock_model = AsyncMock()
     mock_model.ainvoke = AsyncMock(return_value=_make_llm_response(llm_payload))
 
-    with patch("app.graph.nodes.performance_gate._get_gate_model", return_value=mock_model):
+    with patch("promptly.graph.nodes.performance_gate._get_gate_model", return_value=mock_model):
         result = await performance_gate_node(copy.deepcopy(_BASE_STATE))  # type: ignore[arg-type]
 
     assert result["already_optimized"] is True
@@ -153,7 +153,7 @@ async def test_gate_does_not_fire_for_weak_prompt():
     mock_model = AsyncMock()
     mock_model.ainvoke = AsyncMock(return_value=_make_llm_response(llm_payload))
 
-    with patch("app.graph.nodes.performance_gate._get_gate_model", return_value=mock_model):
+    with patch("promptly.graph.nodes.performance_gate._get_gate_model", return_value=mock_model):
         result = await performance_gate_node(copy.deepcopy(_BASE_STATE))  # type: ignore[arg-type]
 
     assert result["already_optimized"] is False
@@ -169,7 +169,7 @@ async def test_gate_fail_open_on_invalid_json():
     bad_response.content = "This is not JSON at all"
     mock_model.ainvoke = AsyncMock(return_value=bad_response)
 
-    with patch("app.graph.nodes.performance_gate._get_gate_model", return_value=mock_model):
+    with patch("promptly.graph.nodes.performance_gate._get_gate_model", return_value=mock_model):
         result = await performance_gate_node(copy.deepcopy(_BASE_STATE))  # type: ignore[arg-type]
 
     assert result["already_optimized"] is False
@@ -181,7 +181,7 @@ async def test_gate_fail_open_on_llm_exception():
     mock_model = AsyncMock()
     mock_model.ainvoke = AsyncMock(side_effect=RuntimeError("timeout"))
 
-    with patch("app.graph.nodes.performance_gate._get_gate_model", return_value=mock_model):
+    with patch("promptly.graph.nodes.performance_gate._get_gate_model", return_value=mock_model):
         result = await performance_gate_node(copy.deepcopy(_BASE_STATE))  # type: ignore[arg-type]
 
     assert result["already_optimized"] is False
@@ -202,7 +202,7 @@ async def test_gate_rejects_llm_pass_when_scores_fail_bar():
     mock_model = AsyncMock()
     mock_model.ainvoke = AsyncMock(return_value=_make_llm_response(llm_payload))
 
-    with patch("app.graph.nodes.performance_gate._get_gate_model", return_value=mock_model):
+    with patch("promptly.graph.nodes.performance_gate._get_gate_model", return_value=mock_model):
         result = await performance_gate_node(copy.deepcopy(_BASE_STATE))  # type: ignore[arg-type]
 
     # Node overrides the LLM's already_optimized verdict with deterministic check

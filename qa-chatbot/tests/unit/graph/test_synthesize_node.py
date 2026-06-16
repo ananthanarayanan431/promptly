@@ -6,8 +6,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.graph.nodes import synthesize as synthesize_module
-from app.graph.nodes.synthesize import synthesize_node
+from promptly.graph.nodes import synthesize as synthesize_module
+from promptly.graph.nodes.synthesize import synthesize_node
 
 _BASE_STATE: dict[str, Any] = {
     "raw_prompt": "You are a helpful assistant. Answer questions clearly.",
@@ -188,7 +188,7 @@ async def test_synthesize_calls_push_job_progress_with_job_id(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     push_mock = AsyncMock()
-    monkeypatch.setattr("app.graph.nodes.synthesize.push_job_progress", push_mock)
+    monkeypatch.setattr("promptly.graph.nodes.synthesize.push_job_progress", push_mock)
 
     reasoning_json = '{"summary": "s", "changes": [], "kept": []}'
     mock = _make_two_call_mock("Output", reasoning_json)
@@ -209,7 +209,7 @@ async def test_synthesize_calls_push_job_progress_with_job_id(
 @pytest.mark.asyncio
 async def test_synthesize_no_push_without_job_id(monkeypatch: pytest.MonkeyPatch) -> None:
     push_mock = AsyncMock()
-    monkeypatch.setattr("app.graph.nodes.synthesize.push_job_progress", push_mock)
+    monkeypatch.setattr("promptly.graph.nodes.synthesize.push_job_progress", push_mock)
 
     reasoning_json = '{"summary": "s", "changes": [], "kept": []}'
     mock = _make_two_call_mock("Output", reasoning_json)

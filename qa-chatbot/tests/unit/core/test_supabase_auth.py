@@ -5,8 +5,8 @@ import jwt
 import pytest
 from jwt import PyJWKClientError
 
-from app.core.exceptions import UnauthorizedException
-from app.core.supabase_auth import verify_supabase_token
+from promptly.core.exceptions import UnauthorizedException
+from promptly.core.supabase_auth import verify_supabase_token
 
 _SECRET = "test-secret-that-is-long-enough-for-hs256!!"  # noqa: S105
 
@@ -35,12 +35,14 @@ def _mock_settings_and_jwks(monkeypatch: pytest.MonkeyPatch) -> None:
         SUPABASE_URL = "https://fake.supabase.co"
         SUPABASE_JWT_SECRET = _FakeSecret()
 
-    monkeypatch.setattr("app.core.supabase_auth.get_supabase_settings", lambda: _FakeSettings())
+    monkeypatch.setattr(
+        "promptly.core.supabase_auth.get_supabase_settings", lambda: _FakeSettings()
+    )
 
     # Make JWKS lookup always fail so tests fall through to HS256 path
     mock_jwks = MagicMock()
     mock_jwks.get_signing_key_from_jwt.side_effect = PyJWKClientError("no JWKS in tests")
-    monkeypatch.setattr("app.core.supabase_auth._get_jwks_client", lambda: mock_jwks)
+    monkeypatch.setattr("promptly.core.supabase_auth._get_jwks_client", lambda: mock_jwks)
 
 
 def test_valid_token_returns_payload() -> None:
@@ -65,7 +67,9 @@ def test_wrong_secret_raises(monkeypatch: pytest.MonkeyPatch) -> None:
         SUPABASE_URL = "https://fake.supabase.co"
         SUPABASE_JWT_SECRET = _WrongSecret()
 
-    monkeypatch.setattr("app.core.supabase_auth.get_supabase_settings", lambda: _WrongSettings())
+    monkeypatch.setattr(
+        "promptly.core.supabase_auth.get_supabase_settings", lambda: _WrongSettings()
+    )
     token = _make_hs256_token()
     with pytest.raises(UnauthorizedException):
         verify_supabase_token(token)

@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.graph.nodes.subject_classifier import _normalize, subject_classifier_node
+from promptly.graph.nodes.subject_classifier import _normalize, subject_classifier_node
 
 # ---------------------------------------------------------------------------
 # Base state — mirrors the pattern in test_performance_gate.py
@@ -128,7 +128,7 @@ async def test_node_returns_about_and_suggestions_on_success():
     mock_model = AsyncMock()
     mock_model.ainvoke = AsyncMock(return_value=_llm_response(payload))
 
-    with patch("app.graph.nodes.subject_classifier._get_model", return_value=mock_model):
+    with patch("promptly.graph.nodes.subject_classifier._get_model", return_value=mock_model):
         result = await subject_classifier_node(copy.deepcopy(_BASE_STATE))  # type: ignore[arg-type]
 
     assert result["subject_about"] == ["It summarizes documents.", "It targets a general audience."]
@@ -147,7 +147,7 @@ async def test_node_normalizes_unequal_counts():
     mock_model = AsyncMock()
     mock_model.ainvoke = AsyncMock(return_value=_llm_response(payload))
 
-    with patch("app.graph.nodes.subject_classifier._get_model", return_value=mock_model):
+    with patch("promptly.graph.nodes.subject_classifier._get_model", return_value=mock_model):
         result = await subject_classifier_node(copy.deepcopy(_BASE_STATE))  # type: ignore[arg-type]
 
     assert result["subject_about"] is not None
@@ -162,7 +162,7 @@ async def test_node_fail_open_on_invalid_json():
     bad.content = "not json at all"
     mock_model.ainvoke = AsyncMock(return_value=bad)
 
-    with patch("app.graph.nodes.subject_classifier._get_model", return_value=mock_model):
+    with patch("promptly.graph.nodes.subject_classifier._get_model", return_value=mock_model):
         result = await subject_classifier_node(copy.deepcopy(_BASE_STATE))  # type: ignore[arg-type]
 
     assert result["subject_about"] is None
@@ -174,7 +174,7 @@ async def test_node_fail_open_on_llm_exception():
     mock_model = AsyncMock()
     mock_model.ainvoke = AsyncMock(side_effect=RuntimeError("network error"))
 
-    with patch("app.graph.nodes.subject_classifier._get_model", return_value=mock_model):
+    with patch("promptly.graph.nodes.subject_classifier._get_model", return_value=mock_model):
         result = await subject_classifier_node(copy.deepcopy(_BASE_STATE))  # type: ignore[arg-type]
 
     assert result["subject_about"] is None
@@ -187,7 +187,7 @@ async def test_node_fail_open_when_lists_empty_after_normalize():
     mock_model = AsyncMock()
     mock_model.ainvoke = AsyncMock(return_value=_llm_response(payload))
 
-    with patch("app.graph.nodes.subject_classifier._get_model", return_value=mock_model):
+    with patch("promptly.graph.nodes.subject_classifier._get_model", return_value=mock_model):
         result = await subject_classifier_node(copy.deepcopy(_BASE_STATE))  # type: ignore[arg-type]
 
     assert result["subject_about"] is None
@@ -205,8 +205,10 @@ async def test_node_passes_feedback_to_messages():
     mock_model = AsyncMock()
     mock_model.ainvoke = AsyncMock(return_value=_llm_response(payload))
 
-    with patch("app.graph.nodes.subject_classifier._get_model", return_value=mock_model):
-        with patch("app.graph.nodes.subject_classifier.subject_classifier_messages") as mock_msgs:
+    with patch("promptly.graph.nodes.subject_classifier._get_model", return_value=mock_model):
+        with patch(
+            "promptly.graph.nodes.subject_classifier.subject_classifier_messages"
+        ) as mock_msgs:
             mock_msgs.return_value = [
                 {"role": "system", "content": "s"},
                 {"role": "user", "content": "u"},

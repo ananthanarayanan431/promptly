@@ -55,10 +55,10 @@ infra:
 	docker compose up postgres redis minio -d
 
 dev:
-	uv run uvicorn app.main:app --reload --reload-dir src --port 8000 --log-level debug
+	uv run uvicorn promptly.main:app --reload --reload-dir src --port 8000 --log-level debug
 
 worker:
-	uv run celery -A app.workers.celery_app worker --loglevel=info --concurrency=4
+	uv run celery -A promptly.workers.celery_app worker --loglevel=info --concurrency=4
 
 # ── Database ─────────────────────────────────────────────────
 migrate:
@@ -116,7 +116,7 @@ check: lint format typecheck
 
 # ── Testing ──────────────────────────────────────────────────
 test:
-	uv run pytest tests/ --cov=app --cov-report=term-missing --cov-report=xml -v
+	uv run pytest tests/ --cov=promptly --cov-report=term-missing --cov-report=xml -v
 
 test-unit:
 	uv run pytest tests/unit/ -v
