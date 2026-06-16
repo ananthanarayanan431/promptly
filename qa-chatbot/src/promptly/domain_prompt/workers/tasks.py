@@ -318,6 +318,7 @@ def run_domain_optimization(
                 candidates_tried: int = int(result.get("candidates_tried", 1))
                 rounds_run: int = int(result.get("rounds_run", 40))
                 optimized_prompt: str = str(result.get("optimized_prompt", prompt_to_optimize))
+                total_tokens: int | None = result.get("total_tokens")
                 await run_repo.create_run(
                     domain_id=domain.id,
                     domain_name=domain.name,
@@ -329,6 +330,7 @@ def run_domain_optimization(
                     candidates_tried=candidates_tried,
                     rounds_run=rounds_run,
                     dataset_size=dataset_size,
+                    total_tokens=total_tokens,
                 )
                 await db.commit()
 
@@ -401,6 +403,197 @@ def run_domain_optimization(
                 await clear_dp_tournament_state(domain_id)
             except Exception:  # noqa: BLE001
                 _log.warning("tournament_state_clear_failed", domain_id=domain_id)
+            await clear_dp_domain_active_job(domain_id)
+            await dispose_async_engine()
+
+    asyncio.run(_run())
+
+
+@celery_app.task(bind=True, max_retries=2, default_retry_delay=10)  # type: ignore[untyped-decorator]
+def run_gepa_optimization(
+    self: Any,
+    *,
+    job_id: str,
+    domain_id: str,
+    user_id: str,
+    prompt_to_optimize: str,
+) -> None:
+    async def _run() -> None:  # noqa: RUF029
+        import json
+        from typing import Any  # noqa: F401 — used in result type annotation below
+        from uuid import UUID
+
+        from promptly.config.app import get_app_settings
+        from promptly.config.env import get_minio_settings
+        from promptly.core.logging import setup_worker_logging
+        from promptly.db.redis import reset_connection_pool
+        from promptly.db.session import AsyncSessionLocal, dispose_async_engine
+        from promptly.domain_prompt.core.gepa import optimize_gepa_prompt
+        from promptly.domain_prompt.data.models import DomainPromptStatus
+        from promptly.domain_prompt.data.repository import (
+            DomainOptimizationRunRepository,
+            DomainPromptRepository,
+        )
+        from promptly.domain_prompt.infrastructure.cache import (
+            clear_dp_domain_active_job,
+            clear_dp_gepa_state,
+            is_dp_job_cancelled,
+            set_dp_celery_task_id,
+            set_dp_domain_active_job,
+            set_dp_job_domain_id,
+            set_dp_job_result,
+            set_dp_job_status,
+        )
+        from promptly.domain_prompt.infrastructure.storage import (
+            download_text,
+            object_key,
+            upload_text,
+        )
+        from promptly.llm import get_llm_settings
+
+        setup_worker_logging(debug=get_app_settings().DEBUG)
+        structlog.contextvars.clear_contextvars()
+        structlog.contextvars.bind_contextvars(
+            job_id=job_id, user_id=user_id, domain_id=domain_id, task="run_gepa_optimization"
+        )
+        _log.info("task_started")
+
+        reset_connection_pool()
+        await dispose_async_engine()
+
+        await set_dp_celery_task_id(job_id, self.request.id or "")
+        await set_dp_job_domain_id(job_id, domain_id)
+        await set_dp_domain_active_job(domain_id, job_id)
+
+        await set_dp_job_status(job_id, "started")
+
+        minio_cfg = get_minio_settings()
+        llm_cfg = get_llm_settings()
+        api_key = llm_cfg.OPENROUTER_API_KEY.get_secret_value()
+        bucket = minio_cfg.MINIO_BUCKET_NAME
+
+        is_terminal = False
+        try:
+            await clear_dp_gepa_state(domain_id)
+
+            dataset_key = object_key(user_id, domain_id, "dataset.jsonl")
+            dataset_jsonl = download_text(bucket, dataset_key)
+
+            if await is_dp_job_cancelled(job_id):
+                raise InterruptedError("Job cancelled before GEPA run.")
+
+            result: dict[str, Any] = await optimize_gepa_prompt(
+                base_prompt=prompt_to_optimize,
+                dataset_jsonl=dataset_jsonl,
+                api_key=api_key,
+                domain_id=domain_id,
+                cancel_check=lambda: is_dp_job_cancelled(job_id),
+            )
+
+            result_key = object_key(user_id, domain_id, "gepa_result.json")
+            upload_text(bucket, result_key, json.dumps(result, indent=2))
+
+            async with AsyncSessionLocal() as db:
+                repo = DomainPromptRepository(db)
+                domain = await repo.get_by_id(UUID(domain_id))
+                if domain is None:
+                    raise ValueError(f"Domain {domain_id} not found")
+                await repo.set_status(domain, DomainPromptStatus.completed)
+
+                run_repo = DomainOptimizationRunRepository(db)
+                dataset_size: int | None = None
+                if domain.dataset is not None:
+                    dataset_size = domain.dataset.row_count
+                score_before: float = float(result.get("score_before", 0.0))
+                score_after: float = float(result.get("score_after", 0.0))
+                candidates_tried: int = int(result.get("candidates_tried", 1))
+                rounds_run: int = int(result.get("rounds_run", 0))
+                optimized_prompt: str = str(result.get("optimized_prompt", prompt_to_optimize))
+                gepa_total_tokens: int | None = result.get("total_tokens")
+                await run_repo.create_run(
+                    domain_id=domain.id,
+                    domain_name=domain.name,
+                    prompt_input=prompt_to_optimize,
+                    optimized_prompt=optimized_prompt,
+                    score_before=score_before,
+                    score_after=score_after,
+                    candidates_tried=candidates_tried,
+                    rounds_run=rounds_run,
+                    dataset_size=dataset_size,
+                    algorithm="gepa",
+                    total_tokens=gepa_total_tokens,
+                )
+                await db.commit()
+
+            await set_dp_job_status(job_id, "completed")
+            await set_dp_job_result(
+                job_id,
+                {
+                    "domain_id": domain_id,
+                    "optimized_prompt": optimized_prompt,
+                    "score_before": score_before,
+                    "score_after": score_after,
+                    "candidates_tried": candidates_tried,
+                    "algorithm": "gepa",
+                },
+            )
+
+        except InterruptedError:
+            _log.info("task_cancelled", job_id=job_id)
+            return
+
+        except Exception as exc:
+            is_terminal = isinstance(exc, ValueError)
+            error_str = str(exc)[:500]
+
+            async with AsyncSessionLocal() as db:
+                repo = DomainPromptRepository(db)
+                domain = await repo.get_by_id(UUID(domain_id))
+                if domain is not None:
+                    await repo.set_status(
+                        domain,
+                        DomainPromptStatus.failed,
+                        error_message=error_str,
+                    )
+                    run_repo = DomainOptimizationRunRepository(db)
+                    _dataset_size: int | None = None
+                    if domain.dataset is not None:
+                        _dataset_size = domain.dataset.row_count
+                    await run_repo.create_run(
+                        domain_id=domain.id,
+                        domain_name=domain.name,
+                        prompt_input=prompt_to_optimize,
+                        status="failed",
+                        error_message=error_str,
+                        dataset_size=_dataset_size,
+                        algorithm="gepa",
+                    )
+                    await db.commit()
+
+            await set_dp_job_status(job_id, "failed")
+            await set_dp_job_result(job_id, {"error": "Internal server error"})
+
+            if is_terminal:
+                try:
+                    from uuid import UUID as _UUID
+
+                    from promptly.repositories.user_repo import UserRepository as _UserRepo
+
+                    async with AsyncSessionLocal() as refund_db:
+                        _repo = _UserRepo(refund_db)
+                        await _repo.refund_credits(_UUID(user_id), 12)
+                        await refund_db.commit()
+                except Exception:  # noqa: BLE001
+                    _log.exception("credit_refund_failed", user_id=user_id)
+
+                raise exc
+
+            raise self.retry(exc=exc) from exc
+        finally:
+            try:
+                await clear_dp_gepa_state(domain_id)
+            except Exception:  # noqa: BLE001
+                _log.warning("gepa_state_clear_failed", domain_id=domain_id)
             await clear_dp_domain_active_job(domain_id)
             await dispose_async_engine()
 

@@ -30,6 +30,7 @@ from promptly.domain_prompt.api.schemas import (
     DomainJobPollResponse,
     DomainListResponse,
     DomainPromptResponse,
+    GepaStateResponse,
     OptimizationRunResponse,
     OptimizeDomainRequest,
     QAPair,
@@ -44,9 +45,11 @@ from promptly.domain_prompt.data.repository import (
 )
 from promptly.domain_prompt.infrastructure.cache import (
     clear_dp_domain_active_job,
+    clear_dp_gepa_state,
     clear_dp_tournament_state,
     get_dp_celery_task_id,
     get_dp_domain_active_job,
+    get_dp_gepa_state,
     get_dp_job_domain_id,
     get_dp_job_owner,
     get_dp_job_result,
@@ -69,6 +72,7 @@ from promptly.domain_prompt.workers.tasks import (
     augment_domain_dataset,
     prepare_domain_dataset,
     run_domain_optimization,
+    run_gepa_optimization,
 )
 from promptly.repositories.usage_event_repo import UsageEventRepository
 from promptly.repositories.user_repo import UserRepository
@@ -226,6 +230,23 @@ async def poll_domain_job(
             result=result,
             error=error,
         )
+    )
+
+
+@router.get(
+    "/runs",
+    response_model=SuccessResponse[RunListResponse],
+    dependencies=[Depends(_read_limiter)],
+)
+async def list_all_runs(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
+) -> SuccessResponse[RunListResponse]:
+    """Return all optimization runs across all domains owned by the current user."""
+    run_repo = DomainOptimizationRunRepository(db)
+    runs = await run_repo.get_all_runs_for_user(current_user.user_id)
+    return SuccessResponse(
+        data=RunListResponse(runs=[OptimizationRunResponse.model_validate(r) for r in runs])
     )
 
 
@@ -394,12 +415,14 @@ async def reoptimize_domain(
     current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> SuccessResponse[CreateDomainJobResponse]:
     """
-    Optimize a prompt against this domain's knowledge base. Cost: 10 credits.
+    Optimize a prompt against this domain's knowledge base.
 
-    The domain's Q&A dataset (built from its PDF) is used to score and improve
-    the supplied prompt. You can call this endpoint repeatedly with different
-    prompts — the domain dataset is reused each time.
+    PDO costs 10 credits; GEPA costs 12 credits.
+    Pass `algorithm: "gepa"` in the request body to use GEPA.
     """
+    is_gepa = body.algorithm == "gepa"
+    credit_cost = 12 if is_gepa else 10
+
     repo = DomainPromptRepository(db)
     domain = await repo.get_by_id_and_user(domain_id, current_user.user_id)
     if domain is None:
@@ -411,33 +434,37 @@ async def reoptimize_domain(
     if domain.dataset is None or domain.dataset.dataset_key is None:
         raise DomainNotReadyException()
 
-    if current_user.credits < 10:
-        log.warning("insufficient_credits", required=10, available=current_user.credits)
+    if current_user.credits < credit_cost:
+        log.warning("insufficient_credits", required=credit_cost, available=current_user.credits)
         raise DomainInsufficientCreditsException()
 
     user_repo = UserRepository(db)
-    deducted = await user_repo.deduct_credits(current_user.user_id, 10)
+    deducted = await user_repo.deduct_credits(current_user.user_id, credit_cost)
     if not deducted:
         raise DomainInsufficientCreditsException()
 
     await repo.set_status(domain, DomainPromptStatus.optimizing, last_prompt=body.prompt.strip())
     usage_repo = UsageEventRepository(db)
-    await usage_repo.log(user_id=current_user.user_id, action="domain_pdo", credits_spent=10)
+    action = "domain_gepa" if is_gepa else "domain_pdo"
+    await usage_repo.log(user_id=current_user.user_id, action=action, credits_spent=credit_cost)
     await db.commit()
 
     job_id = str(uuid.uuid4())
     await set_dp_job_status(job_id, "queued")
     await set_dp_job_owner(job_id, str(current_user.user_id))
 
-    run_domain_optimization.apply_async(
-        kwargs={
-            "job_id": job_id,
-            "domain_id": str(domain_id),
-            "user_id": str(current_user.user_id),
-            "prompt_to_optimize": body.prompt.strip(),
-        }
-    )
-    log.info("domain_optimize_job_queued", job_id=job_id, domain_id=str(domain_id))
+    task_kwargs = {
+        "job_id": job_id,
+        "domain_id": str(domain_id),
+        "user_id": str(current_user.user_id),
+        "prompt_to_optimize": body.prompt.strip(),
+    }
+    if is_gepa:
+        run_gepa_optimization.apply_async(kwargs=task_kwargs)
+        log.info("domain_gepa_job_queued", job_id=job_id, domain_id=str(domain_id))
+    else:
+        run_domain_optimization.apply_async(kwargs=task_kwargs)
+        log.info("domain_optimize_job_queued", job_id=job_id, domain_id=str(domain_id))
 
     return SuccessResponse(data=CreateDomainJobResponse(job_id=job_id, domain_id=domain_id))
 
@@ -463,6 +490,29 @@ async def list_domain_runs(
     return SuccessResponse(
         data=RunListResponse(runs=[OptimizationRunResponse.model_validate(r) for r in runs])
     )
+
+
+@router.get(
+    "/{domain_id}/gepa-state",
+    response_model=SuccessResponse[GepaStateResponse],
+    dependencies=[Depends(_read_limiter)],
+)
+async def get_gepa_state(
+    domain_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
+) -> SuccessResponse[GepaStateResponse]:
+    """Return live GEPA evolution state written by the worker during a running GEPA job."""
+    repo = DomainPromptRepository(db)
+    domain = await repo.get_by_id_and_user(domain_id, current_user.user_id)
+    if domain is None:
+        raise DomainNotFoundException()
+
+    state = await get_dp_gepa_state(str(domain_id))
+    if state is None:
+        raise HTTPException(status_code=404, detail="No GEPA state available yet.")
+
+    return SuccessResponse(data=GepaStateResponse(**state))
 
 
 @router.post(
@@ -536,6 +586,7 @@ async def _do_cancel(
     await set_dp_job_result(job_id, {"error": "Cancelled by user."})
     await clear_dp_domain_active_job(str(domain.id))
     await clear_dp_tournament_state(str(domain.id))
+    await clear_dp_gepa_state(str(domain.id))
 
     cancellable_statuses = (
         DomainPromptStatus.pending,

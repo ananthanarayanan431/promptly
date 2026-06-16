@@ -318,9 +318,13 @@ async def list_transfer_jobs(
     """List the current user's transfer jobs (newest first, max 50)."""
     repo = TransferJobRepository(db)
     jobs: list[TransferJob] = await repo.get_by_user(current_user.user_id)
-    return SuccessResponse(
-        data=TransferJobListResponse(jobs=[TransferJobSummary.model_validate(j) for j in jobs])
-    )
+    summaries = [
+        TransferJobSummary.model_validate(j).model_copy(
+            update={"mapping_text": j.mapping.mapping_text if j.mapping else None}
+        )
+        for j in jobs
+    ]
+    return SuccessResponse(data=TransferJobListResponse(jobs=summaries))
 
 
 @router.get(

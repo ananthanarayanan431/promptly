@@ -145,6 +145,11 @@ class SessionSummary(BaseModel):
     title: str | None
     created_at: datetime
     updated_at: datetime
+    token_count: int | None = None
+    feedback_count: int = 0
+    prompt_input: str | None = None
+    optimized_prompt: str | None = None
+    reasoning: dict[str, Any] | None = None
 
     model_config = {"from_attributes": True}
 

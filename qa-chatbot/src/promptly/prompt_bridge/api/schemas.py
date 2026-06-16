@@ -111,6 +111,8 @@ class TransferJobSummary(BaseModel):
     error_message: str | None
     created_at: datetime
     redis_job_id: str | None = None
+    token_count: int | None = None
+    mapping_text: str | None = None
 
     model_config = {"from_attributes": True}
 

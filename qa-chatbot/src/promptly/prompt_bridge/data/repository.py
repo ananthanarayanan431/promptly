@@ -38,6 +38,7 @@ class TransferJobRepository(BaseRepository[TransferJob]):
         result = await self.db.execute(
             select(TransferJob)
             .where(TransferJob.user_id == user_id)
+            .options(selectinload(TransferJob.mapping))
             .order_by(TransferJob.created_at.desc())
             .limit(limit)
         )

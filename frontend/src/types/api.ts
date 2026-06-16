@@ -254,6 +254,16 @@ export interface SessionSummary {
   title: string | null;
   created_at: string;
   updated_at: string;
+  token_count?: number | null;
+  feedback_count?: number;
+  prompt_input?: string | null;
+  optimized_prompt?: string | null;
+  reasoning?: {
+    summary: string;
+    changes: { kind: string; title: string; detail: string }[];
+    kept: string[];
+  } | null;
+  council_models?: string[];
 }
 
 export interface SessionsGrouped {
@@ -428,4 +438,24 @@ export interface ApiKeyResponse {
 
 export interface ApiKeyCreatedResponse extends ApiKeyResponse {
   key: string; // shown only once
+}
+
+export interface TransferJobSummary {
+  id: string;
+  source_model: string;
+  target_model: string;
+  status: string;
+  reused_mapping: boolean;
+  credits_charged: number;
+  source_prompt: string;
+  adapted_prompt: string | null;
+  error_message: string | null;
+  created_at: string;
+  redis_job_id: string | null;
+  token_count?: number | null;
+  mapping_text?: string | null;
+}
+
+export interface TransferJobListResponse {
+  jobs: TransferJobSummary[];
 }

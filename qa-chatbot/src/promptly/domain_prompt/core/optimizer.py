@@ -231,6 +231,13 @@ def _build_domain_summary(pairs: list[dict[str, str]], max_samples: int = 5) -> 
     return domain_summary, questions_block
 
 
+def _tally(response: Any, counter: list[int]) -> None:
+    """Accumulate total_tokens from an LLM response into the shared counter."""
+    meta = getattr(response, "usage_metadata", None)
+    if meta:
+        counter[0] += meta.get("total_tokens", 0) or 0
+
+
 # ── Candidate generation ──────────────────────────────────────────────────────
 async def _generate_one_variant(
     base_prompt: str,
@@ -239,6 +246,7 @@ async def _generate_one_variant(
     gen_llm: LLMClient,
     domain_summary: str,
     sample_questions: str,
+    token_counter: list[int] | None = None,
 ) -> str | None:
     system = VARIANT_SYSTEM.format(
         tip_name=tip_name,
@@ -260,6 +268,8 @@ async def _generate_one_variant(
                 },
             ]
         )
+        if token_counter is not None:
+            _tally(response, token_counter)
         variant = _strip_fences(str(response.content).strip())
         if not variant or _is_placeholder_variant(variant, base_prompt):
             _log.warning("variant_placeholder_discarded", tip=tip_name)
@@ -276,11 +286,18 @@ async def _generate_variants(
     gen_llm: LLMClient,
     domain_summary: str,
     sample_questions: str,
+    token_counter: list[int] | None = None,
 ) -> list[str]:
     tips = VARIANT_TIPS[:n]
     tasks = [
         _generate_one_variant(
-            base_prompt, name, instructions, gen_llm, domain_summary, sample_questions
+            base_prompt,
+            name,
+            instructions,
+            gen_llm,
+            domain_summary,
+            sample_questions,
+            token_counter,
         )
         for name, instructions in tips
     ]
@@ -300,6 +317,7 @@ async def _generate_one_mutation(
     tip_instructions: str,
     gen_llm: LLMClient,
     domain_summary: str,
+    token_counter: list[int] | None = None,
 ) -> str | None:
     system = MUTATION_SYSTEM.format(
         tip_name=tip_name,
@@ -320,6 +338,8 @@ async def _generate_one_mutation(
                 },
             ]
         )
+        if token_counter is not None:
+            _tally(response, token_counter)
         mutated = _strip_fences(str(response.content).strip())
         not_placeholder = not _is_placeholder_variant(mutated, source_prompt)
         if mutated and mutated != source_prompt and not_placeholder:
@@ -337,6 +357,7 @@ async def _generate_mutation_batch(
     gen_llm: LLMClient,
     domain_summary: str,
     tip_idx_start: int,
+    token_counter: list[int] | None = None,
 ) -> list[str]:
     """Generate batch_size mutations by cycling through mutation tips and source prompts."""
     tasks = []
@@ -344,14 +365,18 @@ async def _generate_mutation_batch(
         source = top_sources[k % len(top_sources)]
         tip_name, tip_instructions = MUTATION_TIPS[(tip_idx_start + k) % len(MUTATION_TIPS)]
         tasks.append(
-            _generate_one_mutation(source, tip_name, tip_instructions, gen_llm, domain_summary)
+            _generate_one_mutation(
+                source, tip_name, tip_instructions, gen_llm, domain_summary, token_counter
+            )
         )
     results = await asyncio.gather(*tasks)
     return [r for r in results if r is not None]
 
 
 # ── Answering ─────────────────────────────────────────────────────────────────
-async def _get_answer(prompt: str, question: str, llm: LLMClient) -> str:
+async def _get_answer(
+    prompt: str, question: str, llm: LLMClient, token_counter: list[int] | None = None
+) -> str:
     try:
         response = await llm.ainvoke(
             [
@@ -359,6 +384,8 @@ async def _get_answer(prompt: str, question: str, llm: LLMClient) -> str:
                 {"role": "user", "content": question},
             ]
         )
+        if token_counter is not None:
+            _tally(response, token_counter)
         return str(response.content).strip()
     except Exception as exc:  # noqa: BLE001
         _log.warning("inference_failed", error=str(exc))
@@ -384,6 +411,7 @@ async def _duel(
     llm: LLMClient,
     judge_llm: LLMClient,
     rng: random.Random,
+    token_counter: list[int] | None = None,
 ) -> tuple[int, float, str, str]:
     """Run one duel. Returns (winner_index, gamma, ans_a, ans_b).
 
@@ -399,8 +427,8 @@ async def _duel(
     second_prompt = prompt_a if flip else prompt_b
 
     ans_first, ans_second = await asyncio.gather(
-        _get_answer(first_prompt, question, llm),
-        _get_answer(second_prompt, question, llm),
+        _get_answer(first_prompt, question, llm, token_counter),
+        _get_answer(second_prompt, question, llm, token_counter),
     )
 
     # Unflip so ans_a/ans_b correspond to prompt_a/prompt_b (original order)
@@ -427,6 +455,8 @@ async def _duel(
                 },
             ]
         )
+        if token_counter is not None:
+            _tally(response, token_counter)
         raw = _strip_fences(str(response.content).strip())
         result: Any = _json_loads_tolerant(raw)
         winner_label = str(result.get("winner", "")).upper().strip()
@@ -451,8 +481,9 @@ async def _score_one(
     gold: str,
     llm: LLMClient,
     judge_llm: LLMClient,
+    token_counter: list[int] | None = None,
 ) -> float:
-    predicted = await _get_answer(prompt, question, llm)
+    predicted = await _get_answer(prompt, question, llm, token_counter)
     try:
         sc_llm = judge_llm.model_copy(update={"max_tokens": SCORE_MAX_TOKENS})
         response = await sc_llm.ainvoke(
@@ -466,6 +497,8 @@ async def _score_one(
                 },
             ]
         )
+        if token_counter is not None:
+            _tally(response, token_counter)
         raw = _strip_fences(str(response.content).strip())
         obj: Any = json.loads(raw)
         return max(0.0, min(1.0, float(obj.get("score", 0.0))))
@@ -479,12 +512,16 @@ async def _score_prompt(
     examples: list[dict[str, str]],
     llm: LLMClient,
     judge_llm: LLMClient,
+    token_counter: list[int] | None = None,
 ) -> float:
     if not examples:
         return 0.0
     batch = examples[:MAX_SCORE_EXAMPLES]
     scores = await asyncio.gather(
-        *[_score_one(prompt, ex["question"], ex["answer"], llm, judge_llm) for ex in batch]
+        *[
+            _score_one(prompt, ex["question"], ex["answer"], llm, judge_llm, token_counter)
+            for ex in batch
+        ]
     )
     return sum(scores) / len(scores) if scores else 0.0
 
@@ -669,19 +706,20 @@ async def optimize_domain_prompt(
     fast_llm = build_duel_answerer(api_key)
     gen_llm = build_variant_generator(api_key)
     judge_llm = build_duel_judge(api_key)
+    token_counter: list[int] = [0]
 
     domain_summary, sample_questions = _build_domain_summary(duel_pool)
 
     # ── Baseline score ────────────────────────────────────────────────────────
     score_before = await _score_prompt(
-        base_prompt, val_split[:MAX_VAL_EXAMPLES], fast_llm, judge_llm
+        base_prompt, val_split[:MAX_VAL_EXAMPLES], fast_llm, judge_llm, token_counter
     )
 
     # ── Generate initial candidate pool ──────────────────────────────────────
     # Base prompt is always slot 0 (paper Appendix C.2).
     n_variants = max(1, num_candidates - 1)
     variant_texts = await _generate_variants(
-        base_prompt, n_variants, gen_llm, domain_summary, sample_questions
+        base_prompt, n_variants, gen_llm, domain_summary, sample_questions, token_counter
     )
     all_texts = [base_prompt] + [v for v in variant_texts if v != base_prompt]
     seen: set[str] = set()
@@ -698,12 +736,13 @@ async def optimize_domain_prompt(
     if len(candidates) < 2:
         _log.error("insufficient_candidates")
         score_after = await _score_prompt(
-            base_prompt, val_split[:MAX_VAL_EXAMPLES], fast_llm, judge_llm
+            base_prompt, val_split[:MAX_VAL_EXAMPLES], fast_llm, judge_llm, token_counter
         )
         return {
             "optimized_prompt": base_prompt,
             "score_before": round(score_before, 4),
             "score_after": round(score_after, 4),
+            "total_tokens": token_counter[0],
         }
 
     _log.info(
@@ -722,7 +761,14 @@ async def optimize_domain_prompt(
         question, gold = ex["question"], ex["answer"]
 
         duel_result, gamma, ans_i, ans_j = await _duel(
-            candidates[i].text, candidates[j].text, question, gold, fast_llm, judge_llm, rng
+            candidates[i].text,
+            candidates[j].text,
+            question,
+            gold,
+            fast_llm,
+            judge_llm,
+            rng,
+            token_counter,
         )
         winner_idx, loser_idx = (i, j) if duel_result == 0 else (j, i)
         wm.record_win(winner_idx, loser_idx, gamma)
@@ -753,7 +799,12 @@ async def optimize_domain_prompt(
 
             # Generate _MUTATION_BATCH new candidates from top sources
             new_texts = await _generate_mutation_batch(
-                top_sources, MUTATION_BATCH, gen_llm, domain_summary, mutation_tip_idx
+                top_sources,
+                MUTATION_BATCH,
+                gen_llm,
+                domain_summary,
+                mutation_tip_idx,
+                token_counter,
             )
             mutation_tip_idx += MUTATION_BATCH
             existing_texts = {c.text for c in candidates}
@@ -779,7 +830,7 @@ async def optimize_domain_prompt(
 
     # ── Final score on held-out val split ─────────────────────────────────────
     score_after = await _score_prompt(
-        best_prompt, val_split[:MAX_VAL_EXAMPLES], fast_llm, judge_llm
+        best_prompt, val_split[:MAX_VAL_EXAMPLES], fast_llm, judge_llm, token_counter
     )
 
     # ── Stats ─────────────────────────────────────────────────────────────────
@@ -794,6 +845,7 @@ async def optimize_domain_prompt(
         win_rate=win_rate,
         score_before=score_before,
         score_after=score_after,
+        total_tokens=token_counter[0],
     )
 
     return {
@@ -804,4 +856,5 @@ async def optimize_domain_prompt(
         "candidates_tried": len(candidates),
         "rounds_run": TOURNAMENT_ROUNDS,
         "dataset_size": len(pairs),
+        "total_tokens": token_counter[0],
     }
