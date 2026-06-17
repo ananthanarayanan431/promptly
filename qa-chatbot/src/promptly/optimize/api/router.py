@@ -171,7 +171,11 @@ async def create_chat(
                 "name": resolved_name,
                 "category_slug": resolved_category_slug,
                 "force_optimize": request.force_optimize,
+                "skip_quality_gate": request.skip_quality_gate,
+                "skip_subject_classifier": request.skip_subject_classifier,
                 "llm_effort": request.llm_effort,
+                "council_models": request.council_models,
+                "synthesizer_model": request.synthesizer_model,
             },
         )
     except Exception as exc:

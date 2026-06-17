@@ -397,6 +397,8 @@ export function OptimizeChat() {
 
     try {
       const llmEffort = (() => { try { return localStorage.getItem('ply_llm_effort') ?? undefined; } catch { return undefined; } })();
+      const customPipeline = (() => { try { const r = localStorage.getItem('ply_custom_pipeline'); return r ? JSON.parse(r) : null; } catch { return null; } })();
+      const gates = (() => { try { const r = localStorage.getItem('ply_feature_gates'); return r ? JSON.parse(r) : null; } catch { return null; } })();
       const res = await api.post<{ data: { job_id: string } }>('/api/v1/chat/', {
         prompt: promptToSend,
         ...(feedbackToSend && { feedback: feedbackToSend }),
@@ -407,6 +409,13 @@ export function OptimizeChat() {
         ...(categorySlug && { category_slug: categorySlug }),
         ...(forceOptimize && { force_optimize: true }),
         ...(llmEffort && llmEffort !== 'medium' && { llm_effort: llmEffort }),
+        // Custom pipeline overrides take precedence over llm_effort tier
+        ...(customPipeline?.council?.length === 4 && { council_models: customPipeline.council }),
+        ...(customPipeline?.synthesizer && { synthesizer_model: customPipeline.synthesizer }),
+        // Feature gate overrides (only send when disabled to avoid unnecessary payload)
+        ...(gates?.performance === false && { force_optimize: true }),
+        ...(gates?.quality === false && { skip_quality_gate: true }),
+        ...(gates?.subject === false && { skip_subject_classifier: true }),
       });
 
       const jobId = res.data.data.job_id;

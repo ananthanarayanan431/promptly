@@ -34,6 +34,8 @@ class ChatService:
         category_description: str | None = None,
         category_is_predefined: bool = False,
         force_optimize: bool = False,
+        skip_quality_gate: bool = False,
+        skip_subject_classifier: bool = False,
         llm_effort: str | None = None,
         council_models: list[str] | None = None,
         synthesizer_model: str | None = None,
@@ -61,8 +63,11 @@ class ChatService:
             version_history_diff=version_history_diff,
             max_iterations=max_iterations,
             force_optimize=force_optimize,
-            council_models=get_council_models(llm_effort),
-            synthesizer_model=get_synthesizer(llm_effort),
+            skip_quality_gate=skip_quality_gate,
+            skip_subject_classifier=skip_subject_classifier,
+            # Direct overrides take precedence over tier-based effort
+            council_models=council_models or get_council_models(llm_effort),
+            synthesizer_model=synthesizer_model or get_synthesizer(llm_effort),
         )
 
         result = await self.graph.ainvoke(initial_state, config=config)

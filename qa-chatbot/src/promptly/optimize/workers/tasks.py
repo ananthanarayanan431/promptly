@@ -24,7 +24,11 @@ def process_chat_async(
     name: str | None = None,
     category_slug: str | None = None,
     force_optimize: bool = False,
+    skip_quality_gate: bool = False,
+    skip_subject_classifier: bool = False,
     llm_effort: str | None = None,
+    council_models: list[str] | None = None,
+    synthesizer_model: str | None = None,
 ) -> dict[str, Any]:
     """
     Run the full LangGraph council pipeline as a background job.
@@ -187,7 +191,11 @@ def process_chat_async(
                         category_description=cat_description,
                         category_is_predefined=cat_is_predefined,
                         force_optimize=force_optimize,
+                        skip_quality_gate=skip_quality_gate,
+                        skip_subject_classifier=skip_subject_classifier,
                         llm_effort=llm_effort,
+                        council_models=council_models,
+                        synthesizer_model=synthesizer_model,
                     )
 
                 # Performance gate short-circuited — refund 5 of the 10 credits.

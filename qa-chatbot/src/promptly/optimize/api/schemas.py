@@ -63,6 +63,14 @@ class ChatRequest(BaseModel):
             "Omit to use the server COUNCIL_MODELS configuration."
         ),
     )
+    skip_quality_gate: bool = Field(
+        default=False,
+        description="Skip the quality-gate refinement loop for this run.",
+    )
+    skip_subject_classifier: bool = Field(
+        default=False,
+        description="Skip the subject classifier for this run (saves one LLM call).",
+    )
     council_models: list[str] | None = Field(
         default=None,
         max_length=4,

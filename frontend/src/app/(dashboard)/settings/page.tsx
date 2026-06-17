@@ -300,14 +300,27 @@ function OptimizationDefaultsSection() {
 }
 
 /* ══════════════════════════════════════════════════════════════════════
-   ④ PIPELINE CONFIGURATION (read-only display)
+   ④ PIPELINE CONFIGURATION (interactive)
 ══════════════════════════════════════════════════════════════════════ */
-const COUNCIL_MODELS = [
-  { role: 'Analytical',  model: 'openai/gpt-4o-mini' },
-  { role: 'Creative',    model: 'anthropic/claude-3.5-haiku' },
-  { role: 'Concise',     model: 'google/gemini-2.5-flash' },
-  { role: 'Structured',  model: 'x-ai/grok-4.3' },
+const LS_PIPELINE_KEY = 'ply_custom_pipeline';
+const COUNCIL_ROLES = ['Analytical', 'Creative', 'Concise', 'Structured'] as const;
+const DEFAULT_COUNCIL = [
+  'openai/gpt-4o-mini',
+  'anthropic/claude-3.5-haiku',
+  'google/gemini-2.5-flash',
+  'x-ai/grok-4.3',
 ];
+const DEFAULT_SYNTHESIZER = 'openai/gpt-4o-mini';
+
+interface ModelOption { id: string; name: string; input: number; output: number; }
+interface PipelineConfig { council: string[]; synthesizer: string; }
+
+function loadPipeline(): PipelineConfig {
+  try {
+    const raw = localStorage.getItem(LS_PIPELINE_KEY);
+    return raw ? JSON.parse(raw) : { council: DEFAULT_COUNCIL, synthesizer: DEFAULT_SYNTHESIZER };
+  } catch { return { council: DEFAULT_COUNCIL, synthesizer: DEFAULT_SYNTHESIZER }; }
+}
 
 /* ══════════════════════════════════════════════════════════════════════
    ④ LLM EFFORT TIERS
@@ -452,73 +465,264 @@ function LLMEffortSection() {
   );
 }
 
+/* ── Feature gate toggles ──────────────────────────────────────────── */
+const LS_GATES_KEY = 'ply_feature_gates';
+interface GateState { quality: boolean; performance: boolean; subject: boolean; }
+const DEFAULT_GATES: GateState = { quality: true, performance: true, subject: true };
+
+function loadGates(): GateState {
+  try { const r = localStorage.getItem(LS_GATES_KEY); return r ? { ...DEFAULT_GATES, ...JSON.parse(r) } : DEFAULT_GATES; }
+  catch { return DEFAULT_GATES; }
+}
+
+function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <button
+      role="switch"
+      aria-checked={on}
+      onClick={() => onChange(!on)}
+      style={{
+        width: 40, height: 22, borderRadius: 11, border: 'none', cursor: 'pointer',
+        position: 'relative', transition: 'background .2s',
+        background: on ? 'var(--success)' : 'var(--border)',
+        flexShrink: 0,
+      }}
+    >
+      <span style={{
+        position: 'absolute', top: 3, left: on ? 21 : 3,
+        width: 16, height: 16, borderRadius: '50%', background: '#fff',
+        boxShadow: '0 1px 3px rgba(0,0,0,.2)', transition: 'left .2s',
+      }} />
+    </button>
+  );
+}
+
+function GateToggles() {
+  const [gates, setGates] = useState<GateState>(loadGates);
+  const [saved, setSaved] = useState(false);
+
+  function set(key: keyof GateState, val: boolean) {
+    const next = { ...gates, [key]: val };
+    setGates(next);
+    try { localStorage.setItem(LS_GATES_KEY, JSON.stringify(next)); } catch { /* noop */ }
+    setSaved(true);
+    setTimeout(() => setSaved(false), 1800);
+  }
+
+  const GATES: { key: keyof GateState; label: string; desc: string; serverOnly?: boolean }[] = [
+    { key: 'performance', label: 'Performance gate', desc: 'Fast-path skip for prompts already production-grade. Disable to always run the full council.' },
+    { key: 'quality',     label: 'Quality gate',     desc: 'Re-scores synthesized output and loops back if weak dimensions remain. Disable for a single-pass run.' },
+    { key: 'subject',     label: 'Subject classifier', desc: 'Analyses prompt topic before council to add domain context. Disable to save one LLM call.' },
+  ];
+
+  return (
+    <div className="ply-card" style={{ padding: 0, overflow: 'hidden' }}>
+      <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.06em' }}>
+          Feature gates
+        </span>
+        {saved && (
+          <span style={{ fontSize: 11.5, color: 'var(--success)', display: 'flex', alignItems: 'center', gap: 4 }}>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><polyline points="20 6 9 17 4 12"/></svg>
+            Saved
+          </span>
+        )}
+      </div>
+      {GATES.map((g) => (
+        <div key={g.key} style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '12px 16px', borderBottom: '1px solid var(--border)', gap: 16,
+        }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, color: 'var(--text)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 8 }}>
+              {g.label}
+              {!gates[g.key] && (
+                <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: 'rgba(245,158,11,0.12)', color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '.04em' }}>
+                  off
+                </span>
+              )}
+            </div>
+            <div style={{ fontSize: 11.5, color: 'var(--text-subtle)', marginTop: 3, lineHeight: 1.45 }}>{g.desc}</div>
+          </div>
+          <Toggle on={gates[g.key]} onChange={v => set(g.key, v)} />
+        </div>
+      ))}
+      {/* Prompt cache — server-only, read-only */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '12px 16px', gap: 16,
+      }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 8 }}>
+            Prompt cache
+            <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: 'var(--surface-2)', color: 'var(--text-subtle)', border: '1px solid var(--border)', fontFamily: 'var(--mono)' }}>
+              server only
+            </span>
+          </div>
+          <div style={{ fontSize: 11.5, color: 'var(--text-subtle)', marginTop: 3 }}>
+            Anthropic cache breakpoints on static system prompts. Configure via <code style={{ fontFamily: 'var(--mono)', fontSize: 10 }}>PROMPT_CACHE_ENABLED</code> env var.
+          </div>
+        </div>
+        <span style={{ fontFamily: 'var(--mono)', fontSize: 11, padding: '2px 8px', borderRadius: 5, background: 'rgba(16,185,129,0.1)', color: 'var(--success)', fontWeight: 600, flexShrink: 0 }}>
+          enabled
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function ModelSelect({
+  value, onChange, models, loading,
+}: {
+  value: string; onChange: (v: string) => void;
+  models: ModelOption[]; loading: boolean;
+}) {
+  return (
+    <select
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      disabled={loading}
+      style={{
+        height: 32, padding: '0 8px', borderRadius: 7, border: '1px solid var(--border)',
+        background: 'var(--surface-2)', color: 'var(--text)', fontSize: 12.5,
+        cursor: loading ? 'not-allowed' : 'pointer', outline: 'none', maxWidth: 320,
+        fontFamily: 'var(--mono)',
+      }}
+    >
+      {loading && <option value={value}>{value.split('/').pop()}</option>}
+      {models.map(m => (
+        <option key={m.id} value={m.id}>
+          {m.id.split('/').pop()} — ${m.input}/1M in · ${m.output}/1M out
+        </option>
+      ))}
+    </select>
+  );
+}
+
 function PipelineSection() {
+  const [config, setConfig] = useState<PipelineConfig>(loadPipeline);
+  const [saved, setSaved] = useState(false);
+
+  const { data: modelsData, isLoading } = useQuery<{ models: { id: string; name: string; pricing?: { prompt_per_token: number; completion_per_token: number } | null }[] }>({
+    queryKey: ['openrouter-models'],
+    queryFn: async () => {
+      const res = await api.get<{ data: { models: { id: string; name: string; pricing?: { prompt_per_token: number; completion_per_token: number } | null }[]; cached: boolean } }>('/api/v1/openrouter/models');
+      return res.data.data;
+    },
+    staleTime: 10 * 60_000,
+  });
+
+  const models: ModelOption[] = (modelsData?.models ?? []).map(m => ({
+    id: m.id,
+    name: m.name,
+    input:  m.pricing ? Math.round(m.pricing.prompt_per_token * 1_000_000 * 1000) / 1000 : 1,
+    output: m.pricing ? Math.round(m.pricing.completion_per_token * 1_000_000 * 1000) / 1000 : 4,
+  }));
+
+  function save(next: PipelineConfig) {
+    setConfig(next);
+    try { localStorage.setItem(LS_PIPELINE_KEY, JSON.stringify(next)); } catch { /* noop */ }
+    setSaved(true);
+    setTimeout(() => setSaved(false), 1800);
+  }
+
+  function reset() {
+    save({ council: DEFAULT_COUNCIL, synthesizer: DEFAULT_SYNTHESIZER });
+    try { localStorage.removeItem(LS_PIPELINE_KEY); } catch { /* noop */ }
+  }
+
+  const isDefault = config.council.every((m, i) => m === DEFAULT_COUNCIL[i])
+    && config.synthesizer === DEFAULT_SYNTHESIZER;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <SectionTitle
         id="pipeline"
         icon="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"
         title="Pipeline configuration"
-        subtitle="Active models and feature gates. Change via COUNCIL_MODELS environment variable."
+        subtitle="Choose the models for each council role and the chairman synthesizer. Applied to every Council optimization."
       />
 
-      {/* Council models */}
+      {/* Council models — interactive dropdowns */}
       <div className="ply-card" style={{ padding: 0, overflow: 'hidden' }}>
-        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.06em' }}>
-          Council models
+        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.06em' }}>
+            Council models
+          </span>
+          {isLoading && (
+            <span style={{ fontSize: 11, color: 'var(--text-subtle)', fontFamily: 'var(--mono)' }}>
+              Loading from OpenRouter…
+            </span>
+          )}
         </div>
-        {COUNCIL_MODELS.map((m, i) => (
-          <div key={m.role} style={{
+
+        {COUNCIL_ROLES.map((role, i) => (
+          <div key={role} style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '10px 16px', borderBottom: i < COUNCIL_MODELS.length - 1 ? '1px solid var(--border)' : undefined,
+            padding: '10px 16px', borderBottom: '1px solid var(--border)', gap: 16,
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '.06em', minWidth: 72 }}>
-                {m.role}
-              </span>
-            </div>
-            <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--text)' }}>{m.model}</span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '.06em', minWidth: 80, flexShrink: 0 }}>
+              {role}
+            </span>
+            <ModelSelect
+              value={config.council[i] ?? DEFAULT_COUNCIL[i]}
+              onChange={v => {
+                const next = [...config.council];
+                next[i] = v;
+                save({ ...config, council: next });
+              }}
+              models={models}
+              loading={isLoading}
+            />
           </div>
         ))}
-        <div style={{ padding: '10px 16px', background: 'var(--surface-2)', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-subtle)" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
-          <span style={{ fontSize: 11.5, color: 'var(--text-subtle)' }}>
-            Override via <code style={{ fontFamily: 'var(--mono)', background: 'var(--surface)', padding: '0 4px', borderRadius: 4, fontSize: 11 }}>COUNCIL_MODELS</code> comma-separated env var. Index order maps to strategy.
-          </span>
+
+        {/* Synthesizer row */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '10px 16px', gap: 16,
+          background: 'color-mix(in oklab, var(--primary) 4%, var(--surface-2))',
+        }}>
+          <div style={{ minWidth: 80, flexShrink: 0 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '.06em' }}>Chairman</div>
+            <div style={{ fontSize: 10, color: 'var(--text-subtle)', marginTop: 2 }}>Synthesizer</div>
+          </div>
+          <ModelSelect
+            value={config.synthesizer}
+            onChange={v => save({ ...config, synthesizer: v })}
+            models={models}
+            loading={isLoading}
+          />
         </div>
       </div>
 
-      {/* Feature gates */}
-      <div className="ply-card" style={{ padding: 0, overflow: 'hidden' }}>
-        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.06em' }}>
-          Feature gates
-        </div>
-        {[
-          { label: 'Quality gate',        key: 'QUALITY_GATE_ENABLED',       desc: 'Re-scores synthesized output; loops back if below threshold.' },
-          { label: 'Performance gate',    key: 'PERFORMANCE_GATE_ENABLED',    desc: 'Fast-path skip for low-complexity prompts.' },
-          { label: 'Subject classifier',  key: 'SUBJECT_CLASSIFIER_ENABLED',  desc: 'Adds domain context to council before optimization.' },
-          { label: 'Prompt cache',        key: 'PROMPT_CACHE_ENABLED',        desc: 'Anthropic cache breakpoints on static system prompts.' },
-        ].map((g, i, arr) => (
-          <div key={g.key} style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '10px 16px', borderBottom: i < arr.length - 1 ? '1px solid var(--border)' : undefined,
-          }}>
-            <div>
-              <div style={{ fontSize: 13, color: 'var(--text)', fontWeight: 500 }}>{g.label}</div>
-              <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 2 }}>{g.desc}</div>
-            </div>
-            <span style={{ fontFamily: 'var(--mono)', fontSize: 11, padding: '2px 8px', borderRadius: 5, background: 'rgba(16,185,129,0.1)', color: 'var(--success)', fontWeight: 600 }}>
-              enabled
-            </span>
-          </div>
-        ))}
-        <div style={{ padding: '10px 16px', background: 'var(--surface-2)', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-subtle)" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
-          <span style={{ fontSize: 11.5, color: 'var(--text-subtle)' }}>
-            Toggle via env vars (e.g. <code style={{ fontFamily: 'var(--mono)', background: 'var(--surface)', padding: '0 4px', borderRadius: 4, fontSize: 11 }}>QUALITY_GATE_ENABLED=false</code>).
+      {/* Save indicator + reset */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {!isDefault && (
+            <button
+              onClick={reset}
+              className="ply-btn"
+              style={{ fontSize: 12 }}
+            >
+              Reset to defaults
+            </button>
+          )}
+          <span style={{ fontSize: 12, color: 'var(--text-subtle)', display: 'flex', alignItems: 'center', gap: 5 }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+            Stored locally. Sent with every Council optimization.
           </span>
         </div>
+        {saved && (
+          <span style={{ fontSize: 12, color: 'var(--success)', display: 'flex', alignItems: 'center', gap: 5 }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><polyline points="20 6 9 17 4 12"/></svg>
+            Saved
+          </span>
+        )}
       </div>
+
+      {/* Feature gates — interactive toggles */}
+      <GateToggles />
     </div>
   );
 }
