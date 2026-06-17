@@ -656,16 +656,16 @@ function OptimizeTab({ domain, onReoptimize, reoptimizing, sessionResult, onClea
   const [draft, setDraft] = useState('');
   const [copied, setCopied] = useState(false);
   const [vizMode, setVizMode] = useState<VizMode>('matrix');
-  const [runAgainMode, setRunAgainMode] = useState(false);
+  const [runAgainMode, setRunAgainMode] = useState(true);
   const [budgetTier, setBudgetTier] = useState<BudgetTier>('low');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Reset local state whenever the domain itself changes
+  // Reset local state whenever the domain or engine changes
   useEffect(() => {
-    setRunAgainMode(false);
+    setRunAgainMode(true);
     setDraft('');
     setCopied(false);
-  }, [domain.id]);
+  }, [domain.id, engine]);
 
   useEffect(() => {
     if (sessionResult) setRunAgainMode(false);
