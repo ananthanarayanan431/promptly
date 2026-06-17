@@ -571,31 +571,186 @@ function GateToggles() {
   );
 }
 
-function ModelSelect({
-  value, onChange, models, loading,
-}: {
+const PROVIDER_COLORS: Record<string, string> = {
+  openai: '#10a37f', anthropic: '#d97706', google: '#4285f4',
+  'meta-llama': '#0668e1', mistralai: '#ff6b35', 'x-ai': '#1da1f2',
+  deepseek: '#7c5cff', qwen: '#ff4d4f',
+};
+const PROVIDER_LABELS: Record<string, string> = {
+  openai: 'OpenAI', anthropic: 'Anthropic', google: 'Google',
+  'meta-llama': 'Meta', mistralai: 'Mistral', 'x-ai': 'xAI',
+  deepseek: 'DeepSeek', qwen: 'Qwen',
+};
+const PROVIDER_ORDER = ['openai', 'anthropic', 'google', 'meta-llama', 'mistralai', 'x-ai', 'deepseek', 'qwen'];
+
+function ProviderDot({ provider, size = 7 }: { provider: string; size?: number }) {
+  return (
+    <span style={{
+      display: 'inline-block', width: size, height: size, borderRadius: '50%', flexShrink: 0,
+      background: PROVIDER_COLORS[provider] ?? 'var(--text-subtle)',
+    }} />
+  );
+}
+
+function PriceBadge({ input }: { input: number }) {
+  const color = input === 0 ? '#10b981' : input < 0.2 ? '#10b981' : input < 1 ? '#f59e0b' : input < 3 ? '#ef8c4a' : '#ef4444';
+  return (
+    <span style={{ fontFamily: 'var(--mono)', fontSize: 10, color, flexShrink: 0 }}>
+      ${input}/1M
+    </span>
+  );
+}
+
+function ModelPicker({ value, onChange, models, loading }: {
   value: string; onChange: (v: string) => void;
   models: ModelOption[]; loading: boolean;
 }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  useEffect(() => {
+    if (open) { setSearch(''); setTimeout(() => inputRef.current?.focus(), 30); }
+  }, [open]);
+
+  const selected = models.find(m => m.id === value);
+  const selProvider = value.split('/')[0];
+  const selSlug = value.split('/').slice(1).join('/') || value;
+
+  const q = search.toLowerCase();
+  const filtered = q
+    ? models.filter(m => m.id.toLowerCase().includes(q) || m.name.toLowerCase().includes(q))
+    : models;
+
+  // Group by provider
+  const groups: { provider: string; label: string; items: ModelOption[] }[] = [];
+  const seen = new Set<string>();
+  [...PROVIDER_ORDER, '__other__'].forEach(p => {
+    const items = p === '__other__'
+      ? filtered.filter(m => !PROVIDER_ORDER.includes(m.id.split('/')[0]) && !seen.has(m.id))
+      : filtered.filter(m => m.id.startsWith(p + '/'));
+    if (items.length) {
+      items.forEach(m => seen.add(m.id));
+      groups.push({ provider: p, label: PROVIDER_LABELS[p] ?? 'Other', items });
+    }
+  });
+
   return (
-    <select
-      value={value}
-      onChange={e => onChange(e.target.value)}
-      disabled={loading}
-      style={{
-        height: 32, padding: '0 8px', borderRadius: 7, border: '1px solid var(--border)',
-        background: 'var(--surface-2)', color: 'var(--text)', fontSize: 12.5,
-        cursor: loading ? 'not-allowed' : 'pointer', outline: 'none', maxWidth: 320,
-        fontFamily: 'var(--mono)',
-      }}
-    >
-      {loading && <option value={value}>{value.split('/').pop()}</option>}
-      {models.map(m => (
-        <option key={m.id} value={m.id}>
-          {m.id.split('/').pop()} — ${m.input}/1M in · ${m.output}/1M out
-        </option>
-      ))}
-    </select>
+    <div ref={containerRef} style={{ position: 'relative', flex: 1, minWidth: 0 }}>
+      {/* Trigger button */}
+      <button
+        onClick={() => !loading && setOpen(o => !o)}
+        style={{
+          width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+          padding: '6px 10px', borderRadius: 8,
+          border: open ? '1px solid var(--primary)' : '1px solid var(--border)',
+          background: open ? 'var(--surface)' : 'var(--surface-2)',
+          cursor: loading ? 'wait' : 'pointer', outline: 'none',
+          boxShadow: open ? '0 0 0 3px color-mix(in oklab, var(--primary) 12%, transparent)' : 'none',
+          transition: 'all .12s',
+        }}
+      >
+        {loading ? (
+          <span style={{ fontSize: 12, color: 'var(--text-subtle)', flex: 1, textAlign: 'left' }}>Loading models…</span>
+        ) : (
+          <>
+            <ProviderDot provider={selProvider} />
+            <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--text)', flex: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {selSlug}
+            </span>
+            {selected && <PriceBadge input={selected.input} />}
+          </>
+        )}
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--text-subtle)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+          style={{ flexShrink: 0, transform: open ? 'rotate(180deg)' : undefined, transition: 'transform .15s' }}>
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+
+      {/* Dropdown */}
+      {open && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 999,
+          background: 'var(--surface)', border: '1px solid var(--border)',
+          borderRadius: 10, boxShadow: '0 8px 32px rgba(0,0,0,.18)',
+          display: 'flex', flexDirection: 'column', maxHeight: 320, overflow: 'hidden',
+        }}>
+          {/* Search */}
+          <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 7 }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-subtle)" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input
+              ref={inputRef}
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search models…"
+              style={{
+                flex: 1, border: 'none', outline: 'none', background: 'transparent',
+                fontSize: 13, color: 'var(--text)',
+              }}
+            />
+            {search && (
+              <button onClick={() => setSearch('')} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-subtle)', padding: 0, lineHeight: 1 }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            )}
+          </div>
+
+          {/* Results */}
+          <div style={{ overflowY: 'auto', flex: 1 }}>
+            {groups.length === 0 ? (
+              <div style={{ padding: '16px 12px', textAlign: 'center', fontSize: 13, color: 'var(--text-subtle)' }}>
+                No models found
+              </div>
+            ) : groups.map(group => (
+              <div key={group.provider}>
+                <div style={{ padding: '6px 12px 3px', fontSize: 10, fontWeight: 700, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '.07em', display: 'flex', alignItems: 'center', gap: 5, position: 'sticky', top: 0, background: 'var(--surface)' }}>
+                  <ProviderDot provider={group.provider} size={6} />
+                  {group.label}
+                  <span style={{ marginLeft: 'auto', fontWeight: 400, fontSize: 10 }}>{group.items.length}</span>
+                </div>
+                {group.items.map(m => {
+                  const slug = m.id.split('/').slice(1).join('/') || m.id;
+                  const isSel = m.id === value;
+                  return (
+                    <div
+                      key={m.id}
+                      onClick={() => { onChange(m.id); setOpen(false); }}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 10,
+                        padding: '7px 12px', cursor: 'pointer', transition: 'background .08s',
+                        background: isSel ? 'color-mix(in oklab, var(--primary) 8%, transparent)' : undefined,
+                      }}
+                      onMouseEnter={e => { if (!isSel) (e.currentTarget as HTMLDivElement).style.background = 'var(--surface-2)'; }}
+                      onMouseLeave={e => { if (!isSel) (e.currentTarget as HTMLDivElement).style.background = ''; }}
+                    >
+                      <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: isSel ? 'var(--primary)' : 'var(--text)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: isSel ? 600 : 400 }}>
+                        {slug}
+                      </span>
+                      <span style={{ display: 'flex', gap: 4, flexShrink: 0, alignItems: 'center' }}>
+                        <PriceBadge input={m.input} />
+                        <span style={{ fontSize: 10, color: 'var(--text-subtle)', fontFamily: 'var(--mono)' }}>·</span>
+                        <span style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--text-subtle)' }}>${m.output}/out</span>
+                      </span>
+                      {isSel && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -664,9 +819,9 @@ function PipelineSection() {
             <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '.06em', minWidth: 80, flexShrink: 0 }}>
               {role}
             </span>
-            <ModelSelect
+            <ModelPicker
               value={config.council[i] ?? DEFAULT_COUNCIL[i]}
-              onChange={v => {
+              onChange={(v: string) => {
                 const next = [...config.council];
                 next[i] = v;
                 save({ ...config, council: next });
@@ -687,9 +842,9 @@ function PipelineSection() {
             <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '.06em' }}>Chairman</div>
             <div style={{ fontSize: 10, color: 'var(--text-subtle)', marginTop: 2 }}>Synthesizer</div>
           </div>
-          <ModelSelect
+          <ModelPicker
             value={config.synthesizer}
-            onChange={v => save({ ...config, synthesizer: v })}
+            onChange={(v: string) => save({ ...config, synthesizer: v })}
             models={models}
             loading={isLoading}
           />
