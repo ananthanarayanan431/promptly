@@ -607,9 +607,65 @@ function EngineToggle({ engine, onChange }: { engine: Engine; onChange: (e: Engi
 
 /* ── Optimize tab ────────────────────────────────────────────────── */
 
+/* ── Effort tier selector ─────────────────────────────────────────── */
+type BudgetTier = 'low' | 'medium' | 'high';
+
+const BUDGET_TIERS: Record<BudgetTier, { label: string; desc: string; hint: string; budget: number; nPareto: number; credits: number; color: string }> = {
+  low:    { label: 'Low',    desc: 'Quick scan',    hint: '~100 rollouts · fast',      budget: 100, nPareto: 10, credits: 4,  color: 'var(--success)' },
+  medium: { label: 'Medium', desc: 'Balanced',      hint: '~260 rollouts · moderate',  budget: 260, nPareto: 22, credits: 8,  color: 'var(--primary)' },
+  high:   { label: 'High',   desc: 'Thorough',      hint: '~460 rollouts · deep',      budget: 460, nPareto: 38, credits: 14, color: 'var(--accent)'  },
+};
+
+function EffortSelector({ tier, onChange }: { tier: BudgetTier; onChange: (t: BudgetTier) => void }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ fontSize: 10, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '.07em', fontWeight: 600 }}>
+        Effort
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+        {(Object.keys(BUDGET_TIERS) as BudgetTier[]).map(t => {
+          const sel = tier === t;
+          const info = BUDGET_TIERS[t];
+          return (
+            <button
+              key={t}
+              onClick={() => onChange(t)}
+              style={{
+                padding: '9px 12px', borderRadius: 9, border: 0, cursor: 'pointer',
+                textAlign: 'left', transition: 'all .15s ease',
+                background: sel ? 'var(--surface)' : 'var(--surface-2)',
+                outline: sel ? `1.5px solid ${info.color}` : '1px solid var(--border)',
+                boxShadow: sel ? `0 0 0 3px color-mix(in oklab, ${info.color} 15%, transparent)` : 'none',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                <span style={{
+                  width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
+                  background: sel ? info.color : 'var(--border)',
+                  transition: 'background .15s',
+                }} />
+                <span style={{ fontSize: 12.5, fontWeight: 600, color: sel ? info.color : 'var(--text)' }}>
+                  {info.label}
+                </span>
+                <span className="mono" style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, color: sel ? info.color : 'var(--text-muted)' }}>
+                  −{info.credits} cr
+                </span>
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 2 }}>{info.desc}</div>
+              <div className="mono" style={{ fontSize: 10, color: 'var(--text-subtle)' }}>{info.hint}</div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ── Optimize tab ────────────────────────────────────────────────── */
+
 function OptimizeTab({ domain, onReoptimize, reoptimizing, sessionResult, onClearResult, pollingJobId, engine, onEngineChange }: {
   domain: DomainPrompt;
-  onReoptimize: (prompt: string, algorithm: Engine) => void;
+  onReoptimize: (prompt: string, algorithm: Engine, budgetTier?: BudgetTier) => void;
   reoptimizing: boolean;
   sessionResult: { optimized_prompt: string; prompt_input: string; win_rate: number | null; candidates_tried: number | null; } | null;
   onClearResult: () => void;
@@ -621,6 +677,7 @@ function OptimizeTab({ domain, onReoptimize, reoptimizing, sessionResult, onClea
   const [copied, setCopied] = useState(false);
   const [vizMode, setVizMode] = useState<VizMode>('matrix');
   const [runAgainMode, setRunAgainMode] = useState(false);
+  const [budgetTier, setBudgetTier] = useState<BudgetTier>('medium');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Reset local state whenever the domain itself changes
@@ -680,7 +737,7 @@ function OptimizeTab({ domain, onReoptimize, reoptimizing, sessionResult, onClea
     setDraft('');
     setRunAgainMode(true);
     onClearResult();
-    onReoptimize(t, engine);
+    onReoptimize(t, engine, engine === 'gepa' ? budgetTier : undefined);
   }
 
   return (
@@ -797,7 +854,9 @@ function OptimizeTab({ domain, onReoptimize, reoptimizing, sessionResult, onClea
             value={draft}
             onChange={e => setDraft(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(); } }}
-            placeholder={hasResult ? 'Paste a new prompt to run another tournament… (⌘↵ to run)' : 'Paste your system prompt here to optimize against this domain… (⌘↵ to run)'}
+            placeholder={engine === 'gepa'
+              ? 'Paste your system prompt — GEPA will reflect on failures and evolve it… (⌘↵ to run)'
+              : (hasResult ? 'Paste a new prompt to run another tournament… (⌘↵ to run)' : 'Paste your system prompt here to optimize against this domain… (⌘↵ to run)')}
             disabled={busy}
             rows={3}
             style={{
@@ -807,14 +866,22 @@ function OptimizeTab({ domain, onReoptimize, reoptimizing, sessionResult, onClea
               fontFamily: 'var(--mono)',
             }}
           />
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center', color: 'var(--text-subtle)', fontSize: 11.5 }}>
+          {/* Effort selector — embedded inside the input card, GEPA only */}
+          {engine === 'gepa' && !busy && (
+            <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+              <EffortSelector tier={budgetTier} onChange={setBudgetTier} />
+            </div>
+          )}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', color: 'var(--text-subtle)', fontSize: 11.5, flexWrap: 'wrap' }}>
               <span className="ply-pill"><Icon name="layers" size={11} /> {domain.dataset?.row_count ?? 0} Q&A</span>
               {engine === 'pdo'
                 ? <span className="ply-pill"><Icon name="cpu" size={11} /> 40 rounds D-TS · 5 rankers</span>
-                : <span className="ply-pill"><Icon name="sparkle2" size={11} /> B=678 · Pareto N=50 · mb=3</span>
+                : <span className="ply-pill">
+                    <Icon name="sparkle2" size={11} />
+                    {' '}B={BUDGET_TIERS[budgetTier].budget} · N={BUDGET_TIERS[budgetTier].nPareto} · mb=3
+                  </span>
               }
-              <EngineToggle engine={engine} onChange={onEngineChange} />
             </div>
             <button
               className="ply-btn ply-btn-primary"
@@ -824,7 +891,9 @@ function OptimizeTab({ domain, onReoptimize, reoptimizing, sessionResult, onClea
             >
               <Icon name={engine === 'gepa' ? 'sparkle2' : 'trophy'} size={14} />
               {busy ? (engine === 'gepa' ? 'Running GEPA…' : 'Running PDO…') : hasResult ? 'Run again' : (engine === 'gepa' ? 'Run GEPA' : 'Run PDO')}
-              <span className="mono" style={{ marginLeft: 6, fontSize: 11, opacity: .75, paddingLeft: 8, borderLeft: '1px solid rgba(255,255,255,.25)' }}>{engine === 'gepa' ? '−12 cr' : '−10 cr'}</span>
+              <span className="mono" style={{ marginLeft: 6, fontSize: 11, opacity: .75, paddingLeft: 8, borderLeft: '1px solid rgba(255,255,255,.25)' }}>
+                {engine === 'gepa' ? `−${BUDGET_TIERS[budgetTier].credits} cr` : '−10 cr'}
+              </span>
             </button>
           </div>
         </div>
@@ -1422,14 +1491,15 @@ export function DomainWorkspace() {
     return () => clearInterval(iv);
   }, [pollingJobId, pollingDomainId, qc]);
 
-  const handleReoptimize = useCallback(async (prompt: string, algorithm: Engine = 'pdo') => {
+  const handleReoptimize = useCallback(async (prompt: string, algorithm: Engine = 'pdo', budgetTier?: string) => {
     if (!selected) return;
     pendingPromptRef.current = prompt;
     setReoptimizing(true);
     const capturedDomainId = selected.id;
     try {
       const res = await api.post<{ data: { job_id: string; domain_id: string } }>(
-        `/api/v1/domain-prompts/${capturedDomainId}/optimize`, { prompt, algorithm }
+        `/api/v1/domain-prompts/${capturedDomainId}/optimize`,
+        { prompt, algorithm, ...(budgetTier ? { budget_tier: budgetTier } : {}) }
       );
       setPollingDomainId(capturedDomainId);
       setPollingJobId(res.data.data.job_id);
@@ -1508,6 +1578,9 @@ export function DomainWorkspace() {
                   <span className="ply-pill ply-pill-success" style={{ fontSize: 11 }}>
                     last run {Math.round(selected.win_rate * 100)}% wr
                   </span>
+                )}
+                {tab === 'optimize' && (
+                  <EngineToggle engine={engine} onChange={setEngine} />
                 )}
               </>
             )}

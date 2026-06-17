@@ -17,6 +17,7 @@ class CreateDomainRequest(BaseModel):
 class OptimizeDomainRequest(BaseModel):
     prompt: str = Field(min_length=10, max_length=50000)
     algorithm: str = Field(default="pdo", pattern="^(pdo|gepa)$")
+    budget_tier: str = Field(default="medium", pattern="^(low|medium|high)$")
 
 
 class DatasetInfo(BaseModel):

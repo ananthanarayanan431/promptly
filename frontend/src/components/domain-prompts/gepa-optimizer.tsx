@@ -90,17 +90,17 @@ function GepaType({ text, on }: { text: string; on: boolean }) {
   return <>{text.slice(0, n)}{on && n < text.length && <span style={{ opacity: .5 }}>▍</span>}</>;
 }
 
-/* ── Budget — linear progress bar ────────────────────────────────── */
-function GepaBudget({ used }: { used: number }) {
-  const pct = Math.min(100, (used / GEPA_BUDGET) * 100);
+/* ── Effort progress bar ──────────────────────────────────────────── */
+function GepaEffortBar({ used, budgetMax, nPareto }: { used: number; budgetMax: number; nPareto: number }) {
+  const pct = Math.min(100, (used / budgetMax) * 100);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
         <span style={{ fontSize: 11, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 600 }}>
-          Rollout budget B
+          Rollout effort
         </span>
         <span className="mono" style={{ fontSize: 11.5 }}>
-          <b>{used}</b> <span style={{ color: 'var(--text-subtle)' }}>/ {GEPA_BUDGET}</span>
+          <b>{used}</b> <span style={{ color: 'var(--text-subtle)' }}>/ {budgetMax}</span>
         </span>
       </div>
       <div className="ply-progress" style={{ height: 6 }}>
@@ -111,7 +111,7 @@ function GepaBudget({ used }: { used: number }) {
         }} />
       </div>
       <div style={{ fontSize: 10.5, color: 'var(--text-subtle)' }} className="mono">
-        minibatch {GEPA_MB}·rollout · npareto {GEPA_NPARETO} · {GEPA_BUDGET - used} left
+        minibatch {GEPA_MB}·rollout · npareto {nPareto} · {budgetMax - used} left
       </div>
     </div>
   );
@@ -402,10 +402,35 @@ function GepaTheater({ state }: { state: GepaState }) {
         </GepaLabel>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {it.traces.length === 0 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 14px', borderRadius: 8, background: 'var(--surface-2)', color: 'var(--text-subtle)', fontSize: 12 }}>
-              <span className="ply-dot ply-dot-pulse" style={{ background: 'var(--primary)', width: 6, height: 6 }} />
-              Running examples…
-            </div>
+            <>
+              {(it.minibatch_inputs ?? []).length > 0
+                ? (it.minibatch_inputs ?? []).map((q, i) => (
+                    <div key={i} style={{
+                      display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, alignItems: 'center',
+                      padding: '10px 14px', borderRadius: 8, background: 'var(--surface-2)',
+                    }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 10, color: 'var(--text-subtle)', fontWeight: 600, marginBottom: 4 }}>
+                          EXAMPLE {i + 1}
+                        </div>
+                        <div className="mono" style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {q}
+                        </div>
+                        <div style={{ marginTop: 6, height: 2, borderRadius: 999, overflow: 'hidden' }}>
+                          <div className="ply-progress indet" style={{ height: '100%' }}><i /></div>
+                        </div>
+                      </div>
+                      <div className="ply-progress indet" style={{ width: 52 }}><i /></div>
+                    </div>
+                  ))
+                : (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 14px', borderRadius: 8, background: 'var(--surface-2)', color: 'var(--text-subtle)', fontSize: 12 }}>
+                      <span className="ply-dot ply-dot-pulse" style={{ background: 'var(--primary)', width: 6, height: 6 }} />
+                      Running examples…
+                    </div>
+                  )
+              }
+            </>
           )}
           {it.traces.map((tr, i) => (
             <div key={i} style={{
@@ -682,14 +707,14 @@ export function GepaOptimizer({
   const { data: state } = useQuery<GepaState | null>({
     queryKey: ['gepa-state', domainId],
     queryFn: async () => {
-      try {
-        const res = await api.get<{ data: GepaState }>(`/api/v1/domain-prompts/${domainId}/gepa-state`);
-        return res.data.data;
-      } catch {
-        return null;
-      }
+      const res = await api.get<{ data: GepaState | null }>(`/api/v1/domain-prompts/${domainId}/gepa-state`);
+      return res.data.data ?? null;
     },
-    refetchInterval: 2000,
+    // Poll fast while a run is in progress; back off to 30 s when idle.
+    refetchInterval: (query) => {
+      const s = query.state.data;
+      return s && s.phase !== 'completed' ? 2000 : 30_000;
+    },
     staleTime: 0,
   });
 
@@ -746,10 +771,10 @@ export function GepaOptimizer({
             hint={<span style={{ fontSize: 11 }}>mutations attempted</span>}
           />
           <GepaStat
-            label="Budget B"
+            label="Effort"
             value={
               <span className="mono">
-                {state.budget_used}<span style={{ color: 'var(--text-subtle)', fontSize: 13 }}>/{GEPA_BUDGET}</span>
+                {state.budget_used}<span style={{ color: 'var(--text-subtle)', fontSize: 13 }}>/{state.budget_max ?? GEPA_BUDGET}</span>
               </span>
             }
             hint={<span style={{ fontSize: 11 }}>rollouts used</span>}
@@ -770,7 +795,11 @@ export function GepaOptimizer({
               looping={state.phase === 'loop'}
             />
             <div style={{ borderTop: '1px solid var(--border)', paddingTop: 14 }}>
-              <GepaBudget used={state.budget_used} />
+              <GepaEffortBar
+                used={state.budget_used}
+                budgetMax={state.budget_max ?? GEPA_BUDGET}
+                nPareto={state.n_pareto_size ?? GEPA_NPARETO}
+              />
             </div>
           </div>
 

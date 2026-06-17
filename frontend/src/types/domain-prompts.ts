@@ -124,6 +124,7 @@ export interface GepaCurrentIter {
   cur_prompt: string;
   ancestor: string;
   traces: GepaTraceItem[];
+  minibatch_inputs?: string[];
   reasoning: string[];
   new_prompt: string;
   sigma: number;
@@ -143,4 +144,6 @@ export interface GepaState {
   full_pct: number;
   baseline: number | null;
   current_iter: GepaCurrentIter | null;
+  budget_max?: number;
+  n_pareto_size?: number;
 }

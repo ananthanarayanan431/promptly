@@ -191,6 +191,8 @@ def _build_state(
     full_pct: float,
     baseline: float | None,
     current_iter: dict[str, Any] | None,
+    budget_max: int,
+    n_pareto_size: int,
 ) -> dict[str, Any]:
     return {
         "phase": phase,
@@ -204,6 +206,8 @@ def _build_state(
         "full_pct": full_pct,
         "baseline": round(baseline * 100, 2) if baseline is not None else None,
         "current_iter": current_iter,
+        "budget_max": budget_max,
+        "n_pareto_size": n_pareto_size,
     }
 
 
@@ -351,6 +355,8 @@ async def optimize_gepa_prompt(
     api_key: str,
     domain_id: str,
     cancel_check: Callable[[], Awaitable[bool]],
+    budget: int = BUDGET,
+    n_pareto: int = N_PARETO,
 ) -> dict[str, Any]:
     """
     Run GEPA reflective prompt evolution on the given dataset.
@@ -379,7 +385,7 @@ async def optimize_gepa_prompt(
     random.shuffle(all_examples)
     n = len(all_examples)
     n_feedback = max(3, int(n * 0.50))
-    n_pareto = min(N_PARETO, max(3, int(n * 0.30)))
+    n_pareto = min(n_pareto, max(3, int(n * 0.30)))
     d_feedback = all_examples[:n_feedback]
     d_pareto = all_examples[n_feedback : n_feedback + n_pareto]
     # d_test = all_examples[n_feedback + n_pareto:]  # held out, not used here
@@ -421,6 +427,8 @@ async def optimize_gepa_prompt(
                 full_pct=full_pct,
                 baseline=baseline,
                 current_iter=current_iter,
+                budget_max=budget,
+                n_pareto_size=n_pareto,
             ),
         )
 
@@ -467,7 +475,7 @@ async def optimize_gepa_prompt(
     # ── Phase 2: Optimisation loop ────────────────────────────────────────────
     cand_counter = 1  # next Φ index
 
-    while budget_used < BUDGET:
+    while budget_used < budget:
         iter_idx += 1
 
         # Step 4: Pareto-sample (Algorithm 2)
@@ -502,6 +510,7 @@ async def optimize_gepa_prompt(
                 "cur_prompt": parent.prompt[:500],
                 "ancestor": parent.ancestry or "No ancestors yet.",
                 "traces": [],
+                "minibatch_inputs": [m["question"][:300] for m in minibatch],
                 "reasoning": [],
                 "new_prompt": "",
                 "sigma": 0.0,

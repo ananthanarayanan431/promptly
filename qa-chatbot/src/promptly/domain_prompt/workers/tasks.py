@@ -417,6 +417,8 @@ def run_gepa_optimization(
     domain_id: str,
     user_id: str,
     prompt_to_optimize: str,
+    gepa_budget: int = 350,
+    gepa_n_pareto: int = 30,
 ) -> None:
     async def _run() -> None:  # noqa: RUF029
         import json
@@ -488,6 +490,8 @@ def run_gepa_optimization(
                 api_key=api_key,
                 domain_id=domain_id,
                 cancel_check=lambda: is_dp_job_cancelled(job_id),
+                budget=gepa_budget,
+                n_pareto=gepa_n_pareto,
             )
 
             result_key = object_key(user_id, domain_id, "gepa_result.json")

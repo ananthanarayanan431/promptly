@@ -7,7 +7,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from promptly.api.types.response import SuccessResponse
+from promptly.api.types.response import Response, SuccessResponse
 from promptly.config.env import get_minio_settings
 from promptly.core.rate_limit import RateLimiter
 from promptly.core.user_context import UserContext
@@ -81,6 +81,12 @@ from promptly.utils.log import get_logger
 log = get_logger(__name__)
 
 router = APIRouter(prefix="/domain-prompts", tags=["domain-prompts"])
+
+_GEPA_TIERS: dict[str, dict[str, int]] = {
+    "low": {"budget": 100, "n_pareto": 10, "credits": 4},
+    "medium": {"budget": 260, "n_pareto": 22, "credits": 8},
+    "high": {"budget": 460, "n_pareto": 38, "credits": 14},
+}
 
 _write_limiter = RateLimiter(requests=10, window_seconds=60)
 _read_limiter = RateLimiter(requests=60, window_seconds=60)
@@ -417,11 +423,13 @@ async def reoptimize_domain(
     """
     Optimize a prompt against this domain's knowledge base.
 
-    PDO costs 10 credits; GEPA costs 12 credits.
-    Pass `algorithm: "gepa"` in the request body to use GEPA.
+    PDO costs 10 credits.
+    GEPA budget tiers: low=6 cr (B=120), medium=10 cr (B=350), high=16 cr (B=678).
     """
     is_gepa = body.algorithm == "gepa"
-    credit_cost = 12 if is_gepa else 10
+
+    gepa_tier = _GEPA_TIERS.get(body.budget_tier, _GEPA_TIERS["medium"])
+    credit_cost = gepa_tier["credits"] if is_gepa else 10
 
     repo = DomainPromptRepository(db)
     domain = await repo.get_by_id_and_user(domain_id, current_user.user_id)
@@ -453,15 +461,23 @@ async def reoptimize_domain(
     await set_dp_job_status(job_id, "queued")
     await set_dp_job_owner(job_id, str(current_user.user_id))
 
-    task_kwargs = {
+    task_kwargs: dict[str, object] = {
         "job_id": job_id,
         "domain_id": str(domain_id),
         "user_id": str(current_user.user_id),
         "prompt_to_optimize": body.prompt.strip(),
     }
     if is_gepa:
+        task_kwargs["gepa_budget"] = gepa_tier["budget"]
+        task_kwargs["gepa_n_pareto"] = gepa_tier["n_pareto"]
         run_gepa_optimization.apply_async(kwargs=task_kwargs)
-        log.info("domain_gepa_job_queued", job_id=job_id, domain_id=str(domain_id))
+        log.info(
+            "domain_gepa_job_queued",
+            job_id=job_id,
+            domain_id=str(domain_id),
+            tier=body.budget_tier,
+            budget=gepa_tier["budget"],
+        )
     else:
         run_domain_optimization.apply_async(kwargs=task_kwargs)
         log.info("domain_optimize_job_queued", job_id=job_id, domain_id=str(domain_id))
@@ -494,15 +510,19 @@ async def list_domain_runs(
 
 @router.get(
     "/{domain_id}/gepa-state",
-    response_model=SuccessResponse[GepaStateResponse],
+    response_model=Response[GepaStateResponse],
     dependencies=[Depends(_read_limiter)],
 )
 async def get_gepa_state(
     domain_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[UserContext, Depends(get_current_user)],
-) -> SuccessResponse[GepaStateResponse]:
-    """Return live GEPA evolution state written by the worker during a running GEPA job."""
+) -> Response[GepaStateResponse]:
+    """Return live GEPA evolution state written by the worker during a running GEPA job.
+
+    Returns 200 + data=null when no run is in progress (no Redis state), so the
+    frontend can poll without flooding logs with 404s.
+    """
     repo = DomainPromptRepository(db)
     domain = await repo.get_by_id_and_user(domain_id, current_user.user_id)
     if domain is None:
@@ -510,9 +530,9 @@ async def get_gepa_state(
 
     state = await get_dp_gepa_state(str(domain_id))
     if state is None:
-        raise HTTPException(status_code=404, detail="No GEPA state available yet.")
+        return Response(success=True, data=None)
 
-    return SuccessResponse(data=GepaStateResponse(**state))
+    return Response(success=True, data=GepaStateResponse(**state))
 
 
 @router.post(
