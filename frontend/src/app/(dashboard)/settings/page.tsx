@@ -130,28 +130,90 @@ function ProfileSection({ user, sbUser }: {
 /* ══════════════════════════════════════════════════════════════════════
    ② CREDITS SECTION
 ══════════════════════════════════════════════════════════════════════ */
-const CREDIT_COSTS = [
-  { feature: 'Optimize (council)',  cost: 10, desc: 'Full 3-round multi-model council' },
-  { feature: 'Health score',        cost: 5,  desc: '8-dimension quality audit' },
-  { feature: 'Advisory',            cost: 5,  desc: 'Strengths / weaknesses / improvements' },
-  { feature: 'Bridge',              cost: 5,  desc: 'Reused mapping (1 cr for calibrated)' },
-  { feature: 'PDO — Low',          cost: 5,  desc: '15 rounds · 6 candidates' },
-  { feature: 'PDO — Medium',       cost: 10, desc: '30 rounds · 10 candidates' },
-  { feature: 'PDO — High',         cost: 16, desc: '50 rounds · 15 candidates' },
-  { feature: 'GEPA — Low',         cost: 4,  desc: 'B=100 rollouts' },
-  { feature: 'GEPA — Medium',      cost: 8,  desc: 'B=260 rollouts' },
-  { feature: 'GEPA — High',        cost: 14, desc: 'B=460 rollouts' },
-];
+const MAX_CR = 16; // for bar width calculation
+
+function CreditBar({ cost, color }: { cost: number; color: string }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+      <div style={{ flex: 1, height: 4, background: 'var(--border)', borderRadius: 99 }}>
+        <div style={{ height: '100%', width: `${(cost / MAX_CR) * 100}%`, background: color, borderRadius: 99, transition: 'width .3s' }} />
+      </div>
+      <span style={{ fontFamily: 'var(--mono)', fontSize: 12, fontWeight: 700, color, minWidth: 36, textAlign: 'right', flexShrink: 0 }}>
+        {cost} cr
+      </span>
+    </div>
+  );
+}
+
+function FeatureRow({ label, desc, cost, color }: { label: string; desc: string; cost: number; color: string }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
+      <div style={{ flex: '0 0 160px', minWidth: 0 }}>
+        <div style={{ fontSize: 13, color: 'var(--text)', fontWeight: 500 }}>{label}</div>
+        <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 2 }}>{desc}</div>
+      </div>
+      <CreditBar cost={cost} color={color} />
+    </div>
+  );
+}
+
+function TierCompare({ tiers, color }: {
+  tiers: { label: string; cost: number; desc: string }[];
+  color: string;
+}) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
+      {tiers.map(t => (
+        <div key={t.label} style={{
+          background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 5 }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>{t.label}</span>
+            <span style={{ fontFamily: 'var(--mono)', fontSize: 13, fontWeight: 700, color }}>{t.cost} cr</span>
+          </div>
+          <div style={{ height: 3, background: 'var(--border)', borderRadius: 99, marginBottom: 5 }}>
+            <div style={{ height: '100%', width: `${(t.cost / MAX_CR) * 100}%`, background: color, borderRadius: 99 }} />
+          </div>
+          <div style={{ fontSize: 10.5, color: 'var(--text-subtle)' }}>{t.desc}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function FeatureGroup({ icon, title, color, children }: {
+  icon: string; title: string; color: string; children: React.ReactNode;
+}) {
+  return (
+    <div className="ply-card" style={{ padding: '14px 18px 6px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+        <div style={{
+          width: 26, height: 26, borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: `color-mix(in oklab, ${color} 12%, transparent)`,
+          border: `1px solid color-mix(in oklab, ${color} 25%, transparent)`,
+          color, flexShrink: 0,
+        }}>
+          <Icon d={icon} size={13} />
+        </div>
+        <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)' }}>{title}</span>
+      </div>
+      {children}
+    </div>
+  );
+}
 
 function CreditsSection({ credits }: { credits: number | undefined }) {
   const low = (credits ?? 0) < 20;
+  const bal = credits ?? 0;
+  const pct = Math.min(100, (bal / 100) * 100);
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <SectionTitle
         id="credits"
         icon="M2 5h20v14H2zM2 10h20"
         title="Credits"
-        subtitle="Each optimization feature costs a fixed number of credits."
+        subtitle="Each feature costs a fixed number of credits. New accounts start with 100."
       />
 
       {/* Balance card */}
@@ -159,53 +221,81 @@ function CreditsSection({ credits }: { credits: number | undefined }) {
         padding: '18px 20px',
         borderColor: low ? 'rgba(255,107,122,0.35)' : undefined,
         background: low ? 'rgba(255,107,122,0.04)' : undefined,
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
-        <div>
-          <div style={{ fontSize: 11, color: low ? '#ff6b7a' : 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '.07em', fontWeight: 600, marginBottom: 6 }}>
-            Current balance
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 14 }}>
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: low ? '#ff6b7a' : 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 6 }}>
+              Current balance
+            </div>
+            <div style={{ fontSize: 40, fontWeight: 700, fontFamily: 'var(--mono)', letterSpacing: '-0.03em', color: low ? '#ff6b7a' : 'var(--text)', lineHeight: 1 }}>
+              {credits ?? '—'}
+            </div>
           </div>
-          <div style={{ fontSize: 36, fontWeight: 700, fontFamily: 'var(--mono)', letterSpacing: '-0.03em', color: low ? '#ff6b7a' : 'var(--text)', lineHeight: 1 }}>
-            {credits ?? '—'}
-          </div>
-          <div style={{ fontSize: 12, color: 'var(--text-subtle)', marginTop: 5 }}>
-            {low ? '⚠ Running low — contact us to top up.' : 'New users start with 100 credits.'}
-          </div>
+          {/* Quick math chips */}
+          {credits != null && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 5, alignItems: 'flex-end' }}>
+              {[
+                { label: 'Council runs', val: Math.floor(credits / 10) },
+                { label: 'PDO Low runs', val: Math.floor(credits / 5) },
+                { label: 'GEPA Low runs', val: Math.floor(credits / 4) },
+              ].map(chip => (
+                <div key={chip.label} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5 }}>
+                  <span style={{ color: 'var(--text-subtle)' }}>{chip.label}</span>
+                  <span style={{ fontFamily: 'var(--mono)', fontWeight: 700, color: 'var(--text)', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 5, padding: '1px 7px' }}>
+                    ×{chip.val}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
-        <div style={{
-          width: 56, height: 56, borderRadius: 14,
-          background: low ? 'rgba(255,107,122,0.1)' : 'var(--primary-soft)',
-          border: `1px solid ${low ? 'rgba(255,107,122,0.2)' : 'var(--primary-border)'}`,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: low ? '#ff6b7a' : 'var(--primary)',
-        }}>
-          <Icon d="M2 5h20v14H2zM2 10h20" size={22} />
+        {/* Progress bar */}
+        <div style={{ height: 5, background: 'var(--border)', borderRadius: 99 }}>
+          <div style={{
+            height: '100%', borderRadius: 99, transition: 'width .4s ease',
+            width: `${pct}%`,
+            background: low ? '#ff6b7a' : pct > 50 ? 'var(--success)' : '#f59e0b',
+          }} />
+        </div>
+        <div style={{ fontSize: 11.5, color: 'var(--text-subtle)', marginTop: 6 }}>
+          {low ? '⚠ Running low — contact us to top up.' : `${bal} of 100 starting credits remaining`}
         </div>
       </div>
 
-      {/* Cost breakdown table */}
-      <div className="ply-card" style={{ padding: 0, overflow: 'hidden' }}>
-        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.06em' }}>
-          Cost per feature
-        </div>
-        {CREDIT_COSTS.map((row, i) => (
-          <div key={row.feature} style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '10px 16px', borderBottom: i < CREDIT_COSTS.length - 1 ? '1px solid var(--border)' : undefined,
-          }}>
-            <div>
-              <div style={{ fontSize: 13, color: 'var(--text)', fontWeight: 500 }}>{row.feature}</div>
-              <div style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 2 }}>{row.desc}</div>
-            </div>
-            <span style={{
-              fontFamily: 'var(--mono)', fontSize: 13, fontWeight: 700,
-              color: 'var(--primary)', minWidth: 48, textAlign: 'right',
-            }}>
-              {row.cost} cr
-            </span>
-          </div>
-        ))}
-      </div>
+      {/* Council Optimizer */}
+      <FeatureGroup icon="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M5.6 18.4l2.8-2.8M15.6 8.4l2.8-2.8" title="Council Optimizer" color="var(--primary)">
+        <FeatureRow label="Optimize" desc="4-model council · critic · synthesize · 3 rounds" cost={10} color="var(--primary)" />
+        <FeatureRow label="Health score" desc="8-dimension quality audit" cost={5} color="var(--primary)" />
+        <FeatureRow label="Advisory" desc="Strengths, weaknesses & improvement suggestions" cost={5} color="var(--primary)" />
+        <div style={{ height: 4 }} />
+      </FeatureGroup>
+
+      {/* Bridge */}
+      <FeatureGroup icon="M4 12h4M16 12h4M8 12a4 4 0 008 0M8 12V8M16 12V8M8 8h8" title="Prompt Bridge" color="#3b82f6">
+        <FeatureRow label="Full calibration" desc="Cross-model transfer with new mapping" cost={5} color="#3b82f6" />
+        <FeatureRow label="Reuse mapping" desc="Apply a previously calibrated mapping" cost={1} color="#3b82f6" />
+        <div style={{ height: 4 }} />
+      </FeatureGroup>
+
+      {/* Domain PDO */}
+      <FeatureGroup icon="M14.5 17.5 3 6 3 3 6 3 17.5 14.5M13 19 19 13M16 16 20 20M19 21 21 19M14.5 6.5 18 3 21 3 21 6 17.5 9.5M5 14 8.5 17.5M4 20 6 22M6 20 4 22" title="Domain — PDO Tournament" color="#f59e0b">
+        <TierCompare color="#f59e0b" tiers={[
+          { label: 'Low',    cost: 5,  desc: '15 rounds · 6 candidates' },
+          { label: 'Medium', cost: 10, desc: '30 rounds · 10 candidates' },
+          { label: 'High',   cost: 16, desc: '50 rounds · 15 candidates' },
+        ]} />
+        <div style={{ height: 4 }} />
+      </FeatureGroup>
+
+      {/* Domain GEPA */}
+      <FeatureGroup icon="m12 3-1.912 5.813a2 2 0 01-1.275 1.275L3 12l5.813 1.912a2 2 0 011.275 1.275L12 21l1.912-5.813a2 2 0 011.275-1.275L21 12l-5.813-1.912a2 2 0 01-1.275-1.275L12 3z" title="Domain — GEPA Reflective" color="#7c5cff">
+        <TierCompare color="#7c5cff" tiers={[
+          { label: 'Low',    cost: 4,  desc: 'B=100 rollouts' },
+          { label: 'Medium', cost: 8,  desc: 'B=260 rollouts' },
+          { label: 'High',   cost: 14, desc: 'B=460 rollouts' },
+        ]} />
+        <div style={{ height: 4 }} />
+      </FeatureGroup>
     </div>
   );
 }
