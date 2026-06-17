@@ -647,7 +647,7 @@ function OptimizeTab({ domain, onReoptimize, reoptimizing, sessionResult, onClea
   domain: DomainPrompt;
   onReoptimize: (prompt: string, algorithm: Engine, budgetTier?: BudgetTier) => void;
   reoptimizing: boolean;
-  sessionResult: { optimized_prompt: string; prompt_input: string; win_rate: number | null; candidates_tried: number | null; } | null;
+  sessionResult: { optimized_prompt: string; prompt_input: string; win_rate: number | null; candidates_tried: number | null; score_before: number | null; score_after: number | null; rounds_run: number | null; } | null;
   onClearResult: () => void;
   pollingJobId: string | null;
   engine: Engine;
@@ -689,6 +689,9 @@ function OptimizeTab({ domain, onReoptimize, reoptimizing, sessionResult, onClea
     prompt_input: latestRun.prompt_input,
     win_rate: latestRun.win_rate,
     candidates_tried: latestRun.candidates_tried,
+    score_before: latestRun.score_before,
+    score_after: latestRun.score_after,
+    rounds_run: latestRun.rounds_run,
   } : null);
 
   const isRunning = ['pending', 'preparing_dataset', 'optimizing'].includes(domain.status);
@@ -748,7 +751,16 @@ function OptimizeTab({ domain, onReoptimize, reoptimizing, sessionResult, onClea
       )}
 
       {hasResult && engine === 'gepa' && (
-        <GepaOptimizer domainId={domain.id} optimizedPrompt={displayResult?.optimized_prompt ?? null} promptInput={displayResult?.prompt_input ?? null} onRunAgain={runAgain} />
+        <GepaOptimizer
+          domainId={domain.id}
+          optimizedPrompt={displayResult?.optimized_prompt ?? null}
+          promptInput={displayResult?.prompt_input ?? null}
+          onRunAgain={runAgain}
+          scoreBefore={displayResult?.score_before ?? null}
+          scoreAfter={displayResult?.score_after ?? null}
+          roundsRun={displayResult?.rounds_run ?? null}
+          poolSize={displayResult?.candidates_tried ?? null}
+        />
       )}
 
       {hasResult && engine === 'pdo' && (
@@ -1449,6 +1461,9 @@ export function DomainWorkspace() {
     prompt_input: string;
     win_rate: number | null;
     candidates_tried: number | null;
+    score_before: number | null;
+    score_after: number | null;
+    rounds_run: number | null;
   } | null>(null);
   const pendingPromptRef = useRef('');
 
@@ -1500,6 +1515,9 @@ export function DomainWorkspace() {
               prompt_input: pendingPromptRef.current,
               win_rate: result.win_rate != null ? Number(result.win_rate) : null,
               candidates_tried: result.candidates_tried != null ? Number(result.candidates_tried) : null,
+              score_before: result.score_before != null ? Number(result.score_before) : null,
+              score_after: result.score_after != null ? Number(result.score_after) : null,
+              rounds_run: result.rounds_run != null ? Number(result.rounds_run) : null,
             });
           }
         } else if (status === 'failed' || status === 'cancelled') {

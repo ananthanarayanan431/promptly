@@ -745,11 +745,19 @@ export function GepaOptimizer({
   optimizedPrompt,
   promptInput,
   onRunAgain,
+  scoreBefore,
+  scoreAfter,
+  roundsRun,
+  poolSize,
 }: {
   domainId: string;
   optimizedPrompt: string | null;
   promptInput?: string | null;
   onRunAgain?: () => void;
+  scoreBefore?: number | null;
+  scoreAfter?: number | null;
+  roundsRun?: number | null;
+  poolSize?: number | null;
 }) {
   const { data: state } = useQuery<GepaState | null>({
     queryKey: ['gepa-state', domainId],
@@ -980,48 +988,88 @@ export function GepaOptimizer({
 
       {/* Completed — no live state (result loaded from DB) */}
       {noState && (
-        <div className="ply-card anim-fade" style={{ padding: 0, overflow: 'hidden' }}>
-          <div style={{
-            padding: '14px 18px', borderBottom: '1px solid var(--border)',
-            display: 'flex', alignItems: 'center', gap: 10,
-            background: 'linear-gradient(135deg, var(--primary-soft), transparent 70%)',
-          }}>
-            <GIcon name="trophy" size={18} color="var(--primary)" />
-            <div>
-              <div style={{ fontWeight: 600, fontSize: 14 }}>GEPA Φ* — optimised through reflection</div>
-              <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>Reflective Prompt Evolution · arXiv:2507.19457</div>
-            </div>
-            <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-              {onRunAgain && (
-                <button className="ply-btn ply-btn-sm" onClick={onRunAgain}>
-                  <GIcon name="refresh" size={12} /> Run again
-                </button>
-              )}
-              <button className="ply-btn ply-btn-sm" onClick={copyPrompt}>
-                <GIcon name={copied ? 'check' : 'copy'} size={12} />
-                {copied ? 'Copied' : 'Copy'}
-              </button>
-            </div>
+        <>
+          {/* Stats bar from DB values */}
+          <div className="ply-card" style={{ padding: '14px 18px', display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 0 }}>
+            <GepaStat label="Phase" value={<span style={{ fontSize: 13 }}>Done</span>} hint={null} />
+            <GepaStat
+              label="Best score"
+              value={scoreAfter != null ? <span style={{ color: 'var(--success)' }}>{(scoreAfter * 100).toFixed(2)}</span> : '—'}
+              hint={<span style={{ fontSize: 11 }}>on D_pareto</span>}
+            />
+            <GepaStat
+              label="Pool P"
+              value={poolSize ?? '—'}
+              hint={<span style={{ fontSize: 11 }}>candidates kept</span>}
+            />
+            <GepaStat
+              label="Iterations"
+              value={roundsRun ?? '—'}
+              hint={<span style={{ fontSize: 11 }}>mutations attempted</span>}
+            />
+            <GepaStat label="Budget B" value="—" hint={<span style={{ fontSize: 11 }}>rollouts used</span>} />
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1px 1fr', minHeight: 280 }}>
-            <div style={{ padding: '16px 20px' }}>
-              <GepaLabel>Seed prompt</GepaLabel>
-              <pre className="ply-prompt-block" style={{ margin: '8px 0 0', color: 'var(--text-muted)' }}>
-                {promptInput ?? '—'}
-              </pre>
-            </div>
-            <div style={{ background: 'var(--border)' }} />
-            <div style={{ padding: '16px 20px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <GepaLabel color="var(--primary)">GEPA optimised</GepaLabel>
-                <span className="ply-pill ply-pill-primary" style={{ fontSize: 11 }}>
-                  <GIcon name="sparkles" size={11} /> Φ* ★
-                </span>
+
+          <div className="ply-card anim-fade" style={{ padding: 0, overflow: 'hidden' }}>
+            <div style={{
+              padding: '14px 18px', borderBottom: '1px solid var(--border)',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              background: 'linear-gradient(135deg, var(--primary-soft), transparent 70%)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <GIcon name="trophy" size={18} color="var(--primary)" />
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 14 }}>GEPA Φ* · optimised through reflection</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
+                    {scoreBefore != null && scoreAfter != null ? (
+                      <>
+                        Score:{' '}
+                        <span className="mono">{(scoreBefore * 100).toFixed(2)}</span>
+                        {' → '}
+                        <span className="mono" style={{ color: 'var(--success)', fontWeight: 600 }}>
+                          {(scoreAfter * 100).toFixed(2)}
+                        </span>
+                        {' on D_pareto · total gain '}
+                        <span className="mono" style={{ color: 'var(--success)' }}>
+                          +{((scoreAfter - scoreBefore) * 100).toFixed(2)}
+                        </span>
+                      </>
+                    ) : 'Reflective Prompt Evolution · arXiv:2507.19457'}
+                  </div>
+                </div>
               </div>
-              <pre className="ply-prompt-block" style={{ margin: 0 }}>{optimizedPrompt}</pre>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {onRunAgain && (
+                  <button className="ply-btn ply-btn-sm" onClick={onRunAgain}>
+                    <GIcon name="refresh" size={12} /> Run again
+                  </button>
+                )}
+                <button className="ply-btn ply-btn-sm" onClick={copyPrompt}>
+                  <GIcon name={copied ? 'check' : 'copy'} size={12} />
+                  {copied ? 'Copied' : 'Copy'}
+                </button>
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1px 1fr', minHeight: 280 }}>
+              <div style={{ padding: '16px 20px' }}>
+                <GepaLabel>Seed prompt Π₀</GepaLabel>
+                <pre className="ply-prompt-block" style={{ margin: '8px 0 0', color: 'var(--text-muted)' }}>
+                  {promptInput ?? '—'}
+                </pre>
+              </div>
+              <div style={{ background: 'var(--border)' }} />
+              <div style={{ padding: '16px 20px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <GepaLabel color="var(--primary)">Π* — optimised protocol</GepaLabel>
+                  <span className="ply-pill ply-pill-primary" style={{ fontSize: 11 }}>
+                    <GIcon name="sparkles" size={11} /> Φ* ★
+                  </span>
+                </div>
+                <pre className="ply-prompt-block" style={{ margin: 0, maxHeight: 420, overflow: 'auto' }}>{optimizedPrompt}</pre>
+              </div>
             </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   );
