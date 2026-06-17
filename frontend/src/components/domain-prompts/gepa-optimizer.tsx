@@ -45,6 +45,7 @@ const PATHS: Record<string, React.ReactNode> = {
   refresh:   <><path d="M3 12a9 9 0 019-9 9.75 9.75 0 016.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 01-9 9 9.75 9.75 0 01-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></>,
   grid:      <><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></>,
   target:    <><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></>,
+  shield:    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>,
   chip:      <><rect x="9" y="2" width="6" height="3"/><rect x="9" y="19" width="6" height="3"/><rect x="2" y="9" width="3" height="6"/><rect x="19" y="9" width="3" height="6"/><rect x="6" y="6" width="12" height="12" rx="2"/></>,
   info:      <><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></>,
   copy:      <><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></>,
@@ -622,15 +623,61 @@ function GepaStat({ label, value, hint }: { label: string; value: React.ReactNod
   );
 }
 
+/* ── Idle intro card ──────────────────────────────────────────────── */
+const GEPA_FEATURES = [
+  { icon: 'target',   title: 'Pareto selection',    desc: 'Evolve from the frontier, not just the top — keeps niche winners alive.' },
+  { icon: 'sparkles', title: 'Reflective mutation', desc: 'A meta-LLM reads traces + feedback and proposes a better prompt.' },
+  { icon: 'shield',   title: 'Minibatch gate',      desc: 'Only candidates that beat their parent on 3 examples earn a full eval.' },
+  { icon: 'trophy',   title: 'Best-of-pool Π*',     desc: 'Returns the highest-scoring prompt across every iteration.' },
+] as const;
+
+function GepaIdleCard() {
+  return (
+    <div className="ply-card anim-fade" style={{ padding: 0, overflow: 'hidden' }}>
+      <div style={{
+        padding: '16px 20px', borderBottom: '1px solid var(--border)',
+        background: 'linear-gradient(135deg, var(--primary-soft), transparent 70%)',
+        display: 'flex', alignItems: 'center', gap: 12,
+      }}>
+        <span style={{
+          width: 34, height: 34, borderRadius: 9, flexShrink: 0,
+          background: 'linear-gradient(135deg, var(--primary), var(--accent))',
+          display: 'grid', placeItems: 'center',
+        }}>
+          <GIcon name="sparkles" size={17} color="white" />
+        </span>
+        <div>
+          <div style={{ fontWeight: 600, fontSize: 14 }}>GEPA · Reflective Prompt Evolution</div>
+          <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
+            The optimizer reads its own failures and rewrites the prompt — no weight updates, works on any LLM.
+          </div>
+        </div>
+        <span className="ply-pill ply-pill-primary" style={{ fontSize: 10.5, marginLeft: 'auto' }}>arXiv:2507.19457</span>
+      </div>
+      <div style={{ padding: '18px 20px', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
+        {GEPA_FEATURES.map(f => (
+          <div key={f.title} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <GIcon name={f.icon} size={16} color="var(--primary)" />
+            <div style={{ fontSize: 12.5, fontWeight: 600 }}>{f.title}</div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.45 }}>{f.desc}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* ── Main component ───────────────────────────────────────────────── */
 export function GepaOptimizer({
   domainId,
   optimizedPrompt,
   promptInput,
+  onRunAgain,
 }: {
   domainId: string;
   optimizedPrompt: string | null;
   promptInput?: string | null;
+  onRunAgain?: () => void;
 }) {
   const { data: state } = useQuery<GepaState | null>({
     queryKey: ['gepa-state', domainId],
@@ -657,6 +704,7 @@ export function GepaOptimizer({
   const isRunning   = !!state && state.phase !== 'completed';
   const isCompleted = state?.phase === 'completed';
   const noState     = !state && optimizedPrompt !== null;
+  const isIdle      = !state && !optimizedPrompt;
 
   const best = state?.pool.find(c => c.star) ?? state?.pool[state.pool.length - 1] ?? null;
   const frontier = state?.pool.length
@@ -668,6 +716,8 @@ export function GepaOptimizer({
     : state.phase === 'loop' ? `Optimisation loop · iteration ${state.iter_idx}`
     : state.phase === 'final' ? 'Selecting best candidate Φ*'
     : 'Done';
+
+  if (isIdle) return <GepaIdleCard />;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -799,6 +849,11 @@ export function GepaOptimizer({
               </div>
             </div>
             <div style={{ display: 'flex', gap: 6 }}>
+              {onRunAgain && (
+                <button className="ply-btn ply-btn-sm" onClick={onRunAgain}>
+                  <GIcon name="refresh" size={12} /> Run again
+                </button>
+              )}
               {optimizedPrompt && (
                 <button className="ply-btn ply-btn-sm" onClick={copyPrompt}>
                   <GIcon name={copied ? 'check' : 'copy'} size={12} />
@@ -861,6 +916,11 @@ export function GepaOptimizer({
               <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>Reflective Prompt Evolution · arXiv:2507.19457</div>
             </div>
             <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+              {onRunAgain && (
+                <button className="ply-btn ply-btn-sm" onClick={onRunAgain}>
+                  <GIcon name="refresh" size={12} /> Run again
+                </button>
+              )}
               <button className="ply-btn ply-btn-sm" onClick={copyPrompt}>
                 <GIcon name={copied ? 'check' : 'copy'} size={12} />
                 {copied ? 'Copied' : 'Copy'}

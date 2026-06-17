@@ -642,7 +642,11 @@ function OptimizeTab({ domain, onReoptimize, reoptimizing, sessionResult, onClea
     },
   });
 
-  const latestRun = runsData?.runs?.find(r => r.status === 'completed') ?? null;
+  const latestRun = runsData?.runs?.find(r =>
+    r.status === 'completed' &&
+    !!r.optimized_prompt &&
+    (r.algorithm ?? 'pdo') === engine
+  ) ?? null;
   const displayResult = sessionResult ?? (!runAgainMode && latestRun ? {
     optimized_prompt: latestRun.optimized_prompt,
     prompt_input: latestRun.prompt_input,
@@ -707,7 +711,7 @@ function OptimizeTab({ domain, onReoptimize, reoptimizing, sessionResult, onClea
       )}
 
       {hasResult && engine === 'gepa' && (
-        <GepaOptimizer domainId={domain.id} optimizedPrompt={displayResult?.optimized_prompt ?? null} promptInput={displayResult?.prompt_input ?? null} />
+        <GepaOptimizer domainId={domain.id} optimizedPrompt={displayResult?.optimized_prompt ?? null} promptInput={displayResult?.prompt_input ?? null} onRunAgain={runAgain} />
       )}
 
       {hasResult && engine === 'pdo' && (
@@ -753,20 +757,33 @@ function OptimizeTab({ domain, onReoptimize, reoptimizing, sessionResult, onClea
         </div>
       )}
 
-      {!hasResult && !busy && (
+      {/* GEPA idle: rich intro card */}
+      {!hasResult && !busy && engine === 'gepa' && datasetReady && (
+        <GepaOptimizer domainId={domain.id} optimizedPrompt={null} promptInput={null} />
+      )}
+
+      {/* PDO idle: centered prompt */}
+      {!hasResult && !busy && engine === 'pdo' && (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 380 }}>
             <div style={{ width: 48, height: 48, borderRadius: 12, background: 'var(--primary-soft)', display: 'grid', placeItems: 'center', margin: '0 auto', color: 'var(--primary)' }}>
-              <Icon name={engine === 'gepa' ? 'sparkle2' : 'swords'} size={22} />
+              <Icon name="swords" size={22} />
             </div>
-            <div style={{ fontSize: 15, fontWeight: 600 }}>{engine === 'gepa' ? 'Run GEPA reflective evolution' : 'Run the PDO tournament'}</div>
+            <div style={{ fontSize: 15, fontWeight: 600 }}>Run the PDO tournament</div>
             <div style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.55 }}>
               {datasetReady
-                ? engine === 'gepa'
-                  ? 'Paste your system prompt. GEPA uses Pareto frontier selection and LLM reflective mutation to evolve the best version.'
-                  : 'Paste your system prompt below. We\'ll run 40 head-to-head trials to find the best version.'
+                ? 'Paste your system prompt below. We\'ll run 40 head-to-head trials to find the best version.'
                 : 'Dataset is still being built from your PDF. Come back in a moment.'}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* GEPA / PDO — dataset not ready */}
+      {!hasResult && !busy && !datasetReady && (
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ textAlign: 'center', fontSize: 13, color: 'var(--text-muted)' }}>
+            Dataset is still being built from your PDF. Come back in a moment.
           </div>
         </div>
       )}
