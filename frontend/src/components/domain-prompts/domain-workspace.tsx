@@ -618,46 +618,20 @@ const BUDGET_TIERS: Record<BudgetTier, { label: string; desc: string; hint: stri
 
 function EffortSelector({ tier, onChange }: { tier: BudgetTier; onChange: (t: BudgetTier) => void }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <div style={{ fontSize: 10, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '.07em', fontWeight: 600 }}>
-        Effort
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
-        {(Object.keys(BUDGET_TIERS) as BudgetTier[]).map(t => {
-          const sel = tier === t;
-          const info = BUDGET_TIERS[t];
-          return (
-            <button
-              key={t}
-              onClick={() => onChange(t)}
-              style={{
-                padding: '9px 12px', borderRadius: 9, border: 0, cursor: 'pointer',
-                textAlign: 'left', transition: 'all .15s ease',
-                background: sel ? 'var(--surface)' : 'var(--surface-2)',
-                outline: sel ? `1.5px solid ${info.color}` : '1px solid var(--border)',
-                boxShadow: sel ? `0 0 0 3px color-mix(in oklab, ${info.color} 15%, transparent)` : 'none',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-                <span style={{
-                  width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
-                  background: sel ? info.color : 'var(--border)',
-                  transition: 'background .15s',
-                }} />
-                <span style={{ fontSize: 12.5, fontWeight: 600, color: sel ? info.color : 'var(--text)' }}>
-                  {info.label}
-                </span>
-                <span className="mono" style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, color: sel ? info.color : 'var(--text-muted)' }}>
-                  −{info.credits} cr
-                </span>
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 2 }}>{info.desc}</div>
-              <div className="mono" style={{ fontSize: 10, color: 'var(--text-subtle)' }}>{info.hint}</div>
-            </button>
-          );
-        })}
-      </div>
-    </div>
+    <select
+      value={tier}
+      onChange={e => onChange(e.target.value as BudgetTier)}
+      style={{
+        fontSize: 11, fontWeight: 600, color: 'var(--primary)',
+        background: 'color-mix(in oklab, var(--primary) 10%, transparent)',
+        border: '1px solid color-mix(in oklab, var(--primary) 30%, transparent)',
+        borderRadius: 6, padding: '2px 6px', cursor: 'pointer', outline: 'none',
+      }}
+    >
+      {(Object.keys(BUDGET_TIERS) as BudgetTier[]).map(t => (
+        <option key={t} value={t}>{BUDGET_TIERS[t].label}</option>
+      ))}
+    </select>
   );
 }
 
@@ -677,7 +651,7 @@ function OptimizeTab({ domain, onReoptimize, reoptimizing, sessionResult, onClea
   const [copied, setCopied] = useState(false);
   const [vizMode, setVizMode] = useState<VizMode>('matrix');
   const [runAgainMode, setRunAgainMode] = useState(false);
-  const [budgetTier, setBudgetTier] = useState<BudgetTier>('medium');
+  const [budgetTier, setBudgetTier] = useState<BudgetTier>('low');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Reset local state whenever the domain itself changes
@@ -866,12 +840,6 @@ function OptimizeTab({ domain, onReoptimize, reoptimizing, sessionResult, onClea
               fontFamily: 'var(--mono)',
             }}
           />
-          {/* Effort selector — embedded inside the input card, GEPA only */}
-          {engine === 'gepa' && !busy && (
-            <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10 }}>
-              <EffortSelector tier={budgetTier} onChange={setBudgetTier} />
-            </div>
-          )}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid var(--border)', paddingTop: 10 }}>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', color: 'var(--text-subtle)', fontSize: 11.5, flexWrap: 'wrap' }}>
               <span className="ply-pill"><Icon name="layers" size={11} /> {domain.dataset?.row_count ?? 0} Q&A</span>
@@ -882,6 +850,9 @@ function OptimizeTab({ domain, onReoptimize, reoptimizing, sessionResult, onClea
                     {' '}B={BUDGET_TIERS[budgetTier].budget} · N={BUDGET_TIERS[budgetTier].nPareto} · mb=3
                   </span>
               }
+              {engine === 'gepa' && !busy && (
+                <EffortSelector tier={budgetTier} onChange={setBudgetTier} />
+              )}
             </div>
             <button
               className="ply-btn ply-btn-primary"

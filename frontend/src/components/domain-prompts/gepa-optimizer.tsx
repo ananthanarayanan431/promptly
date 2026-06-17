@@ -117,66 +117,113 @@ function GepaEffortBar({ used, budgetMax, nPareto }: { used: number; budgetMax: 
   );
 }
 
-/* ── Score matrix with Pareto frontier row ────────────────────────── */
-function GepaMatrix({ pool, frontier }: { pool: GepaCandidate[]; frontier: number[] }) {
+/* ── Optimization progress (replaces cryptic score matrix) ───────── */
+function GepaProgressView({ pool, frontier }: { pool: GepaCandidate[]; frontier: number[] }) {
   if (!pool.length) return null;
+
+  const seed = pool[0];
+  const best = pool.reduce((a, b) => (a.score > b.score ? a : b));
+  const totalGain = best.score - seed.score;
+  const maxScore = Math.max(...pool.map(c => c.score), 1);
   const frontierAvg = frontier.length
     ? (frontier.reduce((a, b) => a + b, 0) / frontier.length) * 100
     : 0;
-  const cols = `46px repeat(${GEPA_NCOLS}, 1fr) 52px`;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 10.5 }}>
-      {/* column header */}
-      <div style={{ display: 'grid', gridTemplateColumns: cols, gap: 2, alignItems: 'center' }}>
-        <span />
-        {frontier.map((_, i) => <span key={i} />)}
-        <span className="mono" style={{ fontSize: 8.5, color: 'var(--text-subtle)', textAlign: 'right', textTransform: 'uppercase', letterSpacing: '.04em' }}>
-          avg
-        </span>
-      </div>
-
-      {/* Pareto frontier row */}
-      <div style={{ display: 'grid', gridTemplateColumns: cols, gap: 2, alignItems: 'center' }}>
-        <span className="mono" style={{ color: 'var(--primary)', fontSize: 9.5, fontWeight: 700 }}>s*[i]</span>
-        {frontier.map((s, i) => (
-          <div key={i} title={`best on ex ${i + 1}: ${Math.round(s * 100)}%`} style={{
-            height: 18, borderRadius: 3, display: 'grid', placeItems: 'center',
-            background: `color-mix(in oklab, var(--primary) ${Math.round(25 + s * 55)}%, transparent)`,
-            border: '1px solid color-mix(in oklab, var(--primary) 35%, transparent)',
-          }}>
-            <span className="mono" style={{ fontSize: 8.5, fontWeight: 700, color: s > 0.55 ? 'white' : 'var(--primary)' }}>
-              {Math.round(s * 100)}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+      {/* Summary row */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+          Seed{' '}
+          <span className="mono">{seed.score.toFixed(1)}%</span>
+          {' → '}
+          <span className="mono" style={{ color: 'var(--success)', fontWeight: 700 }}>{best.score.toFixed(1)}%</span>
+          {totalGain > 0 && (
+            <span className="mono" style={{ color: 'var(--success)', marginLeft: 6, fontSize: 11 }}>
+              +{totalGain.toFixed(1)}% gain
             </span>
-          </div>
-        ))}
-        <span className="mono" style={{ fontSize: 11, fontWeight: 700, color: 'var(--primary)', textAlign: 'right' }}>
-          {frontierAvg.toFixed(1)}%
+          )}
         </span>
+        {frontierAvg > 0 && (
+          <span style={{ fontSize: 10.5, color: 'var(--text-subtle)' }}>
+            ceiling{' '}
+            <span className="mono" style={{ color: 'var(--primary)', fontWeight: 600 }}>
+              {frontierAvg.toFixed(1)}%
+            </span>
+          </span>
+        )}
       </div>
 
-      {/* Candidate rows */}
-      {pool.map(c => (
-        <div key={c.id} className="anim-slide" style={{ display: 'grid', gridTemplateColumns: cols, gap: 2, alignItems: 'center' }}>
-          <span className="mono" style={{ color: c.star ? 'var(--primary)' : 'var(--text-muted)', fontWeight: c.star ? 700 : 500, fontSize: 10 }}>
-            {c.id}{c.star ? '★' : ''}
-          </span>
-          {(c.cells.length ? c.cells : Array(GEPA_NCOLS).fill(0)).map((s: number, i: number) => {
-            const isWin = frontier[i] > 0 && Math.abs(s - frontier[i]) < 0.001;
-            return (
-              <div key={i} title={`ex ${i + 1}: ${Math.round(s * 100)}%`} style={{
-                height: 16, borderRadius: 2,
-                background: `color-mix(in oklab, var(--success) ${Math.round(20 + s * 70)}%, var(--surface-2))`,
-                outline: isWin ? '1.5px solid var(--primary)' : 'none',
-                outlineOffset: -1.5,
-              }} />
-            );
-          })}
-          <span className="mono" style={{ fontSize: 10.5, fontWeight: c.star ? 700 : 500, color: c.star ? 'var(--primary)' : 'var(--text-muted)', textAlign: 'right' }}>
-            {c.score.toFixed(1)}%
-          </span>
+      {/* One row per accepted candidate */}
+      {pool.map((c, idx) => {
+        const barPct = (c.score / maxScore) * 100;
+        const deltaVal = c.delta ? parseFloat(c.delta) : 0;
+        const improved = deltaVal > 0;
+
+        return (
+          <div key={c.id} className="anim-slide" style={{
+            display: 'grid', gridTemplateColumns: '44px 1fr 58px',
+            gap: 10, alignItems: 'center',
+            padding: '8px 0',
+            borderTop: idx > 0 ? '1px solid var(--border)' : 'none',
+          }}>
+            {/* Candidate label */}
+            <span className="mono" style={{
+              fontSize: 11, fontWeight: c.star ? 700 : 500,
+              color: c.star ? 'var(--primary)' : 'var(--text-subtle)',
+            }}>
+              {c.id}{c.star ? ' ★' : ''}
+            </span>
+
+            {/* Bar + description */}
+            <div>
+              <div style={{ position: 'relative', height: 8, background: 'var(--surface-2)', borderRadius: 4, overflow: 'hidden', marginBottom: 5 }}>
+                <div style={{
+                  height: '100%', borderRadius: 4,
+                  width: `${barPct}%`,
+                  background: c.star
+                    ? 'linear-gradient(90deg, var(--primary), var(--accent))'
+                    : idx === 0
+                      ? 'var(--border)'
+                      : improved ? 'var(--success)' : 'var(--text-subtle)',
+                  transition: 'width .5s ease',
+                }} />
+              </div>
+              <div style={{ fontSize: 10.5, color: 'var(--text-subtle)', lineHeight: 1.35 }}>{c.desc}</div>
+            </div>
+
+            {/* Score + delta */}
+            <div style={{ textAlign: 'right' }}>
+              <div className="mono" style={{
+                fontSize: 12.5, fontWeight: c.star ? 700 : 500,
+                color: c.star ? 'var(--primary)' : 'var(--text)',
+              }}>
+                {c.score.toFixed(1)}%
+              </div>
+              {c.delta && idx > 0 && (
+                <div className="mono" style={{
+                  fontSize: 10, marginTop: 1,
+                  color: improved ? 'var(--success)' : 'var(--text-subtle)',
+                }}>
+                  {improved ? '+' : ''}{c.delta}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
+
+      {/* Frontier ceiling */}
+      {frontierAvg > 0 && (
+        <div style={{
+          marginTop: 10, paddingTop: 10, borderTop: '1px dashed var(--border)',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          fontSize: 11, color: 'var(--text-subtle)',
+        }}>
+          <span>Best-per-question ceiling — theoretical max this dataset can reveal</span>
+          <span className="mono" style={{ color: 'var(--primary)', fontWeight: 600 }}>{frontierAvg.toFixed(1)}%</span>
         </div>
-      ))}
+      )}
     </div>
   );
 }
@@ -834,13 +881,13 @@ export function GepaOptimizer({
             {state.pool.length > 1 && (
               <div className="ply-card" style={{ padding: '14px 18px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                  <GIcon name="grid" size={13} />
-                  <span style={{ fontWeight: 600, fontSize: 12.5 }}>Score matrix S · Pareto frontier</span>
+                  <GIcon name="sparkles" size={13} color="var(--primary)" />
+                  <span style={{ fontWeight: 600, fontSize: 12.5 }}>Optimization progress</span>
                   <span style={{ fontSize: 11, color: 'var(--text-subtle)', marginLeft: 'auto' }}>
-                    outlined cells = per-example winners
+                    avg score on {state.n_pareto_size ?? GEPA_NPARETO} eval examples
                   </span>
                 </div>
-                <GepaMatrix pool={state.pool} frontier={frontier} />
+                <GepaProgressView pool={state.pool} frontier={frontier} />
               </div>
             )}
           </div>
