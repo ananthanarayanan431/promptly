@@ -219,6 +219,8 @@ def run_domain_optimization(
     domain_id: str,
     user_id: str,
     prompt_to_optimize: str,
+    pdo_num_candidates: int = 10,
+    pdo_rounds: int = 30,
 ) -> None:
     async def _run() -> None:
         import json
@@ -292,8 +294,9 @@ def run_domain_optimization(
                     base_prompt=prompt_to_optimize,
                     dataset_jsonl=dataset_jsonl,
                     api_key=api_key,
+                    num_candidates=pdo_num_candidates,
+                    num_rounds=pdo_rounds,
                     domain_id=domain_id,
-                    # Per-round cancel check lets the tournament exit cleanly mid-run
                     cancel_check=lambda: is_dp_job_cancelled(job_id),
                 ),
             )

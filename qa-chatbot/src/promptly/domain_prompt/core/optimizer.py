@@ -667,6 +667,7 @@ async def optimize_domain_prompt(
     dataset_jsonl: str,
     api_key: str,
     num_candidates: int = NUM_CANDIDATES,
+    num_rounds: int = TOURNAMENT_ROUNDS,
     domain_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> dict[str, object]:
@@ -748,12 +749,12 @@ async def optimize_domain_prompt(
     _log.info(
         "tournament_starting",
         candidates=len(candidates),
-        rounds=TOURNAMENT_ROUNDS,
+        rounds=num_rounds,
     )
 
     # ── PDO tournament (D-TS) ─────────────────────────────────────────────────
     mutation_tip_idx = 0
-    for round_idx in range(TOURNAMENT_ROUNDS):
+    for round_idx in range(num_rounds):
         t = round_idx + 1  # 1-indexed round count (used in UCB/LCB log term)
 
         i, j = _select_duel_pair(wm, rng, t)
@@ -774,7 +775,7 @@ async def optimize_domain_prompt(
         wm.record_win(winner_idx, loser_idx, gamma)
 
         await _emit_tournament_state(
-            domain_id, round_idx, TOURNAMENT_ROUNDS, candidates, wm, i, j, question, ans_i, ans_j, t
+            domain_id, round_idx, num_rounds, candidates, wm, i, j, question, ans_i, ans_j, t
         )
 
         if cancel_check is not None and await cancel_check():
@@ -824,7 +825,7 @@ async def optimize_domain_prompt(
             )
 
     # ── Copeland winner (paper §2) ────────────────────────────────────────────
-    final_t = TOURNAMENT_ROUNDS
+    final_t = num_rounds
     winner_idx = _copeland_winner(wm, final_t)
     best_prompt = candidates[winner_idx].text
 
@@ -841,7 +842,7 @@ async def optimize_domain_prompt(
     _log.info(
         "tournament_complete",
         candidates=len(candidates),
-        rounds=TOURNAMENT_ROUNDS,
+        rounds=num_rounds,
         win_rate=win_rate,
         score_before=score_before,
         score_after=score_after,
@@ -854,7 +855,7 @@ async def optimize_domain_prompt(
         "score_after": round(score_after, 4),
         "win_rate": win_rate,
         "candidates_tried": len(candidates),
-        "rounds_run": TOURNAMENT_ROUNDS,
+        "rounds_run": num_rounds,
         "dataset_size": len(pairs),
         "total_tokens": token_counter[0],
     }

@@ -82,6 +82,12 @@ log = get_logger(__name__)
 
 router = APIRouter(prefix="/domain-prompts", tags=["domain-prompts"])
 
+_PDO_TIERS: dict[str, dict[str, int]] = {
+    "low": {"rounds": 15, "candidates": 6, "credits": 5},
+    "medium": {"rounds": 30, "candidates": 10, "credits": 10},
+    "high": {"rounds": 50, "candidates": 15, "credits": 16},
+}
+
 _GEPA_TIERS: dict[str, dict[str, int]] = {
     "low": {"budget": 100, "n_pareto": 10, "credits": 4},
     "medium": {"budget": 260, "n_pareto": 22, "credits": 8},
@@ -423,13 +429,14 @@ async def reoptimize_domain(
     """
     Optimize a prompt against this domain's knowledge base.
 
-    PDO costs 10 credits.
-    GEPA budget tiers: low=6 cr (B=120), medium=10 cr (B=350), high=16 cr (B=678).
+    PDO: low=5cr/15rds/6c, medium=10cr/30rds/10c, high=16cr/50rds/15c.
+    GEPA: low=4cr/B=100, medium=8cr/B=260, high=14cr/B=460.
     """
     is_gepa = body.algorithm == "gepa"
 
-    gepa_tier = _GEPA_TIERS.get(body.budget_tier, _GEPA_TIERS["medium"])
-    credit_cost = gepa_tier["credits"] if is_gepa else 10
+    gepa_tier = _GEPA_TIERS.get(body.budget_tier, _GEPA_TIERS["low"])
+    pdo_tier = _PDO_TIERS.get(body.budget_tier, _PDO_TIERS["low"])
+    credit_cost = gepa_tier["credits"] if is_gepa else pdo_tier["credits"]
 
     repo = DomainPromptRepository(db)
     domain = await repo.get_by_id_and_user(domain_id, current_user.user_id)
@@ -479,8 +486,16 @@ async def reoptimize_domain(
             budget=gepa_tier["budget"],
         )
     else:
+        task_kwargs["pdo_num_candidates"] = pdo_tier["candidates"]
+        task_kwargs["pdo_rounds"] = pdo_tier["rounds"]
         run_domain_optimization.apply_async(kwargs=task_kwargs)
-        log.info("domain_optimize_job_queued", job_id=job_id, domain_id=str(domain_id))
+        log.info(
+            "domain_pdo_job_queued",
+            job_id=job_id,
+            domain_id=str(domain_id),
+            tier=body.budget_tier,
+            rounds=pdo_tier["rounds"],
+        )
 
     return SuccessResponse(data=CreateDomainJobResponse(job_id=job_id, domain_id=domain_id))
 

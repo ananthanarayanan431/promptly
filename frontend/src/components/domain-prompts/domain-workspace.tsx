@@ -610,10 +610,16 @@ function EngineToggle({ engine, onChange }: { engine: Engine; onChange: (e: Engi
 /* ── Effort tier selector ─────────────────────────────────────────── */
 type BudgetTier = 'low' | 'medium' | 'high';
 
-const BUDGET_TIERS: Record<BudgetTier, { label: string; desc: string; hint: string; budget: number; nPareto: number; credits: number; color: string }> = {
-  low:    { label: 'Low',    desc: 'Quick scan',    hint: '~100 rollouts · fast',      budget: 100, nPareto: 10, credits: 4,  color: 'var(--success)' },
-  medium: { label: 'Medium', desc: 'Balanced',      hint: '~260 rollouts · moderate',  budget: 260, nPareto: 22, credits: 8,  color: 'var(--primary)' },
-  high:   { label: 'High',   desc: 'Thorough',      hint: '~460 rollouts · deep',      budget: 460, nPareto: 38, credits: 14, color: 'var(--accent)'  },
+const BUDGET_TIERS: Record<BudgetTier, { label: string; budget: number; nPareto: number; credits: number }> = {
+  low:    { label: 'Low',    budget: 100, nPareto: 10, credits: 4  },
+  medium: { label: 'Medium', budget: 260, nPareto: 22, credits: 8  },
+  high:   { label: 'High',   budget: 460, nPareto: 38, credits: 14 },
+};
+
+const PDO_TIERS: Record<BudgetTier, { label: string; rounds: number; candidates: number; credits: number }> = {
+  low:    { label: 'Low',    rounds: 15, candidates: 6,  credits: 5  },
+  medium: { label: 'Medium', rounds: 30, candidates: 10, credits: 10 },
+  high:   { label: 'High',   rounds: 50, candidates: 15, credits: 16 },
 };
 
 function EffortSelector({ tier, onChange }: { tier: BudgetTier; onChange: (t: BudgetTier) => void }) {
@@ -711,7 +717,7 @@ function OptimizeTab({ domain, onReoptimize, reoptimizing, sessionResult, onClea
     setDraft('');
     setRunAgainMode(true);
     onClearResult();
-    onReoptimize(t, engine, engine === 'gepa' ? budgetTier : undefined);
+    onReoptimize(t, engine, budgetTier);
   }
 
   return (
@@ -844,13 +850,13 @@ function OptimizeTab({ domain, onReoptimize, reoptimizing, sessionResult, onClea
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', color: 'var(--text-subtle)', fontSize: 11.5, flexWrap: 'wrap' }}>
               <span className="ply-pill"><Icon name="layers" size={11} /> {domain.dataset?.row_count ?? 0} Q&A</span>
               {engine === 'pdo'
-                ? <span className="ply-pill"><Icon name="cpu" size={11} /> 40 rounds D-TS · 5 rankers</span>
+                ? <span className="ply-pill"><Icon name="cpu" size={11} /> {PDO_TIERS[budgetTier].rounds} rounds · {PDO_TIERS[budgetTier].candidates} candidates</span>
                 : <span className="ply-pill">
                     <Icon name="sparkle2" size={11} />
                     {' '}B={BUDGET_TIERS[budgetTier].budget} · N={BUDGET_TIERS[budgetTier].nPareto} · mb=3
                   </span>
               }
-              {engine === 'gepa' && !busy && (
+              {!busy && (
                 <EffortSelector tier={budgetTier} onChange={setBudgetTier} />
               )}
             </div>
@@ -863,7 +869,7 @@ function OptimizeTab({ domain, onReoptimize, reoptimizing, sessionResult, onClea
               <Icon name={engine === 'gepa' ? 'sparkle2' : 'trophy'} size={14} />
               {busy ? (engine === 'gepa' ? 'Running GEPA…' : 'Running PDO…') : hasResult ? 'Run again' : (engine === 'gepa' ? 'Run GEPA' : 'Run PDO')}
               <span className="mono" style={{ marginLeft: 6, fontSize: 11, opacity: .75, paddingLeft: 8, borderLeft: '1px solid rgba(255,255,255,.25)' }}>
-                {engine === 'gepa' ? `−${BUDGET_TIERS[budgetTier].credits} cr` : '−10 cr'}
+                {engine === 'gepa' ? `−${BUDGET_TIERS[budgetTier].credits} cr` : `−${PDO_TIERS[budgetTier].credits} cr`}
               </span>
             </button>
           </div>
