@@ -1185,6 +1185,109 @@ function DatasetTab({ domain }: { domain: DomainPrompt }) {
 }
 
 /* ── History tab ───────────────────────────────────────────────────── */
+function RunRow({ run, expanded, onToggle }: { run: OptimizationRun; expanded: boolean; onToggle: () => void }) {
+  const isFailed = run.status === 'failed';
+  const isGepa = (run.algorithm ?? 'pdo') === 'gepa';
+  const date = new Date(run.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+  const metric1 = isGepa
+    ? (run.rounds_run != null ? `${run.rounds_run} iters` : '—')
+    : (run.win_rate != null ? `${Math.round(run.win_rate * 100)}% wr` : '—');
+
+  const metric2 = isGepa
+    ? (run.candidates_tried != null ? `${run.candidates_tried} pool` : '—')
+    : (run.rounds_run != null ? `${run.rounds_run} rounds` : '—');
+
+  return (
+    <div>
+      <div
+        onClick={onToggle}
+        style={{
+          display: 'grid', gridTemplateColumns: '160px 1fr 100px 100px 1fr',
+          gap: 10, alignItems: 'center', padding: '12px 16px', fontSize: 12.5,
+          borderBottom: '1px solid var(--border)', cursor: 'pointer',
+          background: expanded ? 'var(--surface-2)' : undefined,
+          opacity: isFailed ? 0.8 : 1,
+        }}
+      >
+        <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--mono)', fontSize: 11.5 }}>{date}</span>
+        <span style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
+          {isFailed
+            ? <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: 'var(--danger-soft, rgba(239,68,68,0.12))', color: 'var(--danger)', letterSpacing: '.04em' }}>FAILED</span>
+            : <Icon name={isGepa ? 'sparkles' : 'trophy'} size={12} />
+          }
+          {run.domain_name}
+        </span>
+        <span className="mono" style={{ color: isFailed ? 'var(--text-subtle)' : undefined }}>{isFailed ? '—' : metric1}</span>
+        <span className="mono" style={{ color: 'var(--text-muted)' }}>{isFailed ? '—' : metric2}</span>
+        <span style={{ color: expanded ? 'var(--primary)' : 'var(--text-subtle)', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
+          {expanded ? '▲ hide' : (isFailed ? '▼ view error' : '▼ view prompt')}
+        </span>
+      </div>
+      {expanded && (
+        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', background: 'var(--surface-2)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 600, marginBottom: 6 }}>Input prompt</div>
+            <pre className="ply-prompt-block" style={{ margin: 0, fontSize: 12, maxHeight: 120, overflowY: 'auto' }}>{run.prompt_input}</pre>
+          </div>
+          {isFailed ? (
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--danger)', textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 600, marginBottom: 6 }}>Error</div>
+              <pre className="ply-prompt-block" style={{ margin: 0, fontSize: 12, color: 'var(--danger)', maxHeight: 120, overflowY: 'auto' }}>{run.error_message ?? 'Unknown error'}</pre>
+            </div>
+          ) : (
+            <>
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 600, marginBottom: 6 }}>
+                  {isGepa ? 'GEPA optimized' : 'PDO optimized'}
+                </div>
+                <pre className="ply-prompt-block" style={{ margin: 0, fontSize: 12, maxHeight: 180, overflowY: 'auto' }}>{run.optimized_prompt}</pre>
+              </div>
+              <div style={{ display: 'flex', gap: 16, fontSize: 12 }}>
+                {run.score_before != null && <span>Score before: <strong>{run.score_before.toFixed(3)}</strong></span>}
+                {run.score_after != null && <span>Score after: <strong>{run.score_after.toFixed(3)}</strong></span>}
+                {!isGepa && run.candidates_tried != null && <span>Candidates: <strong>{run.candidates_tried}</strong></span>}
+                {run.dataset_size != null && <span>Dataset: <strong>{run.dataset_size} Q&A</strong></span>}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RunSection({ title, icon, runs, expandedId, onToggle, emptyMsg }: {
+  title: string; icon: string; runs: OptimizationRun[];
+  expandedId: string | null; onToggle: (id: string) => void; emptyMsg: string;
+}) {
+  return (
+    <div className="ply-card" style={{ padding: 0, overflow: 'hidden' }}>
+      <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 7 }}>
+        <Icon name={icon} size={13} />
+        <span style={{ fontWeight: 600, fontSize: 13 }}>{title}</span>
+        <span style={{ marginLeft: 4, fontWeight: 400, fontSize: 11.5, color: 'var(--text-subtle)' }}>
+          {runs.length} run{runs.length !== 1 ? 's' : ''}
+        </span>
+      </div>
+      {runs.length === 0 ? (
+        <div style={{ padding: '20px 16px', fontSize: 12.5, color: 'var(--text-subtle)' }}>{emptyMsg}</div>
+      ) : (
+        <>
+          {runs.slice(0, 5).map(run => (
+            <RunRow key={run.id} run={run} expanded={expandedId === run.id} onToggle={() => onToggle(run.id)} />
+          ))}
+          {runs.length > 5 && (
+            <div style={{ padding: '10px 16px', fontSize: 12, color: 'var(--text-subtle)', textAlign: 'center' }}>
+              Showing 5 of {runs.length} runs
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 function HistoryTab({ domain }: { domain: DomainPrompt }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -1197,6 +1300,10 @@ function HistoryTab({ domain }: { domain: DomainPrompt }) {
   });
 
   const runs = data?.runs ?? [];
+  const pdoRuns = runs.filter(r => (r.algorithm ?? 'pdo') === 'pdo');
+  const gepaRuns = runs.filter(r => r.algorithm === 'gepa');
+
+  const toggle = (id: string) => setExpandedId(prev => prev === id ? null : id);
 
   if (isLoading) {
     return (
@@ -1209,91 +1316,29 @@ function HistoryTab({ domain }: { domain: DomainPrompt }) {
   if (runs.length === 0) {
     return (
       <div className="ply-card" style={{ padding: '32px', textAlign: 'center', color: 'var(--text-subtle)', fontSize: 13 }}>
-        No runs yet. Submit a prompt in the Optimize tab to start the first tournament.
+        No runs yet. Submit a prompt in the Optimize tab to run PDO or GEPA.
       </div>
     );
   }
 
   return (
-    <div className="ply-card" style={{ padding: 0, overflow: 'hidden' }}>
-      <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontWeight: 600, fontSize: 13 }}>
-        Tournament history · {domain.name}
-        <span style={{ marginLeft: 8, fontWeight: 400, fontSize: 11.5, color: 'var(--text-subtle)' }}>
-          {runs.length} run{runs.length !== 1 ? 's' : ''}
-        </span>
-      </div>
-      {runs.slice(0, 5).map((run: OptimizationRun) => {
-        const isFailed = run.status === 'failed';
-        return (
-          <div key={run.id}>
-            <div
-              onClick={() => setExpandedId(expandedId === run.id ? null : run.id)}
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '160px 1fr 100px 100px 1fr',
-                gap: 10, alignItems: 'center',
-                padding: '12px 16px', fontSize: 12.5,
-                borderBottom: '1px solid var(--border)',
-                cursor: 'pointer',
-                background: expandedId === run.id ? 'var(--surface-2)' : undefined,
-                opacity: isFailed ? 0.8 : 1,
-              }}
-            >
-              <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--mono)', fontSize: 11.5 }}>
-                {new Date(run.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-              </span>
-              <span style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
-                {isFailed
-                  ? <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: 'var(--danger-soft, rgba(239,68,68,0.12))', color: 'var(--danger)', letterSpacing: '.04em' }}>FAILED</span>
-                  : <Icon name="trophy" size={12} />
-                }
-                {run.domain_name}
-              </span>
-              <span className="mono" style={{ color: isFailed ? 'var(--text-subtle)' : undefined }}>
-                {isFailed ? '—' : (run.win_rate != null ? `${Math.round(run.win_rate * 100)}% wr` : '—')}
-              </span>
-              <span className="mono" style={{ color: 'var(--text-muted)' }}>
-                {isFailed ? '—' : `${run.rounds_run ?? 40} rounds`}
-              </span>
-              <span style={{ color: expandedId === run.id ? 'var(--primary)' : 'var(--text-subtle)', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
-                {expandedId === run.id ? '▲ hide' : (isFailed ? '▼ view error' : '▼ view prompt')}
-              </span>
-            </div>
-            {expandedId === run.id && (
-              <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', background: 'var(--surface-2)', display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div>
-                  <div style={{ fontSize: 11, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 600, marginBottom: 6 }}>Input prompt</div>
-                  <pre className="ply-prompt-block" style={{ margin: 0, fontSize: 12, maxHeight: 120, overflowY: 'auto' }}>{run.prompt_input}</pre>
-                </div>
-                {isFailed ? (
-                  <div>
-                    <div style={{ fontSize: 11, color: 'var(--danger)', textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 600, marginBottom: 6 }}>Error</div>
-                    <pre className="ply-prompt-block" style={{ margin: 0, fontSize: 12, color: 'var(--danger)', maxHeight: 120, overflowY: 'auto' }}>{run.error_message ?? 'Unknown error'}</pre>
-                  </div>
-                ) : (
-                  <>
-                    <div>
-                      <div style={{ fontSize: 11, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 600, marginBottom: 6 }}>PDO optimized</div>
-                      <pre className="ply-prompt-block" style={{ margin: 0, fontSize: 12, maxHeight: 180, overflowY: 'auto' }}>{run.optimized_prompt}</pre>
-                    </div>
-                    <div style={{ display: 'flex', gap: 16, fontSize: 12 }}>
-                      {run.score_before != null && <span>Score before: <strong>{run.score_before.toFixed(3)}</strong></span>}
-                      {run.score_after != null && <span>Score after: <strong>{run.score_after.toFixed(3)}</strong></span>}
-                      {run.candidates_tried != null && <span>Candidates: <strong>{run.candidates_tried}</strong></span>}
-                      {run.dataset_size != null && <span>Dataset: <strong>{run.dataset_size} Q&A</strong></span>}
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-        );
-      })}
-      {runs.length > 5 && (
-        <div style={{ padding: '10px 16px', fontSize: 12, color: 'var(--text-subtle)', textAlign: 'center' }}>
-          Showing 5 of {runs.length} runs
-        </div>
-      )}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <RunSection
+        title="PDO — Tournament history"
+        icon="trophy"
+        runs={pdoRuns}
+        expandedId={expandedId}
+        onToggle={toggle}
+        emptyMsg="No PDO runs yet."
+      />
+      <RunSection
+        title="GEPA — Evolution history"
+        icon="sparkles"
+        runs={gepaRuns}
+        expandedId={expandedId}
+        onToggle={toggle}
+        emptyMsg="No GEPA runs yet."
+      />
     </div>
   );
 }
@@ -1611,7 +1656,7 @@ export function DomainWorkspace() {
           {[
             { id: 'optimize',  label: 'Optimize',                                    icon: 'sparkles'  },
             { id: 'dataset',   label: `Dataset (${selected?.dataset?.row_count ?? 0})`, icon: 'fileText'  },
-            { id: 'history',   label: 'Tournament history',                           icon: 'history'   },
+            { id: 'history',   label: 'Run history',                                   icon: 'history'   },
           ].map(t => (
             <button key={t.id} onClick={() => setTab(t.id as typeof tab)} style={{
               padding: '10px 16px', border: 0, background: 'transparent',
