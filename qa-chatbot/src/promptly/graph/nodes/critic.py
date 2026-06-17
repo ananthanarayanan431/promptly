@@ -126,8 +126,15 @@ async def critic_node(state: GraphState) -> dict[str, Any]:
             **parsed,
         }
 
+    override = state.get("council_models")
+    if override:
+        from promptly.llm._client import _build
+
+        critic_models: list[LLMClient] = [_build(m) for m in override]
+    else:
+        critic_models = _get_critic_models()
     results = await asyncio.gather(
-        *[critique(m, i) for i, m in enumerate(_get_critic_models()) if i < len(proposals)],
+        *[critique(m, i) for i, m in enumerate(critic_models) if i < len(proposals)],
         return_exceptions=True,
     )
 

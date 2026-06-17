@@ -20,6 +20,8 @@ def make_graph_state(
     version_history_diff: str | None = None,
     max_iterations: int = 1,
     force_optimize: bool = False,
+    council_models: list[str] | None = None,
+    synthesizer_model: str | None = None,
 ) -> GraphState:
     """Return a fully-initialised GraphState with caller-supplied inputs and safe defaults.
 
@@ -39,6 +41,8 @@ def make_graph_state(
         "job_id": job_id,
         "intent": None,
         "force_optimize": force_optimize,
+        "council_models": council_models,
+        "synthesizer_model": synthesizer_model,
         "already_optimized": False,
         "gate_dimension_scores": None,
         "gate_rationale": None,
@@ -62,6 +66,8 @@ class GraphState(TypedDict):
     raw_prompt: str
     session_id: str
     user_id: str
+    council_models: list[str] | None  # per-request model override (LLM effort tier)
+    synthesizer_model: str | None  # per-request synthesizer override
 
     # Optional user guidance that shapes how the council optimizes the prompt.
     feedback: str | None

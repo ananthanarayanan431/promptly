@@ -130,7 +130,15 @@ async def synthesize_node(state: GraphState) -> dict[str, Any]:
         state.get("subject_suggestions"),
     )
 
-    response = await _get_synthesizer().ainvoke(
+    synth_override = state.get("synthesizer_model")
+    if synth_override:
+        from promptly.llm._client import _build
+
+        synthesizer = _build(synth_override)
+    else:
+        synthesizer = _get_synthesizer()
+
+    response = await synthesizer.ainvoke(
         synthesize_messages(
             raw_prompt=state["raw_prompt"],
             proposals_block=proposals_block,

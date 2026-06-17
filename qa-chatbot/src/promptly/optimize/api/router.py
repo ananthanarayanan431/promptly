@@ -171,6 +171,7 @@ async def create_chat(
                 "name": resolved_name,
                 "category_slug": resolved_category_slug,
                 "force_optimize": request.force_optimize,
+                "llm_effort": request.llm_effort,
             },
         )
     except Exception as exc:

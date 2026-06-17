@@ -396,6 +396,7 @@ export function OptimizeChat() {
     ]);
 
     try {
+      const llmEffort = (() => { try { return localStorage.getItem('ply_llm_effort') ?? undefined; } catch { return undefined; } })();
       const res = await api.post<{ data: { job_id: string } }>('/api/v1/chat/', {
         prompt: promptToSend,
         ...(feedbackToSend && { feedback: feedbackToSend }),
@@ -405,6 +406,7 @@ export function OptimizeChat() {
         ...(name && { name }),
         ...(categorySlug && { category_slug: categorySlug }),
         ...(forceOptimize && { force_optimize: true }),
+        ...(llmEffort && llmEffort !== 'medium' && { llm_effort: llmEffort }),
       });
 
       const jobId = res.data.data.job_id;

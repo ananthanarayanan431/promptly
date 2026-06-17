@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import time
-from typing import Annotated
+from typing import Annotated, Any
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
@@ -78,28 +78,47 @@ class ModelListResponse(BaseModel):
     cached: bool
 
 
-# ── Cost table (blended $/1M tokens) ────────────────────────────────────────
+# ── Cost table — (input $/1M, output $/1M) from OpenRouter, June 2025 ────────
+# Prices verified at openrouter.ai/models. Slug matches the part after the
+# provider prefix, e.g. "openai/gpt-4o-mini" → key "gpt-4o-mini".
 
-_COST: dict[str, float] = {
-    "gpt-4o-mini": 0.30,
-    "claude-3.5-haiku": 2.40,
-    "gemini-2.0-flash": 0.25,
-    "gemini-2.5-flash": 0.60,
-    "grok-2": 6.00,
-    "grok-4.3": 3.00,
+_COST_IO: dict[str, tuple[float, float]] = {
+    # Low tier
+    "llama-3.2-3b-instruct": (0.051, 0.34),
+    "mistral-7b-instruct": (0.13, 0.13),
+    "gemini-2.0-flash": (0.10, 0.40),
+    "gpt-4o-mini": (0.15, 0.60),
+    # Medium tier additions
+    "claude-3.5-haiku": (0.80, 4.00),
+    "gemini-2.5-flash": (0.30, 2.50),
+    "grok-4.3": (1.25, 2.50),
+    # High tier
+    "gpt-4o": (2.50, 10.00),
+    "claude-3.5-sonnet": (3.00, 15.00),
+    "gemini-2.5-pro": (1.25, 10.00),
+    "grok-3": (3.00, 15.00),
+    # Legacy / misc
+    "grok-2": (2.00, 10.00),
+    "gemini-2.0-flash-lite": (0.075, 0.30),
 }
-_DEFAULT_COST = 1.00
+_DEFAULT_COST_IO: tuple[float, float] = (1.00, 4.00)
+
+
+def _io_for_slug(name: str) -> tuple[float, float]:
+    if name in _COST_IO:
+        return _COST_IO[name]
+    for slug, rates in _COST_IO.items():
+        if name.startswith(slug) or slug.startswith(name):
+            return rates
+    return _DEFAULT_COST_IO
 
 
 def _cost_per_token(model: str) -> float:
-    # Strip provider prefix (e.g. "openai/gpt-4o" → "gpt-4o") before matching
+    """Blended $/token for legacy stats calculation (input-weighted average)."""
     name = model.split("/", 1)[-1]
-    if name in _COST:
-        return _COST[name] / 1_000_000
-    for slug, rate in _COST.items():
-        if name.startswith(slug):
-            return rate / 1_000_000
-    return _DEFAULT_COST / 1_000_000
+    inp, out = _io_for_slug(name)
+    # Approximate: 70% input, 30% output tokens in a typical run
+    return (inp * 0.7 + out * 0.3) / 1_000_000
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -294,3 +313,122 @@ async def get_openrouter_stats(
     )
 
     return SuccessResponse(data=OpenRouterStats(key=key_data, top_models=top_models))
+
+
+# ── LLM Effort Tiers ─────────────────────────────────────────────────────────
+
+
+class TierModelInfo(BaseModel):
+    model: str
+    display: str  # friendly short name
+    cost_per_1m_input: float  # USD, from OpenRouter pricing cache
+    cost_per_1m_output: float
+
+
+class TierInfo(BaseModel):
+    key: str
+    label: str
+    desc: str
+    council_models: list[TierModelInfo]
+    synthesizer: TierModelInfo
+    est_cost_per_run_usd: float
+
+
+class TiersResponse(BaseModel):
+    tiers: list[TierInfo]
+    default_tier: str
+
+
+def _model_pricing(model_id: str, cached_models: list[ModelInfo]) -> tuple[float, float]:
+    """Return (input $/1M, output $/1M). Live OpenRouter cache first, then hardcoded table."""
+    slug = model_id.split("/", 1)[-1]
+    for m in cached_models:
+        if m.id == model_id or m.id.endswith("/" + slug):
+            if m.pricing:
+                return (
+                    round(m.pricing.prompt_per_token * 1_000_000, 4),
+                    round(m.pricing.completion_per_token * 1_000_000, 4),
+                )
+    inp, out = _io_for_slug(slug)
+    return round(inp, 4), round(out, 4)
+
+
+@router.get(
+    "/tiers",
+    response_model=SuccessResponse[TiersResponse],
+    dependencies=[Depends(_limiter)],
+)
+async def get_llm_tiers(
+    _: Annotated[Any, Depends(get_current_user)],  # auth required
+) -> SuccessResponse[TiersResponse]:
+    """Return LLM effort tier definitions with real-time pricing from OpenRouter."""
+    from promptly.llm.tiers import DEFAULT_TIER, TIERS
+
+    # If the model cache is stale/empty, refresh it so we show live prices.
+    # Fall back to hardcoded _COST_IO table if OpenRouter is unreachable.
+    global _models_cache, _models_cache_ts  # noqa: PLW0603
+    if not _models_cache:
+        try:
+            headers = {"Authorization": f"Bearer {_api_key()}"}
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.get(f"{_BASE}/models", headers=headers)
+            if resp.status_code == 200:
+                raw = resp.json()
+                fresh: list[ModelInfo] = []
+                for m in raw.get("data", []):
+                    if not isinstance(m, dict):
+                        continue
+                    mid = str(m.get("id") or "")
+                    if not mid:
+                        continue
+                    rp = m.get("pricing")
+                    pricing = None
+                    if isinstance(rp, dict):
+                        try:
+                            pricing = ModelPricing(
+                                prompt_per_token=float(str(rp.get("prompt") or 0)),
+                                completion_per_token=float(str(rp.get("completion") or 0)),
+                            )
+                        except (ValueError, TypeError):
+                            pass
+                    fresh.append(
+                        ModelInfo(
+                            id=mid,
+                            name=str(m.get("name") or mid),
+                            context_length=None,
+                            modality=None,
+                            pricing=pricing,
+                        )
+                    )
+                _models_cache = fresh
+                _models_cache_ts = time.monotonic()
+        except Exception:  # noqa: BLE001, S110
+            pass  # fall back to _COST_IO hardcoded table
+
+    cached = list(_models_cache)
+
+    def _info(model_id: str) -> TierModelInfo:
+        inp, out = _model_pricing(model_id, cached)
+        display = model_id.split("/", 1)[-1]
+        return TierModelInfo(
+            model=model_id,
+            display=display,
+            cost_per_1m_input=inp,
+            cost_per_1m_output=out,
+        )
+
+    tiers_out: list[TierInfo] = []
+    for t in ("low", "medium", "high"):
+        td = TIERS[t]
+        tiers_out.append(
+            TierInfo(
+                key=td.key,
+                label=td.label,
+                desc=td.desc,
+                council_models=[_info(m) for m in td.council_models],
+                synthesizer=_info(td.synthesizer),
+                est_cost_per_run_usd=td.est_cost_per_run_usd,
+            )
+        )
+
+    return SuccessResponse(data=TiersResponse(tiers=tiers_out, default_tier=DEFAULT_TIER))

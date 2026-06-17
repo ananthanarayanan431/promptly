@@ -24,6 +24,7 @@ def process_chat_async(
     name: str | None = None,
     category_slug: str | None = None,
     force_optimize: bool = False,
+    llm_effort: str | None = None,
 ) -> dict[str, Any]:
     """
     Run the full LangGraph council pipeline as a background job.
@@ -186,6 +187,7 @@ def process_chat_async(
                         category_description=cat_description,
                         category_is_predefined=cat_is_predefined,
                         force_optimize=force_optimize,
+                        llm_effort=llm_effort,
                     )
 
                 # Performance gate short-circuited — refund 5 of the 10 credits.
