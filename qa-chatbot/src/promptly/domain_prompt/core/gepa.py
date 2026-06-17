@@ -84,37 +84,76 @@ class Candidate:
     ancestry: str = ""  # lineage lesson passed to the next mutation
 
 
-def _pareto_frontier(pool: list[Candidate]) -> list[int]:
-    """Return indices of non-dominated candidates in the pool.
+def _select_candidate(pool: list[Candidate]) -> int:
+    """Algorithm 2 from arXiv:2507.19457 — Pareto-based candidate selection.
 
-    Candidate i is dominated if there exists j such that
-    score_j[k] >= score_i[k] for all k, and > for at least one k.
+    1. For each task instance i, find the max score and the candidates achieving it.
+    2. C = union of those instance-wise leaders.
+    3. Remove dominated candidates from C → Ĉ.
+    4. f[Φ] = number of instances where Φ ∈ Ĉ ∩ P*(i).
+    5. Sample proportional to f[Φ].
     """
-    n = len(pool)
-    dominated = [False] * n
-    for i in range(n):
-        for j in range(n):
-            if i == j:
-                continue
-            si = pool[i].pareto_scores
-            sj = pool[j].pareto_scores
-            if not si or not sj:
-                continue
-            length = min(len(si), len(sj))
-            if all(sj[k] >= si[k] for k in range(length)) and any(
-                sj[k] > si[k] for k in range(length)
-            ):
-                dominated[i] = True
-                break
-    return [i for i in range(n) if not dominated[i]]
-
-
-def _sample_from_frontier(pool: list[Candidate]) -> int:
-    """Sample a candidate index uniformly from the Pareto frontier."""
-    frontier = _pareto_frontier(pool)
-    if not frontier:
+    if len(pool) <= 1:
         return 0
-    return random.choice(frontier)  # noqa: S311
+
+    n = len(pool)
+    n_instances = max((len(c.pareto_scores) for c in pool if c.pareto_scores), default=0)
+    if n_instances == 0:
+        return 0
+
+    def _s(k: int, i: int) -> float:
+        scores = pool[k].pareto_scores
+        return scores[i] if i < len(scores) else 0.0
+
+    # Step 3-6: For each instance i, P*[i] = candidates achieving the max score.
+    p_star: list[set[int]] = []
+    for i in range(n_instances):
+        best = max(_s(k, i) for k in range(n))
+        p_star.append({k for k in range(n) if abs(_s(k, i) - best) < 1e-9})
+
+    # Step 7: C = union of all P*[i] — candidates leading on ≥1 instance.
+    c_set: set[int] = set().union(*p_star) if p_star else set(range(n))
+    c_list = list(c_set)
+
+    # Steps 9-11: Remove dominated candidates from C.
+    dominated: set[int] = set()
+    for a in c_list:
+        if a in dominated:
+            continue
+        for b in c_list:
+            if a == b or b in dominated:
+                continue
+            a_sc = [_s(a, i) for i in range(n_instances)]
+            b_sc = [_s(b, i) for i in range(n_instances)]
+            if all(b_sc[i] >= a_sc[i] for i in range(n_instances)) and any(
+                b_sc[i] > a_sc[i] for i in range(n_instances)
+            ):
+                dominated.add(a)
+                break
+
+    c_hat = [k for k in c_list if k not in dominated]
+    if not c_hat:
+        c_hat = c_list  # fallback: keep all leaders if none dominate others
+
+    # Steps 12-13: f[Φ] = number of instances where Φ is a non-dominated leader.
+    c_hat_set = set(c_hat)
+    coverage: dict[int, int] = {k: 0 for k in c_hat}
+    for i in range(n_instances):
+        for k in p_star[i]:
+            if k in c_hat_set:
+                coverage[k] = coverage[k] + 1
+
+    # Step 14: Sample proportional to f[Φ].
+    total = sum(coverage.values())
+    if total == 0:
+        return random.choice(c_hat)  # noqa: S311
+    r = random.random() * total  # noqa: S311
+    cumsum = 0.0
+    for k in c_hat:
+        cumsum += coverage[k]
+        if cumsum >= r:
+            return k
+    return c_hat[-1]
 
 
 def _make_cells(avg_score: float) -> list[float]:
@@ -431,8 +470,8 @@ async def optimize_gepa_prompt(
     while budget_used < BUDGET:
         iter_idx += 1
 
-        # Step 4: Pareto-sample
-        parent_idx = _sample_from_frontier(pool)
+        # Step 4: Pareto-sample (Algorithm 2)
+        parent_idx = _select_candidate(pool)
         parent = pool[parent_idx]
         pending: dict[str, Any] = {"parent": parent.id, "fail": False}
 
@@ -581,9 +620,14 @@ async def optimize_gepa_prompt(
                 for c in pool:
                     c.star = False
 
-            ancestry_lesson = (
-                f"{parent.id}→Φ{cand_counter}: σ {parent.avg_score:.2f}→{prime_avg:.2f} "
-                f"({'accepted' if accepted else 'discarded'}) — {mb_traces[0].feedback[:120] if mb_traces else ''}"  # noqa: E501
+            # Accumulate the full genetic lineage of lessons (paper §3: "GEPA
+            # accumulates knowledge along the genetic tree").
+            new_lesson = (
+                f"{parent.id}→Φ{cand_counter}: σ {parent.avg_score:.2f}→{prime_avg:.2f}"
+                f" — {mb_traces[0].feedback[:120] if mb_traces else ''}"
+            )
+            accumulated_ancestry = (
+                (parent.ancestry + "\n" + new_lesson).strip() if parent.ancestry else new_lesson
             )
 
             new_cand = Candidate(
@@ -596,7 +640,7 @@ async def optimize_gepa_prompt(
                 if score_delta >= 0
                 else f"{score_delta * 100:.2f}",  # noqa: E501
                 star=is_star,
-                ancestry=ancestry_lesson,
+                ancestry=accumulated_ancestry,
             )
             pool.append(new_cand)
             cand_counter += 1
