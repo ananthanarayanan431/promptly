@@ -178,8 +178,12 @@ function SetupTab({ project, onSaved, onStart }: {
   const [schedule, setSchedule] = useState('cosine');
   const [budgetTier, setBudgetTier] = useState<'low'|'medium'|'high'>('low');
   const [initialSkill, setInitialSkill] = useState('');
-  const [showSkillEditor, setShowSkillEditor] = useState(false);
-  const [examples, setExamples] = useState<SkillExample[]>([{ input: '', expected: '' }]);
+  const [showSkillEditor, setShowSkillEditor] = useState(true); // open by default so user can paste immediately
+  const [examples, setExamples] = useState<SkillExample[]>([
+    { input: '', expected: '' },
+    { input: '', expected: '' },
+    { input: '', expected: '' },
+  ]);
   const [pasteText, setPasteText] = useState('');
   const [showPaste, setShowPaste] = useState(false);
   const qc = useQueryClient();
@@ -294,64 +298,110 @@ function SetupTab({ project, onSaved, onStart }: {
         <div style={{ ...C.card, padding: 18 }}>
           <SectionHd right={
             <div style={{ display: 'flex', gap: 6 }}>
-              <button className="ply-btn ply-btn-sm" onClick={() => setShowPaste(s => !s)}><Icon name="upload" size={11} /> Paste bulk</button>
-              <button className="ply-btn ply-btn-sm" onClick={() => setExamples(e => [...e, { input: '', expected: '' }])}><Icon name="plus" size={11} /> Add row</button>
+              <button className="ply-btn ply-btn-sm" onClick={() => setShowPaste(s => !s)} style={{ color: showPaste ? 'var(--primary)' : undefined }}>
+                <Icon name="upload" size={11} /> {showPaste ? 'Hide paste' : 'Paste bulk'}
+              </button>
+              <button className="ply-btn ply-btn-sm" onClick={() => setExamples(e => [...e, { input: '', expected: '' }])}>
+                <Icon name="plus" size={11} /> Add row
+              </button>
             </div>
           }>
-            Q&A examples <span style={{ color: 'var(--text-subtle)', textTransform: 'none', letterSpacing: 0, fontWeight: 400 }}>({validCount} valid · min 6)</span>
+            Q&amp;A example pairs
+            <span style={{ color: 'var(--text-subtle)', textTransform: 'none', letterSpacing: 0, fontWeight: 400, marginLeft: 6 }}>
+              {validCount} valid · minimum 6 required
+            </span>
           </SectionHd>
 
+          {/* Bulk paste panel */}
           {showPaste && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
-              <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>Format: <code style={{ fontFamily: 'var(--mono)' }}>Q: ... / A: ...</code> or <code style={{ fontFamily: 'var(--mono)' }}>INPUT: ... / EXPECTED: ...</code></div>
-              <textarea value={pasteText} onChange={e => setPasteText(e.target.value)} rows={5} placeholder={"Q: What is the capital of France?\nA: Paris\nQ: Who wrote Hamlet?\nA: William Shakespeare"}
-                style={{ width: '100%', padding: '8px 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', fontSize: 12, fontFamily: 'var(--mono)', resize: 'vertical', outline: 'none', boxSizing: 'border-box' }} />
-              <button className="ply-btn ply-btn-sm" style={{ alignSelf: 'flex-start' }} onClick={parsePaste}>Parse &amp; import</button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14, padding: '12px 14px', borderRadius: 9, background: 'var(--primary-soft)', border: '1px solid color-mix(in oklab, var(--primary) 20%, transparent)' }}>
+              <div style={{ fontSize: 12.5, fontWeight: 500 }}>Paste multiple pairs at once</div>
+              <div style={{ fontSize: 11.5, color: 'var(--text-muted)', lineHeight: 1.55 }}>
+                Use either format, one pair per two lines:
+                <code style={{ fontFamily: 'var(--mono)', display: 'block', marginTop: 4, padding: '4px 8px', borderRadius: 5, background: 'var(--surface)', border: '1px solid var(--border)', fontSize: 11 }}>
+                  Q: Write a catchy headline for an AI article<br />
+                  A: "The AI That Reads Your Mind (And Your Calendar)"<br />
+                  Q: How to grow on LinkedIn in 2025?<br />
+                  A: Post consistently, engage in comments...
+                </code>
+              </div>
+              <textarea value={pasteText} onChange={e => setPasteText(e.target.value)} rows={7}
+                placeholder={"Q: Your question here\nA: The expected answer here\nQ: Second question\nA: Second answer\n..."}
+                style={{ width: '100%', padding: '8px 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontSize: 12, fontFamily: 'var(--mono)', resize: 'vertical', outline: 'none', boxSizing: 'border-box', lineHeight: 1.6 }} />
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button className="ply-btn ply-btn-primary ply-btn-sm" disabled={!pasteText.trim()} onClick={parsePaste} style={{ opacity: !pasteText.trim() ? 0.5 : 1 }}>
+                  <Icon name="check" size={12} /> Parse &amp; import pairs
+                </button>
+                <button className="ply-btn ply-btn-sm" onClick={() => setPasteText('')}>Clear</button>
+              </div>
             </div>
           )}
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 7, maxHeight: 260, overflowY: 'auto' }}>
+          {/* Column headers */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 7, marginBottom: 6 }}>
+            <div style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '.06em', paddingLeft: 9 }}>Task input / question</div>
+            <div style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '.06em', paddingLeft: 9 }}>Reference answer (expected)</div>
+            <div style={{ width: 32 }} />
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 320, overflowY: 'auto' }}>
             {examples.map((ex, i) => (
               <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 7, alignItems: 'flex-start' }}>
-                <textarea value={ex.input} rows={2} placeholder="Task input / question"
+                <textarea value={ex.input} rows={2}
+                  placeholder={i === 0 ? 'e.g. Write a LinkedIn post about AI trends in 2025' : 'Task input / question'}
                   onChange={e => setExamples(l => l.map((x, j) => j === i ? { ...x, input: e.target.value } : x))}
-                  style={{ padding: '6px 9px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', fontSize: 12, resize: 'none', outline: 'none', fontFamily: 'inherit' }} />
-                <textarea value={ex.expected} rows={2} placeholder="Expected answer"
+                  style={{ padding: '7px 10px', borderRadius: 7, border: `1px solid ${ex.input.trim() ? 'var(--border)' : 'var(--border)'}`, background: 'var(--surface-2)', color: 'var(--text)', fontSize: 12.5, resize: 'vertical', outline: 'none', fontFamily: 'inherit', lineHeight: 1.5 }} />
+                <textarea value={ex.expected} rows={2}
+                  placeholder={i === 0 ? 'e.g. 🚀 AI isn\'t coming for your job — it\'s coming for your excuses...' : 'Reference / expected answer'}
                   onChange={e => setExamples(l => l.map((x, j) => j === i ? { ...x, expected: e.target.value } : x))}
-                  style={{ padding: '6px 9px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', fontSize: 12, resize: 'none', outline: 'none', fontFamily: 'inherit' }} />
-                <button className="ply-btn ply-btn-sm" style={{ color: 'var(--danger)', marginTop: 2 }} onClick={() => setExamples(l => l.filter((_, j) => j !== i))}><Icon name="x" size={11} /></button>
+                  style={{ padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', fontSize: 12.5, resize: 'vertical', outline: 'none', fontFamily: 'inherit', lineHeight: 1.5 }} />
+                <button className="ply-btn ply-btn-sm" style={{ color: 'var(--danger)', marginTop: 3 }} onClick={() => setExamples(l => l.filter((_, j) => j !== i))}><Icon name="x" size={11} /></button>
               </div>
             ))}
           </div>
 
-          <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <button className="ply-btn ply-btn-primary ply-btn-sm" disabled={validCount < 6 || saving} onClick={() => saveExamples()}
               style={{ opacity: validCount < 6 ? 0.5 : 1, cursor: validCount < 6 ? 'not-allowed' : 'pointer' }}>
-              <Icon name="check" size={12} /> {saving ? 'Saving…' : `Save ${validCount} examples`}
+              <Icon name="check" size={12} /> {saving ? 'Saving…' : `Save ${validCount} example${validCount !== 1 ? 's' : ''}`}
             </button>
-            {validCount < 6 && <span style={{ fontSize: 11.5, color: 'var(--warning)' }}>Add at least 6 examples to enable training.</span>}
+            <div style={{ fontSize: 11.5, color: validCount >= 6 ? 'var(--success)' : 'var(--text-subtle)' }}>
+              {validCount >= 6
+                ? <><Icon name="check" size={11} style={{ display: 'inline', marginRight: 4 }} />{validCount} examples ready</>
+                : `${Math.max(0, 6 - validCount)} more needed to enable training`}
+            </div>
           </div>
         </div>
 
         {/* Initial skill */}
         <div style={{ ...C.card, padding: 18 }}>
           <SectionHd right={
-            <button className="ply-btn ply-btn-sm" onClick={() => setShowSkillEditor(s => !s)}>
-              <Icon name={showSkillEditor ? 'chevronD' : 'chevronR'} size={11} />{showSkillEditor ? 'Hide' : 'Edit'}
-            </button>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              {showSkillEditor && initialSkill && <span style={{ fontFamily: 'var(--mono)', fontSize: 10.5, color: 'var(--text-subtle)' }}>{initialSkill.trim().split(/\s+/).length} words</span>}
+              <button className="ply-btn ply-btn-sm" onClick={() => setShowSkillEditor(s => !s)}>
+                <Icon name={showSkillEditor ? 'chevronD' : 'chevronR'} size={11} />{showSkillEditor ? 'Collapse' : 'Expand'}
+              </button>
+            </div>
           }>Initial skill document</SectionHd>
+
+          {/* Always show a brief hint */}
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10, lineHeight: 1.5 }}>
+            Paste your existing system prompt or write a starting point. SkillOpt will evolve it — leave blank to auto-generate from the task description.
+          </div>
+
           {!showSkillEditor && (
-            <div style={{ padding: '10px 12px', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)', fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.55, fontFamily: 'var(--mono)', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-              {initialSkill || `# Skill — ${project.task_description.slice(0, 60)}\n\nFollow the task instructions carefully.\nThink step by step before answering.\nBe concise and accurate.`}
+            <div style={{ padding: '10px 12px', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)', fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.55, fontFamily: 'var(--mono)', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden', cursor: 'pointer' }}
+              onClick={() => setShowSkillEditor(true)}>
+              {initialSkill || <span style={{ color: 'var(--text-subtle)', fontFamily: 'inherit' }}>Click to expand and paste your skill document…</span>}
             </div>
           )}
           {showSkillEditor && (
-            <textarea value={initialSkill} onChange={e => setInitialSkill(e.target.value)} spellCheck={false} rows={8}
-              placeholder={`# Skill — ${project.name}\n\nDescribe how the agent should approach this task…`}
-              style={{ width: '100%', padding: 12, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', fontFamily: 'var(--mono)', fontSize: 12.5, lineHeight: 1.6, outline: 'none', resize: 'vertical', boxSizing: 'border-box' }} />
+            <textarea value={initialSkill} onChange={e => setInitialSkill(e.target.value)} spellCheck={false}
+              placeholder={`# Skill — ${project.name}\n\nPaste your existing system prompt here, or describe the reasoning strategy the agent should follow:\n\n1. When given a task, first...\n2. Always verify by...\n3. Output format: ...`}
+              style={{ width: '100%', minHeight: 220, padding: 12, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', fontFamily: 'var(--mono)', fontSize: 12.5, lineHeight: 1.6, outline: 'none', resize: 'vertical', boxSizing: 'border-box' }} />
           )}
           <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-            <button className="ply-btn ply-btn-sm" onClick={() => setInitialSkill('')}><Icon name="fileText" size={12} /> Reset to template</button>
+            <button className="ply-btn ply-btn-sm" onClick={() => { setInitialSkill(''); setShowSkillEditor(true); }}><Icon name="fileText" size={12} /> Clear</button>
             <div style={{ flex: 1 }} />
             <span style={{ fontFamily: 'var(--mono)', fontSize: 10.5, color: 'var(--text-subtle)' }}>target: 300–2,000 tokens</span>
           </div>
@@ -1013,9 +1063,13 @@ function ProjectList({ onSelect }: { onSelect: (p: SkillProject) => void }) {
     },
   });
 
-  const { mutate: create, isPending } = useMutation({
+  const { mutate: create, isPending, error: createError } = useMutation({
     mutationFn: async () => {
-      const res = await api.post<{ data: SkillProject }>('/api/v1/skill-opt/', { name: name.trim(), task_description: taskDesc.trim() });
+      const n = name.trim();
+      const t = taskDesc.trim();
+      if (!n) throw new Error('Project name is required.');
+      if (!t) throw new Error('Task description is required.');
+      const res = await api.post<{ data: SkillProject }>('/api/v1/skill-opt/', { name: n, task_description: t });
       return res.data.data;
     },
     onSuccess: (p) => { qc.invalidateQueries({ queryKey: ['skill-opt-projects'] }); onSelect(p); setShowCreate(false); setName(''); setTaskDesc(''); },
@@ -1046,11 +1100,19 @@ function ProjectList({ onSelect }: { onSelect: (p: SkillProject) => void }) {
             style={{ width: '100%', height: 34, padding: '0 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontSize: 12.5, outline: 'none', boxSizing: 'border-box' }} />
           <textarea value={taskDesc} onChange={e => setTaskDesc(e.target.value)} rows={3} placeholder="Task description — what should the skill teach the agent to do well?"
             style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontSize: 12.5, resize: 'none', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }} />
-          <div style={{ display: 'flex', gap: 6 }}>
-            <button className="ply-btn ply-btn-primary ply-btn-sm" disabled={!name.trim() || taskDesc.trim().length < 10 || isPending} onClick={() => create()} style={{ opacity: (!name.trim() || taskDesc.trim().length < 10) ? 0.5 : 1 }}>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button className="ply-btn ply-btn-primary ply-btn-sm"
+              disabled={!name.trim() || !taskDesc.trim() || isPending}
+              onClick={() => create()}
+              style={{ opacity: (!name.trim() || !taskDesc.trim()) ? 0.5 : 1 }}>
               <Icon name="check" size={12} />{isPending ? 'Creating…' : 'Create'}
             </button>
-            <button className="ply-btn ply-btn-sm" onClick={() => setShowCreate(false)}>Cancel</button>
+            <button className="ply-btn ply-btn-sm" onClick={() => { setShowCreate(false); setName(''); setTaskDesc(''); }}>Cancel</button>
+            {createError && (
+              <span style={{ fontSize: 11.5, color: 'var(--danger)', flex: 1 }}>
+                {(createError as Error).message}
+              </span>
+            )}
           </div>
         </div>
       )}

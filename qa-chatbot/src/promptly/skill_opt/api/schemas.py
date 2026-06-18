@@ -10,8 +10,8 @@ from pydantic import BaseModel, Field
 class CreateSkillProjectRequest(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     task_description: str = Field(
-        min_length=10,
-        max_length=5000,
+        min_length=1,
+        max_length=50000,
         description="What task should the skill document optimise for?",
     )
     description: str | None = Field(default=None, max_length=500)
