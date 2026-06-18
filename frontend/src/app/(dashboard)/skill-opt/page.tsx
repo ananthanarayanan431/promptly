@@ -1,371 +1,205 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import type { SkillProject, SkillExample, SkillOptLiveState, SkillOptLiveStateResponse } from '@/types/skill-opt';
-import { PageHeader } from '@/components/layout/page-header';
 
-/* ── Icon helper ─────────────────────────────────────────────────── */
-const PATHS: Record<string, string> = {
-  bolt:      'M13 2L3 14h9l-1 8 10-12h-9l1-8z',
-  plus:      'M12 5v14M5 12h14',
-  trash:     'M3 6h18M8 6V4h8v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6',
-  sparkles:  'M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M5.6 18.4l2.8-2.8M15.6 8.4l2.8-2.8',
-  check:     'M20 6 9 17 4 12',
-  x:         'M18 6 6 18M6 6l12 12',
-  copy:      'M8 17.929H6c-1.105 0-2-.912-2-2.036V5.107C4 3.983 4.895 3 6 3h8c1.105 0 2 .983 2 2.107V6M10 20.036V9.107C10 7.983 10.895 7 12 7h8c1.105 0 2 .983 2 2.107v10.929C22 21.017 21.105 22 20 22h-8c-1.105 0-2-.983-2-2.036z',
-  chevronR:  'M9 18l6-6-6-6',
-  chevronD:  'M6 9l6 6 6-6',
-  upload:    'M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12',
-  zap:       'M13 2L3 14h9l-1 8 10-12h-9l1-8z',
-  edit:      'M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z',
+/* ── Icon (matches design system paths) ─────────────────────────── */
+const ICON: Record<string, React.ReactNode> = {
+  bolt:        <path d="m13 2-9 12h8l-1 8 9-12h-9l1-8z"/>,
+  plus:        <><path d="M12 5v14"/><path d="M5 12h14"/></>,
+  sparkles:    <><path d="M12 3v4"/><path d="M12 17v4"/><path d="M3 12h4"/><path d="M17 12h4"/><path d="M5.5 5.5l2.5 2.5"/><path d="M16 16l2.5 2.5"/><path d="M5.5 18.5l2.5-2.5"/><path d="M16 8l2.5-2.5"/></>,
+  cpu:         <><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v3"/><path d="M15 1v3"/><path d="M9 20v3"/><path d="M15 20v3"/><path d="M20 9h3"/><path d="M20 14h3"/><path d="M1 9h3"/><path d="M1 14h3"/></>,
+  fileText:    <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6"/><path d="M9 17h6"/></>,
+  check:       <path d="m20 6-11 11-5-5"/>,
+  x:           <><path d="M18 6 6 18"/><path d="m6 6 12 12"/></>,
+  trophy:      <><path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 4h10v6a5 5 0 0 1-10 0z"/><path d="M7 6H4a2 2 0 0 0 0 4h3"/><path d="M17 6h3a2 2 0 0 1 0 4h-3"/></>,
+  chevronR:    <path d="m9 6 6 6-6 6"/>,
+  chevronD:    <path d="m6 9 6 6 6-6"/>,
+  info:        <><circle cx="12" cy="12" r="9"/><path d="M12 16v-4"/><path d="M12 8h.01"/></>,
+  shield:      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>,
+  zap:         <path d="m13 2-9 12h8l-1 8 9-12h-9l1-8z"/>,
+  layers:      <><path d="m12 2 9 5-9 5-9-5 9-5z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/></>,
+  refresh:     <><path d="M21 12a9 9 0 0 1-9 9 9 9 0 0 1-6.4-2.6L3 16"/><path d="M3 12a9 9 0 0 1 9-9 9 9 0 0 1 6.4 2.6L21 8"/><path d="M21 3v5h-5"/><path d="M3 21v-5h5"/></>,
+  activity:    <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>,
+  copy:        <><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></>,
+  download:    <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></>,
+  trash:       <><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></>,
+  upload:      <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></>,
+  play:        <path d="m6 4 14 8-14 8z"/>,
 };
-function Icon({ name, size = 14, color }: { name: string; size?: number; color?: string }) {
+
+function Icon({ name, size = 14, color, style }: { name: string; size?: number; color?: string; style?: React.CSSProperties }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
-      stroke={color || 'currentColor'} strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
-      {(PATHS[name] || '').split('M').filter(Boolean).map((seg, i) => (
-        <path key={i} d={`M${seg}`} />
-      ))}
+      stroke={color ?? 'currentColor'} strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round"
+      style={{ flexShrink: 0, ...style }}>
+      {ICON[name] ?? null}
     </svg>
   );
 }
 
-/* ── Stat chip ───────────────────────────────────────────────────── */
-function StatChip({ label, value, color }: { label: string; value: React.ReactNode; color?: string }) {
+/* ── Design tokens mapped to our CSS vars ───────────────────────── */
+const C = {
+  card:        { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, boxShadow: '0 1px 2px rgba(15,15,30,.04)' },
+  sectionHd:   { fontSize: 10.5, fontWeight: 600, letterSpacing: '.08em', textTransform: 'uppercase' as const, color: 'var(--text-subtle)' },
+};
+
+/* ── Status pill ─────────────────────────────────────────────────── */
+function StatusPill({ status }: { status: string }) {
+  if (status === 'completed') return <span className="ply-pill ply-pill-success" style={{ fontSize: 11 }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: 'currentColor', display: 'inline-block' }} /> Trained</span>;
+  if (status === 'optimizing') return <span className="ply-pill ply-pill-primary" style={{ fontSize: 11 }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: 'currentColor', display: 'inline-block', animation: 'pulse-dot 1.2s ease-in-out infinite' }} /> Training</span>;
+  if (status === 'failed') return <span className="ply-pill" style={{ fontSize: 11, color: 'var(--danger)' }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: 'currentColor', display: 'inline-block' }} /> Failed</span>;
+  return <span className="ply-pill" style={{ fontSize: 11 }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: 'currentColor', display: 'inline-block' }} /> Untrained</span>;
+}
+
+/* ── Section header ──────────────────────────────────────────────── */
+function SectionHd({ children, right }: { children: React.ReactNode; right?: React.ReactNode }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      <span style={{ fontSize: 10, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 600 }}>{label}</span>
-      <span className="mono" style={{ fontSize: 18, fontWeight: 700, color: color ?? 'var(--text)', lineHeight: 1 }}>{value}</span>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 0 10px', gap: 8 }}>
+      <div style={C.sectionHd}>{children}</div>
+      {right}
     </div>
+  );
+}
+
+/* ── Copy button ─────────────────────────────────────────────────── */
+function CopyBtn({ text }: { text: string }) {
+  const [done, setDone] = useState(false);
+  return (
+    <button className="ply-btn ply-btn-sm" onClick={() => { navigator.clipboard?.writeText(text); setDone(true); setTimeout(() => setDone(false), 1400); }}>
+      <Icon name={done ? 'check' : 'copy'} size={12} />{done ? 'Copied' : 'Copy'}
+    </button>
+  );
+}
+
+/* ── Slider ──────────────────────────────────────────────────────── */
+function Slider({ value, min, max, onChange, format }: { value: number; min: number; max: number; onChange: (v: number) => void; format?: (v: number) => string }) {
+  return (
+    <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontFamily: 'var(--mono)', fontSize: 13, fontWeight: 600, color: 'var(--primary)' }}>{format ? format(value) : value}</span>
+        <span style={{ fontFamily: 'var(--mono)', fontSize: 10.5, color: 'var(--text-subtle)' }}>{min} … {max}</span>
+      </div>
+      <input type="range" min={min} max={max} value={value} onChange={e => onChange(+e.target.value)}
+        style={{ width: '100%', accentColor: 'var(--primary)' }} />
+    </div>
+  );
+}
+
+/* ── Hyper row ───────────────────────────────────────────────────── */
+function HyperRow({ icon, label, hint, analogue, children }: { icon: string; label: string; hint: string; analogue?: string; children: React.ReactNode }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '14px 0', borderTop: '1px solid var(--border)' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Icon name={icon} size={13} color="var(--text-muted)" />
+          <span style={{ fontSize: 12.5, fontWeight: 600 }}>{label}</span>
+        </div>
+        <div style={{ fontSize: 11.5, color: 'var(--text-muted)', lineHeight: 1.5 }}>{hint}</div>
+        {analogue && <div style={{ fontFamily: 'var(--mono)', fontSize: 10.5, color: 'var(--text-subtle)', marginTop: 2 }}>↳ <span style={{ color: 'var(--accent)' }}>{analogue}</span></div>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/* ── Score chart (SVG) ───────────────────────────────────────────── */
+function ScoreChart({ history, baseline }: { history: { score: number; accepted: boolean; best?: boolean }[]; baseline: number }) {
+  const W = 520, H = 180, PL = 36, PR = 14, PT = 14, PB = 26;
+  const iW = W - PL - PR, iH = H - PT - PB;
+  const xMax = Math.max(8, history.length);
+  const pts = history.map((h, i) => ({ ...h, x: PL + i / (xMax - 1) * iW, y: PT + (1 - h.score) * iH }));
+  const path = pts.length > 1 ? 'M ' + pts.map(p => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' L ') : '';
+  const baseY = PT + (1 - baseline) * iH;
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} style={{ display: 'block', overflow: 'visible' }}>
+      {[0, 0.25, 0.5, 0.75, 1].map(v => {
+        const y = PT + (1 - v) * iH;
+        return <g key={v}>
+          <line x1={PL} x2={W - PR} y1={y} y2={y} stroke="var(--border)" strokeWidth="1" strokeDasharray={v === 0 || v === 1 ? '' : '3 4'} />
+          <text x={PL - 6} y={y + 3.5} fontSize="9.5" fill="var(--text-subtle)" textAnchor="end" fontFamily="var(--mono)">{v.toFixed(2)}</text>
+        </g>;
+      })}
+      <line x1={PL} x2={W - PR} y1={baseY} y2={baseY} stroke="var(--text-subtle)" strokeWidth="1" strokeDasharray="2 3" />
+      <text x={W - PR} y={baseY - 4} fontSize="9.5" fill="var(--text-subtle)" textAnchor="end" fontFamily="var(--mono)">baseline {baseline.toFixed(2)}</text>
+      {path && <>
+        <path d={path} fill="none" stroke="var(--primary)" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+        <path d={`${path} L ${pts[pts.length-1].x} ${PT+iH} L ${pts[0].x} ${PT+iH} Z`} fill="var(--primary)" opacity="0.08" />
+      </>}
+      {pts.map((p, i) => (
+        <g key={i}>
+          {!p.accepted && <>
+            <line x1={p.x-4} y1={p.y-4} x2={p.x+4} y2={p.y+4} stroke="var(--danger)" strokeWidth="1.6" strokeLinecap="round" />
+            <line x1={p.x-4} y1={p.y+4} x2={p.x+4} y2={p.y-4} stroke="var(--danger)" strokeWidth="1.6" strokeLinecap="round" />
+          </>}
+          {p.accepted && <circle cx={p.x} cy={p.y} r={p.best ? 5.5 : 3.5} fill={p.best ? 'var(--success)' : 'var(--primary)'} stroke={p.best ? 'white' : 'var(--surface)'} strokeWidth="2" />}
+          {p.best && <circle cx={p.x} cy={p.y} r="10" fill="none" stroke="var(--success)" strokeWidth="1.5" opacity="0.45" />}
+        </g>
+      ))}
+      {Array.from({ length: Math.min(xMax, 8) }).map((_, i) => (
+        <text key={i} x={PL + i / (Math.min(xMax,8)-1||1) * iW} y={H-PB+14} fontSize="9.5" fill="var(--text-subtle)" textAnchor="middle" fontFamily="var(--mono)">{i+1}</text>
+      ))}
+    </svg>
   );
 }
 
 /* ── Phase label ─────────────────────────────────────────────────── */
 const PHASE_LABELS: Record<string, string> = {
   seed: 'Generating seed skill…',
-  rollout: 'Running examples with current skill…',
-  reflect: 'Analyzing traces & proposing edits…',
-  gate: 'Validating candidate skill…',
-  slow_update: 'Epoch meta-update…',
-  completed: 'Completed',
+  rollout: 'Rollout — running examples…',
+  reflect: 'Reflection — proposing edits…',
+  gate: 'Validation gate…',
+  slow_update: 'Slow / meta update…',
+  completed: 'Training complete',
   failed: 'Failed',
 };
 
-/* ── Edit op badge ───────────────────────────────────────────────── */
-const OP_COLORS: Record<string, string> = { ADD: '#10b981', DELETE: '#ef4444', REPLACE: '#f59e0b' };
-function OpBadge({ op, accepted }: { op: string; accepted: boolean }) {
-  return (
-    <span style={{
-      fontSize: 9, fontWeight: 700, padding: '2px 5px', borderRadius: 4,
-      textTransform: 'uppercase', letterSpacing: '.06em',
-      background: accepted ? `${OP_COLORS[op]}18` : 'var(--surface-2)',
-      color: accepted ? OP_COLORS[op] : 'var(--text-subtle)',
-      border: `1px solid ${accepted ? `${OP_COLORS[op]}30` : 'var(--border)'}`,
-      opacity: accepted ? 1 : 0.65,
-    }}>
-      {op}
-    </span>
-  );
-}
+const FEED_STYLE: Record<string, { icon: string; soft: string; fg: string }> = {
+  rollout:  { icon: 'play',     soft: 'var(--surface-2)',    fg: 'var(--text)' },
+  reflect:  { icon: 'sparkles', soft: 'var(--accent-soft)',  fg: 'var(--accent)' },
+  gate:     { icon: 'zap',      soft: 'var(--primary-soft)', fg: 'var(--primary)' },
+  completed:{ icon: 'trophy',   soft: 'var(--success-soft)', fg: 'var(--success)' },
+  failed:   { icon: 'x',        soft: 'var(--danger-soft)',  fg: 'var(--danger)' },
+  slow_update:{ icon: 'shield', soft: 'var(--accent-soft)',  fg: 'var(--accent)' },
+  seed:     { icon: 'sparkles', soft: 'var(--primary-soft)', fg: 'var(--primary)' },
+};
 
-/* ── Live optimization view ─────────────────────────────────────── */
-function LiveView({ projectId, onDone }: { projectId: string; onDone: () => void }) {
-  const [state, setState] = useState<SkillOptLiveState | null>(null);
-  const doneRef = useRef(false);
-
-  useEffect(() => {
-    const iv = setInterval(async () => {
-      try {
-        const res = await api.get<{ data: SkillOptLiveStateResponse }>(`/api/v1/skill-opt/${projectId}/state`);
-        const s = res.data.data.state;
-        if (s) {
-          setState(s);
-          if ((s.phase === 'completed' || s.phase === 'failed') && !doneRef.current) {
-            doneRef.current = true;
-            clearInterval(iv);
-            setTimeout(onDone, 1200);
-          }
-        }
-      } catch { /* noop */ }
-    }, 2000);
-    return () => clearInterval(iv);
-  }, [projectId, onDone]);
-
-  const overallPct = state
-    ? ((state.epoch - 1 + state.epoch_pct) / state.total_epochs) * 100
-    : 0;
-
-  return (
-    <div className="ply-card anim-fade" style={{ padding: 0, overflow: 'hidden' }}>
-      {/* Header */}
-      <div style={{
-        padding: '14px 18px', borderBottom: '1px solid var(--border)',
-        background: 'linear-gradient(135deg, var(--primary-soft), transparent 70%)',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ position: 'relative', width: 20, height: 20 }}>
-            <span className="ply-dot ply-dot-pulse" style={{ background: state?.phase === 'completed' ? 'var(--success)' : 'var(--primary)', position: 'absolute', inset: 0 }} />
-          </div>
-          <div>
-            <div style={{ fontWeight: 600, fontSize: 14 }}>SkillOpt — Evolving skill document</div>
-            <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>
-              {PHASE_LABELS[state?.phase ?? ''] ?? `Epoch ${state?.epoch ?? 0} / ${state?.total_epochs ?? '—'}`}
-            </div>
-          </div>
-        </div>
-        {state && (
-          <div style={{ display: 'flex', gap: 20 }}>
-            <StatChip label="Best score" value={state.best_score != null ? `${(state.best_score * 100).toFixed(1)}%` : '—'} color="var(--success)" />
-            <StatChip label="Accepted" value={state.edits_accepted} color="var(--success)" />
-            <StatChip label="Rejected" value={state.edits_rejected} color="var(--text-subtle)" />
-          </div>
-        )}
-      </div>
-
-      {/* Progress bars */}
-      {state && (
-        <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-subtle)', marginBottom: 4 }}>
-              <span>Overall progress</span>
-              <span className="mono">{overallPct.toFixed(0)}%</span>
-            </div>
-            <div style={{ height: 5, background: 'var(--border)', borderRadius: 99 }}>
-              <div style={{ height: '100%', width: `${overallPct}%`, background: 'var(--primary)', borderRadius: 99, transition: 'width .5s' }} />
-            </div>
-          </div>
-          {state.rollout_total > 0 && (
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-subtle)', marginBottom: 4 }}>
-                <span>Epoch {state.epoch} — rollout</span>
-                <span className="mono">{state.rollout_done}/{state.rollout_total}</span>
-              </div>
-              <div style={{ height: 3, background: 'var(--border)', borderRadius: 99 }}>
-                <div style={{ height: '100%', width: `${(state.rollout_done / state.rollout_total) * 100}%`, background: '#f59e0b', borderRadius: 99, transition: 'width .3s' }} />
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Edit log + skill preview */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', minHeight: 200 }}>
-        {/* Recent edits */}
-        <div style={{ padding: '12px 16px', borderRight: '1px solid var(--border)' }}>
-          <div style={{ fontSize: 10, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '.07em', fontWeight: 600, marginBottom: 8 }}>Recent edits</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {(state?.recent_edits ?? []).slice(-6).reverse().map((e, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: 11.5 }}>
-                <OpBadge op={e.op} accepted={e.accepted} />
-                <span style={{ color: 'var(--text-muted)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {e.text}
-                </span>
-              </div>
-            ))}
-            {(!state?.recent_edits?.length) && (
-              <span style={{ fontSize: 12, color: 'var(--text-subtle)' }}>Waiting for first reflection…</span>
-            )}
-          </div>
-        </div>
-
-        {/* Current skill preview */}
-        <div style={{ padding: '12px 16px' }}>
-          <div style={{ fontSize: 10, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '.07em', fontWeight: 600, marginBottom: 8 }}>
-            Current skill preview
-          </div>
-          <pre style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0, lineHeight: 1.6, maxHeight: 160, overflowY: 'auto' }}>
-            {state?.current_skill_preview || '…'}
-          </pre>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ── Result card ─────────────────────────────────────────────────── */
-function ResultCard({ project, onRunAgain }: { project: SkillProject; onRunAgain: () => void }) {
-  const [copied, setCopied] = useState(false);
-
-  function copySkill() {
-    if (!project.best_skill) return;
-    navigator.clipboard.writeText(project.best_skill).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }).catch(() => undefined);
-  }
-
-  const gain = project.score_before != null && project.score_after != null
-    ? ((project.score_after - project.score_before) * 100).toFixed(1)
-    : null;
-
-  return (
-    <div className="ply-card anim-fade" style={{ padding: 0, overflow: 'hidden' }}>
-      {/* Header */}
-      <div style={{
-        padding: '14px 18px', borderBottom: '1px solid var(--border)',
-        background: 'linear-gradient(135deg, var(--primary-soft), transparent 70%)',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <Icon name="zap" size={18} color="var(--primary)" />
-          <div>
-            <div style={{ fontWeight: 600, fontSize: 14 }}>Optimized skill document</div>
-            <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>
-              {project.score_before != null && project.score_after != null && (
-                <>
-                  Score: <span className="mono">{(project.score_before * 100).toFixed(1)}%</span>
-                  {' → '}
-                  <span className="mono" style={{ color: 'var(--success)', fontWeight: 600 }}>
-                    {(project.score_after * 100).toFixed(1)}%
-                  </span>
-                  {gain && (
-                    <> · gain <span className="mono" style={{ color: 'var(--success)' }}>+{gain}pp</span></>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: 6 }}>
-          <button className="ply-btn ply-btn-sm" onClick={onRunAgain}>
-            <Icon name="sparkles" size={12} /> Run again
-          </button>
-          <button className="ply-btn ply-btn-sm" onClick={copySkill}>
-            <Icon name={copied ? 'check' : 'copy'} size={12} />
-            {copied ? 'Copied' : 'Copy'}
-          </button>
-        </div>
-      </div>
-
-      {/* Stats strip */}
-      <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 24 }}>
-        <StatChip label="Epochs" value={project.epochs_run ?? '—'} />
-        <StatChip label="Edits accepted" value={project.edits_accepted ?? '—'} color="var(--success)" />
-        <StatChip label="Edits rejected" value={project.edits_rejected ?? '—'} color="var(--text-subtle)" />
-        <StatChip label="Examples" value={project.example_count ?? '—'} />
-        <StatChip label="Score after" value={project.score_after != null ? `${(project.score_after * 100).toFixed(1)}%` : '—'} color="var(--success)" />
-      </div>
-
-      {/* Skill doc split view */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1px 1fr' }}>
-        {/* Seed skill */}
-        <div style={{ padding: '16px 18px' }}>
-          <div style={{ fontSize: 10, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '.07em', fontWeight: 600, marginBottom: 8 }}>
-            Seed skill (before)
-          </div>
-          <pre className="ply-prompt-block" style={{ margin: 0, fontSize: 12, maxHeight: 300, overflowY: 'auto', color: 'var(--text-muted)' }}>
-            {project.seed_skill ?? '—'}
-          </pre>
-        </div>
-
-        <div style={{ background: 'var(--border)' }} />
-
-        {/* Best skill */}
-        <div style={{ padding: '16px 18px' }}>
-          <div style={{ fontSize: 10, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '.07em', fontWeight: 600, marginBottom: 8 }}>
-            Best skill · arXiv:2605.23904
-          </div>
-          <pre className="ply-prompt-block" style={{ margin: 0, fontSize: 12, maxHeight: 300, overflowY: 'auto', border: '1px solid var(--primary)' }}>
-            {project.best_skill ?? '—'}
-          </pre>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ── Create project form ─────────────────────────────────────────── */
-function CreateProjectForm({ onCreated }: { onCreated: (p: SkillProject) => void }) {
-  const [name, setName] = useState('');
-  const [taskDesc, setTaskDesc] = useState('');
-  const [description, setDescription] = useState('');
-  const qc = useQueryClient();
-
-  const { mutate, isPending } = useMutation({
-    mutationFn: async () => {
-      const res = await api.post<{ data: SkillProject }>('/api/v1/skill-opt/', {
-        name: name.trim(),
-        task_description: taskDesc.trim(),
-        description: description.trim() || undefined,
-      });
-      return res.data.data;
-    },
-    onSuccess: (p) => { qc.invalidateQueries({ queryKey: ['skill-opt-projects'] }); onCreated(p); },
-  });
-
-  const canSubmit = name.trim().length >= 1 && taskDesc.trim().length >= 10;
-
-  return (
-    <div className="ply-card" style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <div style={{ width: 36, height: 36, borderRadius: 9, background: 'var(--primary-soft)', border: '1px solid var(--primary-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)' }}>
-          <Icon name="bolt" size={16} />
-        </div>
-        <div>
-          <div style={{ fontSize: 15, fontWeight: 600 }}>New Skill project</div>
-          <div style={{ fontSize: 12, color: 'var(--text-subtle)' }}>SkillOpt evolves a compact skill document for your task domain</div>
-        </div>
-      </div>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div>
-          <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-muted)', display: 'block', marginBottom: 5 }}>Project name</label>
-          <input value={name} onChange={e => setName(e.target.value)} placeholder='e.g. "Finance Q&A Agent"'
-            style={{ width: '100%', height: 36, padding: '0 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
-        </div>
-        <div>
-          <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-muted)', display: 'block', marginBottom: 5 }}>Task description <span style={{ color: 'var(--text-subtle)', fontWeight: 400 }}>(what should the agent be good at?)</span></label>
-          <textarea value={taskDesc} onChange={e => setTaskDesc(e.target.value)}
-            placeholder="Describe the task this agent/prompt should handle. E.g. 'Answer financial analysis questions accurately, including ratio calculations and forecasting.'"
-            rows={3}
-            style={{ width: '100%', padding: '8px 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', fontSize: 13, outline: 'none', resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit' }} />
-        </div>
-        <div>
-          <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-muted)', display: 'block', marginBottom: 5 }}>Description (optional)</label>
-          <input value={description} onChange={e => setDescription(e.target.value)} placeholder="Internal notes"
-            style={{ width: '100%', height: 36, padding: '0 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
-        </div>
-      </div>
-
-      <button className="ply-btn ply-btn-primary" onClick={() => mutate()} disabled={!canSubmit || isPending}
-        style={{ alignSelf: 'flex-start', opacity: (!canSubmit || isPending) ? 0.5 : 1, cursor: (!canSubmit || isPending) ? 'not-allowed' : 'pointer' }}>
-        <Icon name="plus" size={13} /> {isPending ? 'Creating…' : 'Create project'}
-      </button>
-    </div>
-  );
-}
-
-/* ── Example editor ──────────────────────────────────────────────── */
-function ExamplesEditor({ projectId, exampleCount, onSaved }: {
-  projectId: string; exampleCount: number | null; onSaved: () => void;
+/* ── Setup tab ───────────────────────────────────────────────────── */
+function SetupTab({ project, onSaved, onStart }: {
+  project: SkillProject;
+  onSaved: () => void;
+  onStart: (tier: string) => void;
 }) {
+  const [lr, setLr] = useState(4);
+  const [batch, setBatch] = useState(8);
+  const [epochs, setEpochs] = useState(3);
+  const [schedule, setSchedule] = useState('cosine');
+  const [budgetTier, setBudgetTier] = useState<'low'|'medium'|'high'>('low');
+  const [initialSkill, setInitialSkill] = useState('');
+  const [showSkillEditor, setShowSkillEditor] = useState(false);
   const [examples, setExamples] = useState<SkillExample[]>([{ input: '', expected: '' }]);
-  const [pasteMode, setPasteMode] = useState(false);
   const [pasteText, setPasteText] = useState('');
+  const [showPaste, setShowPaste] = useState(false);
   const qc = useQueryClient();
 
-  const { data } = useQuery({
-    queryKey: ['skill-opt-examples', projectId],
+  const { data: existingExamples } = useQuery({
+    queryKey: ['skill-opt-examples', project.id],
     queryFn: async () => {
-      const res = await api.get<{ data: { examples: SkillExample[] } }>(`/api/v1/skill-opt/${projectId}/examples`);
+      const res = await api.get<{ data: { examples: SkillExample[] } }>(`/api/v1/skill-opt/${project.id}/examples`);
       return res.data.data.examples;
     },
-    enabled: !!exampleCount,
+    enabled: !!project.example_count,
   });
+  useEffect(() => { if (existingExamples?.length) setExamples(existingExamples); }, [existingExamples]);
 
-  useEffect(() => {
-    if (data && data.length > 0) setExamples(data);
-  }, [data]);
-
-  const { mutate: save, isPending } = useMutation({
+  const { mutate: saveExamples, isPending: saving } = useMutation({
     mutationFn: async () => {
       const valid = examples.filter(e => e.input.trim() && e.expected.trim());
-      await api.post(`/api/v1/skill-opt/${projectId}/examples`, { examples: valid });
+      await api.post(`/api/v1/skill-opt/${project.id}/examples`, { examples: valid });
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['skill-opt-projects'] }); onSaved(); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['skill-opt-projects'] }); qc.invalidateQueries({ queryKey: ['skill-opt-project', project.id] }); onSaved(); },
   });
 
   function parsePaste() {
@@ -373,84 +207,510 @@ function ExamplesEditor({ projectId, exampleCount, onSaved }: {
     const parsed: SkillExample[] = [];
     let cur: Partial<SkillExample> = {};
     for (const line of lines) {
-      if (line.startsWith('INPUT:') || line.startsWith('Q:')) {
-        if (cur.input && cur.expected) parsed.push(cur as SkillExample);
-        cur = { input: line.replace(/^(INPUT:|Q:)\s*/, '').trim() };
-      } else if (line.startsWith('EXPECTED:') || line.startsWith('A:')) {
-        cur.expected = line.replace(/^(EXPECTED:|A:)\s*/, '').trim();
-      }
+      if (/^(INPUT|Q):\s*/i.test(line)) { if (cur.input && cur.expected) parsed.push(cur as SkillExample); cur = { input: line.replace(/^(INPUT|Q):\s*/i, '').trim() }; }
+      else if (/^(EXPECTED|A):\s*/i.test(line)) { cur.expected = line.replace(/^(EXPECTED|A):\s*/i, '').trim(); }
     }
     if (cur.input && cur.expected) parsed.push(cur as SkillExample);
-    if (parsed.length > 0) { setExamples(parsed); setPasteMode(false); setPasteText(''); }
+    if (parsed.length) { setExamples(parsed); setShowPaste(false); setPasteText(''); }
   }
 
   const validCount = examples.filter(e => e.input.trim() && e.expected.trim()).length;
+  const totalTasks = project.example_count ?? validCount;
+  const totalSteps = Math.max(1, Math.round(Math.max(totalTasks, 6) * 0.7 / batch)) * epochs;
+  const llmEffort = (() => { try { return localStorage.getItem('ply_llm_effort') ?? 'medium'; } catch { return 'medium'; } })();
+  const execMap: Record<string, string> = { low: 'gemini-2.0-flash', medium: 'claude-3.5-haiku', high: 'gpt-4o' };
+  const executor = execMap[llmEffort] ?? 'claude-3.5-haiku';
+
+  const TIERS = {
+    low:    { label: 'Low',    desc: '2 epochs · 10 rollouts/epoch', credits: 5  },
+    medium: { label: 'Medium', desc: '3 epochs · 20 rollouts/epoch', credits: 10 },
+    high:   { label: 'High',   desc: '4 epochs · 30 rollouts/epoch', credits: 16 },
+  };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)' }}>
-          Q&A Examples
-          <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--text-subtle)', fontWeight: 400 }}>
-            {validCount} valid · minimum 6 required
-          </span>
-        </div>
-        <div style={{ display: 'flex', gap: 6 }}>
-          <button className="ply-btn ply-btn-sm" onClick={() => setPasteMode(m => !m)}>
-            <Icon name="upload" size={11} /> Paste bulk
-          </button>
-          <button className="ply-btn ply-btn-sm" onClick={() => setExamples(e => [...e, { input: '', expected: '' }])}>
-            <Icon name="plus" size={11} /> Add row
-          </button>
-        </div>
-      </div>
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 14, minHeight: 0 }}>
+      {/* Main column */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
 
-      {pasteMode && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-            Paste in format: <code style={{ fontFamily: 'var(--mono)' }}>Q: ... / A: ...</code> or <code style={{ fontFamily: 'var(--mono)' }}>INPUT: ... / EXPECTED: ...</code> — one pair per two lines.
+        {/* Three players */}
+        <div style={{ ...C.card, padding: 18 }}>
+          <SectionHd right={<span className="ply-pill" style={{ fontSize: 10 }}><Icon name="info" size={10} /> SkillOpt · arXiv 2605.23904</span>}>
+            Three players, one trainable file
+          </SectionHd>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+            {[
+              { tag: 'FROZEN', title: 'Target model', val: executor, note: 'Executes tasks · weights never touched', icon: 'cpu', soft: 'var(--surface-2)', fg: 'var(--text)' },
+              { tag: 'TRAINABLE', title: 'Skill document', val: `${Math.max(30, validCount * 4)} tokens`, note: 'The natural-language policy being optimized', icon: 'fileText', soft: 'var(--primary-soft)', fg: 'var(--primary)' },
+              { tag: 'TRAINING-ONLY', title: 'Optimizer', val: 'gpt-4o-mini', note: 'Proposes bounded edits · never deployed', icon: 'sparkles', soft: 'var(--accent-soft)', fg: 'var(--accent)' },
+            ].map((p, i) => (
+              <div key={i} style={{ padding: 14, borderRadius: 10, background: p.soft, border: `1px solid ${p.soft === 'var(--surface-2)' ? 'var(--border)' : 'transparent'}`, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: p.fg }}>
+                  <Icon name={p.icon} size={13} />
+                  <span style={{ fontFamily: 'var(--mono)', fontSize: 10, fontWeight: 700, letterSpacing: '.08em' }}>{p.tag}</span>
+                </div>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{p.title}</div>
+                <div style={{ fontFamily: 'var(--mono)', fontSize: 12, color: p.fg, fontWeight: 600 }}>{p.val}</div>
+                <div style={{ fontSize: 11.5, color: 'var(--text-muted)', lineHeight: 1.45 }}>{p.note}</div>
+              </div>
+            ))}
           </div>
-          <textarea value={pasteText} onChange={e => setPasteText(e.target.value)} rows={6}
-            placeholder={"Q: What is the P/E ratio of Apple?\nA: Apple's P/E ratio is approximately 28x as of Q3 2025.\nQ: How do you calculate EBITDA?\nA: EBITDA = Net Income + Interest + Taxes + Depreciation + Amortization"}
-            style={{ width: '100%', padding: '8px 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', fontSize: 12, fontFamily: 'var(--mono)', resize: 'vertical', outline: 'none', boxSizing: 'border-box' }} />
-          <button className="ply-btn ply-btn-sm" onClick={parsePaste} disabled={!pasteText.trim()} style={{ alignSelf: 'flex-start' }}>
-            Parse &amp; import
-          </button>
         </div>
-      )}
 
-      {/* Example rows */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 320, overflowY: 'auto' }}>
-        {examples.map((ex, i) => (
-          <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 8, alignItems: 'flex-start' }}>
-            <textarea value={ex.input} rows={2} placeholder="Task input / question"
-              onChange={e => setExamples(list => list.map((l, j) => j === i ? { ...l, input: e.target.value } : l))}
-              style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', fontSize: 12, resize: 'none', outline: 'none', fontFamily: 'inherit' }} />
-            <textarea value={ex.expected} rows={2} placeholder="Expected / reference answer"
-              onChange={e => setExamples(list => list.map((l, j) => j === i ? { ...l, expected: e.target.value } : l))}
-              style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', fontSize: 12, resize: 'none', outline: 'none', fontFamily: 'inherit' }} />
-            <button className="ply-btn ply-btn-sm" onClick={() => setExamples(list => list.filter((_, j) => j !== i))}
-              style={{ color: 'var(--danger)' }}>
-              <Icon name="x" size={11} />
+        {/* Data splits */}
+        <div style={{ ...C.card, padding: 18 }}>
+          <SectionHd right={<span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--text-subtle)' }}>{totalTasks || '?'} scored examples</span>}>
+            Data splits
+          </SectionHd>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', height: 10, borderRadius: 5, overflow: 'hidden' }}>
+              <div style={{ flex: 70, background: 'var(--primary)' }} title="Train: 70%" />
+              <div style={{ flex: 15, background: 'var(--warning)' }} title="Selection: 15%" />
+              <div style={{ flex: 15, background: 'var(--accent)' }} title="Test: 15%" />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+              {[
+                { k: 'Train', v: 70, c: 'var(--primary)', note: 'Drives reflection edits' },
+                { k: 'Selection', v: 15, c: 'var(--warning)', note: 'Validation gate — each edit judged here' },
+                { k: 'Test', v: 15, c: 'var(--accent)', note: 'Locked · only used in final report' },
+              ].map(p => (
+                <div key={p.k} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: p.c, flexShrink: 0 }} />
+                    <span style={{ fontWeight: 600 }}>{p.k}</span>
+                    <span style={{ fontFamily: 'var(--mono)', color: 'var(--text-subtle)' }}>{p.v}% · {Math.round(Math.max(totalTasks,6) * p.v / 100)}</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text-subtle)', lineHeight: 1.45 }}>{p.note}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ marginTop: 4, padding: '8px 10px', borderRadius: 7, background: 'var(--warning-soft)', display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 11.5, lineHeight: 1.5 }}>
+              <Icon name="shield" size={12} color="var(--warning)" style={{ marginTop: 2, flexShrink: 0 }} />
+              <div><span style={{ fontWeight: 600, color: 'var(--warning)' }}>Test split is locked. </span><span style={{ color: 'var(--text-muted)' }}>Never shown to the optimizer. Used only in the final report.</span></div>
+            </div>
+          </div>
+        </div>
+
+        {/* Q&A Examples */}
+        <div style={{ ...C.card, padding: 18 }}>
+          <SectionHd right={
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button className="ply-btn ply-btn-sm" onClick={() => setShowPaste(s => !s)}><Icon name="upload" size={11} /> Paste bulk</button>
+              <button className="ply-btn ply-btn-sm" onClick={() => setExamples(e => [...e, { input: '', expected: '' }])}><Icon name="plus" size={11} /> Add row</button>
+            </div>
+          }>
+            Q&A examples <span style={{ color: 'var(--text-subtle)', textTransform: 'none', letterSpacing: 0, fontWeight: 400 }}>({validCount} valid · min 6)</span>
+          </SectionHd>
+
+          {showPaste && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+              <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>Format: <code style={{ fontFamily: 'var(--mono)' }}>Q: ... / A: ...</code> or <code style={{ fontFamily: 'var(--mono)' }}>INPUT: ... / EXPECTED: ...</code></div>
+              <textarea value={pasteText} onChange={e => setPasteText(e.target.value)} rows={5} placeholder={"Q: What is the capital of France?\nA: Paris\nQ: Who wrote Hamlet?\nA: William Shakespeare"}
+                style={{ width: '100%', padding: '8px 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', fontSize: 12, fontFamily: 'var(--mono)', resize: 'vertical', outline: 'none', boxSizing: 'border-box' }} />
+              <button className="ply-btn ply-btn-sm" style={{ alignSelf: 'flex-start' }} onClick={parsePaste}>Parse &amp; import</button>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 7, maxHeight: 260, overflowY: 'auto' }}>
+            {examples.map((ex, i) => (
+              <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 7, alignItems: 'flex-start' }}>
+                <textarea value={ex.input} rows={2} placeholder="Task input / question"
+                  onChange={e => setExamples(l => l.map((x, j) => j === i ? { ...x, input: e.target.value } : x))}
+                  style={{ padding: '6px 9px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', fontSize: 12, resize: 'none', outline: 'none', fontFamily: 'inherit' }} />
+                <textarea value={ex.expected} rows={2} placeholder="Expected answer"
+                  onChange={e => setExamples(l => l.map((x, j) => j === i ? { ...x, expected: e.target.value } : x))}
+                  style={{ padding: '6px 9px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', fontSize: 12, resize: 'none', outline: 'none', fontFamily: 'inherit' }} />
+                <button className="ply-btn ply-btn-sm" style={{ color: 'var(--danger)', marginTop: 2 }} onClick={() => setExamples(l => l.filter((_, j) => j !== i))}><Icon name="x" size={11} /></button>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button className="ply-btn ply-btn-primary ply-btn-sm" disabled={validCount < 6 || saving} onClick={() => saveExamples()}
+              style={{ opacity: validCount < 6 ? 0.5 : 1, cursor: validCount < 6 ? 'not-allowed' : 'pointer' }}>
+              <Icon name="check" size={12} /> {saving ? 'Saving…' : `Save ${validCount} examples`}
             </button>
+            {validCount < 6 && <span style={{ fontSize: 11.5, color: 'var(--warning)' }}>Add at least 6 examples to enable training.</span>}
           </div>
-        ))}
+        </div>
+
+        {/* Initial skill */}
+        <div style={{ ...C.card, padding: 18 }}>
+          <SectionHd right={
+            <button className="ply-btn ply-btn-sm" onClick={() => setShowSkillEditor(s => !s)}>
+              <Icon name={showSkillEditor ? 'chevronD' : 'chevronR'} size={11} />{showSkillEditor ? 'Hide' : 'Edit'}
+            </button>
+          }>Initial skill document</SectionHd>
+          {!showSkillEditor && (
+            <div style={{ padding: '10px 12px', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)', fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.55, fontFamily: 'var(--mono)', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+              {initialSkill || `# Skill — ${project.task_description.slice(0, 60)}\n\nFollow the task instructions carefully.\nThink step by step before answering.\nBe concise and accurate.`}
+            </div>
+          )}
+          {showSkillEditor && (
+            <textarea value={initialSkill} onChange={e => setInitialSkill(e.target.value)} spellCheck={false} rows={8}
+              placeholder={`# Skill — ${project.name}\n\nDescribe how the agent should approach this task…`}
+              style={{ width: '100%', padding: 12, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', fontFamily: 'var(--mono)', fontSize: 12.5, lineHeight: 1.6, outline: 'none', resize: 'vertical', boxSizing: 'border-box' }} />
+          )}
+          <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            <button className="ply-btn ply-btn-sm" onClick={() => setInitialSkill('')}><Icon name="fileText" size={12} /> Reset to template</button>
+            <div style={{ flex: 1 }} />
+            <span style={{ fontFamily: 'var(--mono)', fontSize: 10.5, color: 'var(--text-subtle)' }}>target: 300–2,000 tokens</span>
+          </div>
+        </div>
       </div>
 
-      <button className="ply-btn ply-btn-primary" onClick={() => save()} disabled={validCount < 6 || isPending}
-        style={{ alignSelf: 'flex-start', opacity: (validCount < 6 || isPending) ? 0.5 : 1, cursor: (validCount < 6 || isPending) ? 'not-allowed' : 'pointer' }}>
-        <Icon name="check" size={13} /> {isPending ? 'Saving…' : `Save ${validCount} examples`}
-      </button>
+      {/* Right column — hyperparams + launch */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
+        <div style={{ ...C.card, padding: 18 }}>
+          <SectionHd>Hyperparameters</SectionHd>
+          <HyperRow icon="zap" label="Edit budget Lₜ" hint="Maximum edits applied per step. Caps how far the skill can move in one update." analogue="textual learning rate">
+            <Slider value={lr} min={1} max={10} onChange={setLr} format={v => `${v} edits / step`} />
+          </HyperRow>
+          <HyperRow icon="layers" label="Rollout batch" hint="Tasks rolled out per step. Larger batches reveal recurring failure patterns." analogue="minibatch size">
+            <Slider value={batch} min={4} max={40} onChange={setBatch} format={v => `${v} tasks / step`} />
+          </HyperRow>
+          <HyperRow icon="refresh" label="Epochs" hint="Full passes over the training split. Each epoch ends with a slow / meta update.">
+            <Slider value={epochs} min={1} max={5} onChange={setEpochs} format={v => `${v} epoch${v > 1 ? 's' : ''}`} />
+          </HyperRow>
+          <HyperRow icon="activity" label="LR schedule" hint="How the edit budget decays over training. Cosine preserves the most rules." analogue="LR schedule">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 5, width: '100%' }}>
+              {['cosine', 'linear', 'constant', 'autonomous'].map(s => (
+                <button key={s} onClick={() => setSchedule(s)} style={{ padding: '6px 8px', borderRadius: 6, border: `1px solid ${schedule === s ? 'var(--primary)' : 'var(--border)'}`, background: schedule === s ? 'var(--primary-soft)' : 'var(--surface)', color: schedule === s ? 'var(--primary)' : 'var(--text-muted)', fontSize: 11.5, fontWeight: schedule === s ? 600 : 500, textAlign: 'left', cursor: 'pointer', textTransform: 'capitalize' }}>{s}</button>
+              ))}
+            </div>
+          </HyperRow>
+        </div>
+
+        {/* Launch card */}
+        <div style={{ ...C.card, padding: 18, background: 'linear-gradient(180deg, var(--primary-soft) 0%, var(--surface) 60%)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 32, height: 32, borderRadius: 9, background: 'linear-gradient(135deg, var(--primary), var(--accent))', color: 'white', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+              <Icon name="bolt" size={16} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 600 }}>Train skill</div>
+              <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>≈ {totalSteps} steps · {epochs} epoch{epochs > 1 ? 's' : ''} · gate enabled</div>
+            </div>
+          </div>
+
+          {/* Budget tier */}
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 7, textTransform: 'uppercase', letterSpacing: '.06em' }}>Budget tier</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+              {(Object.entries(TIERS) as [string, { label: string; desc: string; credits: number }][]).map(([k, v]) => (
+                <button key={k} onClick={() => setBudgetTier(k as 'low'|'medium'|'high')} style={{ padding: '9px 10px', borderRadius: 8, border: `1px solid ${budgetTier === k ? 'var(--primary)' : 'var(--border)'}`, background: budgetTier === k ? 'var(--primary-soft)' : 'var(--surface)', cursor: 'pointer', textAlign: 'left', boxShadow: budgetTier === k ? '0 0 0 3px color-mix(in oklab, var(--primary) 12%, transparent)' : 'none' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 3 }}>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: budgetTier === k ? 'var(--primary)' : 'var(--text)' }}>{v.label}</span>
+                    <span style={{ fontFamily: 'var(--mono)', fontSize: 10.5, fontWeight: 700, color: budgetTier === k ? 'var(--primary)' : 'var(--text-muted)' }}>{v.credits} cr</span>
+                  </div>
+                  <div style={{ height: 2, borderRadius: 99, background: 'var(--border)', marginBottom: 4 }}>
+                    <div style={{ height: '100%', width: `${(v.credits / 16) * 100}%`, background: budgetTier === k ? 'var(--primary)' : 'var(--border-strong)', borderRadius: 99 }} />
+                  </div>
+                  <div style={{ fontSize: 10, color: 'var(--text-subtle)' }}>{v.desc}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--mono)' }}>
+            <div>target · {executor}</div>
+            <div>optimizer · gpt-4o-mini</div>
+            <div>Lₜ = {lr} · {schedule}</div>
+            <div>batch = {batch}</div>
+          </div>
+
+          <button className="ply-btn ply-btn-primary" disabled={!project.example_count || project.example_count < 6} onClick={() => onStart(budgetTier)}
+            style={{ height: 38, fontSize: 13.5, opacity: (!project.example_count || project.example_count < 6) ? 0.45 : 1, cursor: (!project.example_count || project.example_count < 6) ? 'not-allowed' : 'pointer' }}>
+            <Icon name="bolt" size={14} />
+            {!project.example_count || project.example_count < 6 ? 'Add examples first' : `Train skill · ${TIERS[budgetTier].credits} credits`}
+          </button>
+          <div style={{ fontFamily: 'var(--mono)', fontSize: 10.5, color: 'var(--text-subtle)', textAlign: 'center', lineHeight: 1.5 }}>
+            Held-out gate · rejected-edit buffer · epoch-wise slow update
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
 
-/* ── Project workspace ───────────────────────────────────────────── */
+/* ── Train tab ───────────────────────────────────────────────────── */
+function TrainTab({ project, onDone }: { project: SkillProject; onDone: () => void }) {
+  const [state, setState] = useState<SkillOptLiveState | null>(null);
+  const [chartHistory, setChartHistory] = useState<{ score: number; accepted: boolean; best?: boolean }[]>([]);
+  const feedRef = useRef<HTMLDivElement>(null);
+  const doneRef = useRef(false);
+
+  useEffect(() => {
+    const iv = setInterval(async () => {
+      try {
+        const res = await api.get<{ data: SkillOptLiveStateResponse }>(`/api/v1/skill-opt/${project.id}/state`);
+        const s = res.data.data.state;
+        if (s) {
+          setState(s);
+          if (s.phase === 'gate' && s.current_score != null) {
+            const accepted = (s.edits_accepted ?? 0) > (chartHistory.filter(h => h.accepted).length);
+            const best = s.best_score != null && s.current_score >= s.best_score;
+            setChartHistory(prev => {
+              if (prev.length === 0 || prev[prev.length - 1].score !== s.current_score) {
+                return [...prev, { score: s.current_score!, accepted: true, best }];
+              }
+              return prev;
+            });
+          }
+          if ((s.phase === 'completed' || s.phase === 'failed') && !doneRef.current) {
+            doneRef.current = true;
+            clearInterval(iv);
+            setTimeout(onDone, 1500);
+          }
+        }
+      } catch { /* noop */ }
+    }, 2000);
+    return () => clearInterval(iv);
+  }, [project.id, onDone]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => { if (feedRef.current) feedRef.current.scrollTop = feedRef.current.scrollHeight; }, [state]);
+
+  const isRunning = project.status === 'optimizing';
+  const isDone = project.status === 'completed';
+  const baseline = project.score_before ?? 0.3;
+  const overallPct = state ? ((state.epoch - 1 + state.epoch_pct) / state.total_epochs) * 100 : isRunning ? 5 : isDone ? 100 : 0;
+
+  const Stat = ({ label, value, color }: { label: string; value: React.ReactNode; color?: string }) => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 80 }}>
+      <div style={{ fontSize: 10.5, color: 'var(--text-subtle)', letterSpacing: '.04em', textTransform: 'uppercase', fontWeight: 600 }}>{label}</div>
+      <div style={{ fontFamily: 'var(--mono)', fontSize: 18, fontWeight: 600, color: color ?? 'var(--text)', lineHeight: 1.1 }}>{value}</div>
+    </div>
+  );
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 14, minHeight: 0 }}>
+      {/* Main */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
+        {/* Stats strip */}
+        <div style={{ ...C.card, padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap' }}>
+          <Stat label="Epoch" value={state ? `${state.epoch}/${state.total_epochs}` : '—'} />
+          <Stat label="Val score" value={state?.current_score != null ? state.current_score.toFixed(2) : '—'} color="var(--primary)" />
+          <Stat label="Best" value={state?.best_score != null ? state.best_score.toFixed(2) : project.score_after?.toFixed(2) ?? '—'} color="var(--success)" />
+          <Stat label="Gain" value={state?.best_score != null && baseline ? `+${((state.best_score - baseline)*100).toFixed(1)}pp` : '—'} color="var(--success)" />
+          <div style={{ flex: 1 }} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
+            <div style={{ display: 'flex', gap: 7, alignItems: 'center', fontSize: 11.5 }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--success)' }} />
+              <span style={{ fontFamily: 'var(--mono)' }}>{state?.edits_accepted ?? 0} accepted</span>
+            </div>
+            <div style={{ display: 'flex', gap: 7, alignItems: 'center', fontSize: 11.5 }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--danger)' }} />
+              <span style={{ fontFamily: 'var(--mono)' }}>{state?.edits_rejected ?? 0} rejected · in buffer</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Progress */}
+        <div style={{ ...C.card, padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <SectionHd right={
+            <span style={{ fontFamily: 'var(--mono)', fontSize: 10.5, color: 'var(--text-subtle)' }}>
+              {state ? PHASE_LABELS[state.phase] ?? state.phase : isRunning ? 'Starting…' : ''}
+            </span>
+          }>Training progress</SectionHd>
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-subtle)', marginBottom: 5 }}>
+              <span>Overall</span><span style={{ fontFamily: 'var(--mono)' }}>{overallPct.toFixed(0)}%</span>
+            </div>
+            <div style={{ height: 5, background: 'var(--surface-2)', borderRadius: 99, overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${overallPct}%`, background: isDone ? 'var(--success)' : 'var(--primary)', borderRadius: 99, transition: 'width .5s' }} />
+            </div>
+          </div>
+          {state && state.rollout_total > 0 && (
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-subtle)', marginBottom: 4 }}>
+                <span>Epoch {state.epoch} — rollout</span><span style={{ fontFamily: 'var(--mono)' }}>{state.rollout_done}/{state.rollout_total}</span>
+              </div>
+              <div style={{ height: 3, background: 'var(--surface-2)', borderRadius: 99, overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${(state.rollout_done / state.rollout_total) * 100}%`, background: 'var(--warning)', borderRadius: 99, transition: 'width .3s' }} />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Score chart */}
+        {chartHistory.length > 0 && (
+          <div style={{ ...C.card, padding: '16px 18px' }}>
+            <SectionHd right={
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 11, color: 'var(--text-muted)' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--primary)' }} />accepted</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--success)', boxShadow: '0 0 0 2px var(--success-soft)' }} />best</span>
+              </div>
+            }>Validation score · selection split</SectionHd>
+            <ScoreChart history={chartHistory} baseline={baseline} />
+          </div>
+        )}
+
+        {/* Skill preview */}
+        {state?.current_skill_preview && (
+          <div style={{ ...C.card, padding: '16px 18px' }}>
+            <SectionHd right={
+              isDone
+                ? <span className="ply-pill ply-pill-success" style={{ fontSize: 10.5 }}><Icon name="trophy" size={10} /> final · = best_skill.md</span>
+                : <span className="ply-pill ply-pill-primary" style={{ fontSize: 10.5 }}><span style={{ width: 5, height: 5, borderRadius: '50%', background: 'currentColor', display: 'inline-block', animation: 'pulse-dot 1.2s ease-in-out infinite' }} /> in-training · gate-accepted</span>
+            }>Skill document</SectionHd>
+            <pre style={{ fontFamily: 'var(--mono)', fontSize: 12, lineHeight: 1.65, whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0, padding: '12px 14px', background: 'var(--bg)', borderRadius: 9, border: '1px solid var(--border)', maxHeight: 280, overflowY: 'auto', color: 'var(--text-muted)' }}>
+              {state.current_skill_preview}
+            </pre>
+          </div>
+        )}
+      </div>
+
+      {/* Right — activity feed */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
+        <div style={{ ...C.card, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <SectionHd right={
+            isRunning
+              ? <span className="ply-pill ply-pill-primary" style={{ fontSize: 10.5 }}><span style={{ width: 5, height: 5, borderRadius: '50%', background: 'currentColor', display: 'inline-block', animation: 'pulse-dot 1.2s ease-in-out infinite' }} /> live</span>
+              : isDone ? <span className="ply-pill ply-pill-success" style={{ fontSize: 10.5 }}><Icon name="check" size={10} /> complete</span>
+              : null
+          }>Training activity</SectionHd>
+
+          <div ref={feedRef} style={{ maxHeight: 420, overflowY: 'auto', paddingRight: 4, display: 'flex', flexDirection: 'column' }}>
+            {state?.recent_edits?.slice(-8).map((e, i) => {
+              const style = FEED_STYLE[e.accepted ? 'reflect' : 'gate'] ?? FEED_STYLE.rollout;
+              return (
+                <div key={i} style={{ display: 'grid', gridTemplateColumns: '22px 1fr', gap: 9, alignItems: 'flex-start', padding: '7px 0', borderBottom: '1px solid var(--border)' }}>
+                  <div style={{ width: 22, height: 22, borderRadius: 6, marginTop: 1, background: e.accepted ? 'var(--success-soft)' : 'var(--danger-soft)', color: e.accepted ? 'var(--success)' : 'var(--danger)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                    <Icon name={e.accepted ? 'check' : 'x'} size={11} />
+                  </div>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: e.op === 'ADD' ? 'var(--success-soft)' : e.op === 'DELETE' ? 'var(--danger-soft)' : 'var(--warning-soft)', color: e.op === 'ADD' ? 'var(--success)' : e.op === 'DELETE' ? 'var(--danger)' : 'var(--warning)' }}>{e.op}</span>
+                      <span style={{ fontFamily: 'var(--mono)', fontSize: 11.5, color: e.accepted ? 'var(--text)' : 'var(--text-muted)' }}>{e.text}</span>
+                    </div>
+                    {!e.accepted && <div style={{ fontSize: 10.5, color: 'var(--danger)', fontFamily: 'var(--mono)' }}>→ added to rejected-edit buffer</div>}
+                  </div>
+                </div>
+              );
+            })}
+
+            {state && !['completed', 'failed'].includes(state.phase) && (
+              <div style={{ padding: '10px 0 4px', display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-subtle)', fontSize: 11.5 }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--primary)', animation: 'pulse-dot 1.2s ease-in-out infinite' }} />
+                <span style={{ fontFamily: 'var(--mono)' }}>{PHASE_LABELS[state.phase] ?? 'Processing…'}</span>
+              </div>
+            )}
+
+            {!state && isRunning && (
+              <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--text-subtle)', fontSize: 12 }}>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--primary)', animation: 'pulse-dot 1.2s ease-in-out infinite', margin: '0 auto 8px' }} />
+                Initializing…
+              </div>
+            )}
+
+            {isDone && (
+              <div style={{ padding: '12px 0', display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ width: 22, height: 22, borderRadius: 6, background: 'var(--success-soft)', color: 'var(--success)', display: 'grid', placeItems: 'center' }}>
+                  <Icon name="trophy" size={11} />
+                </div>
+                <span style={{ fontFamily: 'var(--mono)', fontSize: 11.5, color: 'var(--success)' }}>Training complete · best_skill.md exported</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Best Skill tab ──────────────────────────────────────────────── */
+function BestSkillTab({ project, onRunAgain }: { project: SkillProject; onRunAgain: () => void }) {
+  const [copied, setCopied] = useState(false);
+  const gain = project.score_before != null && project.score_after != null
+    ? ((project.score_after - project.score_before) * 100)
+    : null;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {/* Artifact card */}
+      <div style={{ ...C.card, padding: 0, overflow: 'hidden' }}>
+        <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ width: 36, height: 36, borderRadius: 9, background: 'linear-gradient(135deg, var(--success), var(--accent))', color: 'white', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+            <Icon name="trophy" size={17} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 13.5, fontWeight: 600 }}>best_skill.md</span>
+              <span className="ply-pill ply-pill-success" style={{ fontSize: 10 }}>gate-accepted</span>
+            </div>
+            <div style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--text-subtle)', marginTop: 2 }}>
+              {project.epochs_run} epoch{project.epochs_run !== 1 ? 's' : ''} · {project.edits_accepted} edits accepted · prepend to agent context at deploy time
+            </div>
+          </div>
+          <button className="ply-btn ply-btn-sm" onClick={() => { navigator.clipboard?.writeText(project.best_skill ?? ''); setCopied(true); setTimeout(() => setCopied(false), 1400); }}>
+            <Icon name={copied ? 'check' : 'copy'} size={12} />{copied ? 'Copied' : 'Copy'}
+          </button>
+          <button className="ply-btn ply-btn-sm"><Icon name="download" size={12} />.md</button>
+          <button className="ply-btn ply-btn-sm" onClick={onRunAgain}><Icon name="refresh" size={12} /> Run again</button>
+        </div>
+        <pre style={{ fontFamily: 'var(--mono)', fontSize: 12.5, lineHeight: 1.7, whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0, padding: '18px 22px', maxHeight: 400, overflowY: 'auto', background: 'var(--bg)', color: 'var(--text)' }}>
+          {project.best_skill ?? '—'}
+        </pre>
+      </div>
+
+      {/* Gain bars */}
+      <div style={{ ...C.card, padding: 18 }}>
+        <SectionHd>Performance gains</SectionHd>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {[
+            { name: 'Selection split', before: project.score_before ?? 0.3, after: project.score_after ?? 0.7 },
+            { name: 'Baseline vs best', before: project.score_before ?? 0.3, after: project.score_after ?? 0.7 },
+          ].map((r, i) => {
+            const g = r.after - r.before;
+            return (
+              <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: 12.5, fontWeight: 500 }}>{r.name}</div>
+                  <div style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--text-subtle)' }}>
+                    {r.before.toFixed(2)} → <span style={{ color: 'var(--success)', fontWeight: 600 }}>{r.after.toFixed(2)}</span>
+                    <span style={{ marginLeft: 6 }}>(+{(g * 100).toFixed(1)}pp)</span>
+                  </div>
+                </div>
+                <div style={{ position: 'relative', height: 14, borderRadius: 7, background: 'var(--surface-2)', overflow: 'hidden' }}>
+                  <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${r.before * 100}%`, background: 'var(--border-strong)' }} />
+                  <div style={{ position: 'absolute', left: `${r.before * 100}%`, top: 0, bottom: 0, width: `${g * 100}%`, background: 'linear-gradient(90deg, var(--primary), var(--success))' }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Seed vs Best split view */}
+      <div style={{ ...C.card, padding: 0, overflow: 'hidden' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1px 1fr' }}>
+          <div style={{ padding: '16px 18px' }}>
+            <div style={{ fontSize: 10, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '.07em', fontWeight: 600, marginBottom: 8 }}>Seed skill (before)</div>
+            <pre style={{ fontFamily: 'var(--mono)', fontSize: 12, lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0, color: 'var(--text-muted)', maxHeight: 260, overflowY: 'auto' }}>
+              {project.seed_skill ?? '—'}
+            </pre>
+          </div>
+          <div style={{ background: 'var(--border)' }} />
+          <div style={{ padding: '16px 18px' }}>
+            <div style={{ fontSize: 10, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '.07em', fontWeight: 600, marginBottom: 8 }}>
+              Best skill · {gain != null ? `+${gain.toFixed(1)}pp gain` : 'optimized'}
+            </div>
+            <pre style={{ fontFamily: 'var(--mono)', fontSize: 12, lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0, color: 'var(--text)', maxHeight: 260, overflowY: 'auto', border: '1px solid var(--primary)', borderRadius: 8, padding: '8px 10px' }}>
+              {project.best_skill ?? '—'}
+            </pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Skill workspace ─────────────────────────────────────────────── */
+type Tab = 'setup' | 'train' | 'best';
+
 function SkillWorkspace({ project, onBack }: { project: SkillProject; onBack: () => void }) {
-  const [tab, setTab] = useState<'examples' | 'optimize' | 'result'>('examples');
-  const [budgetTier, setBudgetTier] = useState<'low' | 'medium' | 'high'>('low');
-  const [pollingJobId, setPollingJobId] = useState<string | null>(null);
+  const [tab, setTab] = useState<Tab>('setup');
   const [optimizing, setOptimizing] = useState(false);
+  const [pollingJobId, setPollingJobId] = useState<string | null>(null);
   const qc = useQueryClient();
 
   const { data: current } = useQuery<SkillProject>({
@@ -466,26 +726,24 @@ function SkillWorkspace({ project, onBack }: { project: SkillProject; onBack: ()
   const isRunning = p.status === 'optimizing';
   const hasResult = p.status === 'completed' && !!p.best_skill;
 
-  // Poll job
   useEffect(() => {
     if (!pollingJobId) return;
     const iv = setInterval(async () => {
       try {
         const res = await api.get<{ data: { status: string } }>(`/api/v1/skill-opt/jobs/${pollingJobId}`);
-        const { status } = res.data.data;
-        if (status === 'completed' || status === 'failed') {
+        if (res.data.data.status === 'completed' || res.data.data.status === 'failed') {
           clearInterval(iv);
           setPollingJobId(null);
           setOptimizing(false);
           qc.invalidateQueries({ queryKey: ['skill-opt-project', project.id] });
-          if (status === 'completed') setTab('result');
+          qc.invalidateQueries({ queryKey: ['skill-opt-projects'] });
         }
       } catch { /* noop */ }
     }, 2500);
     return () => clearInterval(iv);
   }, [pollingJobId, project.id, qc]);
 
-  async function startOptimization() {
+  async function startTrain(budgetTier: string) {
     try {
       const llmEffort = (() => { try { return localStorage.getItem('ply_llm_effort') ?? undefined; } catch { return undefined; } })();
       const res = await api.post<{ data: { job_id: string } }>(`/api/v1/skill-opt/${project.id}/optimize`, {
@@ -494,166 +752,65 @@ function SkillWorkspace({ project, onBack }: { project: SkillProject; onBack: ()
       });
       setPollingJobId(res.data.data.job_id);
       setOptimizing(true);
-      setTab('optimize' as any);
+      setTab('train');
     } catch (e: any) {
-      alert(e?.response?.data?.detail ?? 'Failed to start optimization');
+      alert(e?.response?.data?.detail ?? 'Failed to start training');
     }
   }
 
-  const TIERS = {
-    low:    { label: 'Low',    desc: '2 epochs · 10 rollouts', credits: 5  },
-    medium: { label: 'Medium', desc: '3 epochs · 20 rollouts', credits: 10 },
-    high:   { label: 'High',   desc: '4 epochs · 30 rollouts', credits: 16 },
-  };
+  const TABS: { id: Tab; label: string }[] = [
+    { id: 'setup', label: 'Setup' },
+    { id: 'train', label: isRunning ? 'Train ●' : 'Train' },
+    ...(hasResult ? [{ id: 'best' as Tab, label: 'Best Skill' }] : []),
+  ];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 0, height: '100%' }}>
-      {/* Top bar */}
-      <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+      {/* Header */}
+      <div style={{ padding: '14px 24px', borderBottom: '1px solid var(--border)', background: 'var(--bg)', display: 'flex', alignItems: 'center', gap: 12 }}>
         <button className="ply-btn ply-btn-sm" onClick={onBack}>← Back</button>
-        <div style={{ width: 30, height: 30, borderRadius: 8, background: 'var(--primary-soft)', border: '1px solid var(--primary-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)' }}>
+        <div style={{ width: 30, height: 30, borderRadius: 8, background: 'linear-gradient(135deg, var(--primary), var(--accent))', display: 'grid', placeItems: 'center', color: 'white', flexShrink: 0 }}>
           <Icon name="bolt" size={14} />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 600, fontSize: 14 }}>{p.name}</div>
-          <div style={{ fontSize: 11.5, color: 'var(--text-subtle)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {p.task_description}
-          </div>
+          <div style={{ fontWeight: 600, fontSize: 14, lineHeight: 1.2 }}>{p.name}</div>
+          <div style={{ fontSize: 11.5, color: 'var(--text-subtle)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.task_description}</div>
         </div>
-        {p.example_count != null && (
-          <span className="ply-pill"><Icon name="check" size={11} /> {p.example_count} examples</span>
-        )}
-        {hasResult && (
-          <span className="ply-pill ply-pill-success">
-            {p.score_after != null ? `${(p.score_after * 100).toFixed(1)}% score` : 'Completed'}
+        <StatusPill status={p.status} />
+        {p.example_count != null && <span className="ply-pill" style={{ fontSize: 10.5 }}>{p.example_count} examples</span>}
+        {p.score_after != null && p.score_before != null && (
+          <span className="ply-pill ply-pill-success" style={{ fontSize: 10.5, fontFamily: 'var(--mono)' }}>
+            {(p.score_before * 100).toFixed(0)}% → {(p.score_after * 100).toFixed(0)}%
           </span>
         )}
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', borderBottom: '1px solid var(--border)' }}>
-        {[
-          { id: 'examples', label: 'Examples' },
-          { id: 'optimize', label: isRunning ? 'Running…' : 'Optimize' },
-          ...(hasResult ? [{ id: 'result', label: 'Skill document' }] : []),
-        ].map(t => (
-          <button key={t.id} onClick={() => setTab(t.id as any)} style={{
-            padding: '10px 16px', border: 0, background: 'transparent',
-            borderBottom: tab === t.id ? '2px solid var(--primary)' : '2px solid transparent',
-            color: tab === t.id ? 'var(--text)' : 'var(--text-muted)',
-            fontSize: 13, fontWeight: tab === t.id ? 600 : 400, cursor: 'pointer',
-          }}>{t.label}</button>
+      <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', background: 'var(--bg)', paddingLeft: 24 }}>
+        {TABS.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)} style={{ padding: '10px 16px', border: 0, background: 'transparent', borderBottom: tab === t.id ? '2px solid var(--primary)' : '2px solid transparent', color: tab === t.id ? 'var(--text)' : 'var(--text-muted)', fontSize: 13, fontWeight: tab === t.id ? 600 : 400, cursor: 'pointer', whiteSpace: 'nowrap', transition: 'color .12s' }}>
+            {t.label}
+          </button>
         ))}
       </div>
 
-      {/* Tab content */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
-        {tab === 'examples' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-            <ExamplesEditor
-              projectId={p.id}
-              exampleCount={p.example_count}
-              onSaved={() => { qc.invalidateQueries({ queryKey: ['skill-opt-project', p.id] }); }}
-            />
-          </div>
-        )}
-
-        {tab === 'optimize' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            {(isRunning || optimizing) ? (
-              <LiveView
-                projectId={p.id}
-                onDone={() => {
-                  qc.invalidateQueries({ queryKey: ['skill-opt-project', p.id] });
-                  setOptimizing(false);
-                  setTab('result');
-                }}
-              />
-            ) : (
-              <div className="ply-card" style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 20 }}>
-                <div>
-                  <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>Run SkillOpt</div>
-                  <div style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>
-                    The optimizer will evolve a skill document across multiple epochs using your examples.
-                    Each epoch: rollout → reflect → edit → validate.
-                  </div>
-                </div>
-
-                {/* LLM effort from settings */}
-                {(() => {
-                  const effort = (() => { try { return localStorage.getItem('ply_llm_effort') ?? 'medium'; } catch { return 'medium'; } })();
-                  const modelMap: Record<string, string> = { low: 'gemini-2.0-flash', medium: 'claude-3.5-haiku', high: 'gpt-4o' };
-                  return (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text-subtle)', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 7, padding: '7px 12px' }}>
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-                      <span>Executor model from Settings <strong style={{ color: 'var(--text)', fontFamily: 'var(--mono)' }}>LLM effort</strong>:</span>
-                      <span className="ply-pill" style={{ fontSize: 10.5, color: 'var(--primary)' }}>{effort} — {modelMap[effort]}</span>
-                    </div>
-                  );
-                })()}
-
-                {/* Tier selector */}
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-muted)', marginBottom: 10 }}>Budget tier (epochs &amp; rollouts)</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
-                    {(Object.entries(TIERS) as [string, { label: string; desc: string; credits: number }][]).map(([k, v]) => (
-                      <button key={k} onClick={() => setBudgetTier(k as any)} style={{
-                        padding: '12px 14px', borderRadius: 9, border: 0, cursor: 'pointer', textAlign: 'left',
-                        background: budgetTier === k ? 'var(--surface)' : 'var(--surface-2)',
-                        outline: budgetTier === k ? '1.5px solid var(--primary)' : '1px solid var(--border)',
-                        boxShadow: budgetTier === k ? '0 0 0 3px color-mix(in oklab, var(--primary) 12%, transparent)' : 'none',
-                      }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                          <span style={{ fontSize: 13, fontWeight: 600, color: budgetTier === k ? 'var(--primary)' : 'var(--text)' }}>{v.label}</span>
-                          <span className="mono" style={{ fontSize: 11, fontWeight: 700, color: budgetTier === k ? 'var(--primary)' : 'var(--text-muted)' }}>−{v.credits} cr</span>
-                        </div>
-                        <div style={{ fontSize: 11, color: 'var(--text-subtle)' }}>{v.desc}</div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <button className="ply-btn ply-btn-primary"
-                  disabled={!p.example_count || p.example_count < 6}
-                  onClick={startOptimization}
-                  style={{
-                    alignSelf: 'flex-start',
-                    opacity: (!p.example_count || p.example_count < 6) ? 0.4 : 1,
-                    cursor: (!p.example_count || p.example_count < 6) ? 'not-allowed' : 'pointer',
-                  }}>
-                  <Icon name="zap" size={14} />
-                  Run SkillOpt · {TIERS[budgetTier].credits} cr
-                </button>
-
-                {(!p.example_count || p.example_count < 6) && (
-                  <div style={{ fontSize: 12, color: '#f59e0b' }}>
-                    Add at least 6 examples in the Examples tab to unlock optimization.
-                  </div>
-                )}
-
-                {hasResult && p.best_skill && (
-                  <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16 }}>
-                    <div style={{ fontSize: 12, color: 'var(--text-subtle)', marginBottom: 8 }}>Previous best skill</div>
-                    <pre className="ply-prompt-block" style={{ margin: 0, fontSize: 11.5, maxHeight: 160, overflowY: 'auto' }}>
-                      {p.best_skill.slice(0, 500)}{p.best_skill.length > 500 ? '…' : ''}
-                    </pre>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
-        {tab === 'result' && (
-          <ResultCard project={p} onRunAgain={() => setTab('optimize')} />
-        )}
+      {/* Content */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px 60px' }}>
+        {tab === 'setup' && <SetupTab project={p} onSaved={() => {}} onStart={startTrain} />}
+        {tab === 'train' && <TrainTab project={p} onDone={() => { qc.invalidateQueries({ queryKey: ['skill-opt-project', project.id] }); setOptimizing(false); setTab('best'); }} />}
+        {tab === 'best' && <BestSkillTab project={p} onRunAgain={() => setTab('setup')} />}
       </div>
     </div>
   );
 }
 
-/* ── Project list ────────────────────────────────────────────────── */
-function ProjectList({ onSelect, onNew }: { onSelect: (p: SkillProject) => void; onNew: () => void }) {
+/* ── Project list (left panel) ───────────────────────────────────── */
+function ProjectList({ onSelect }: { onSelect: (p: SkillProject) => void }) {
+  const [showCreate, setShowCreate] = useState(false);
+  const [name, setName] = useState('');
+  const [taskDesc, setTaskDesc] = useState('');
+  const qc = useQueryClient();
+
   const { data, isLoading } = useQuery({
     queryKey: ['skill-opt-projects'],
     queryFn: async () => {
@@ -662,96 +819,116 @@ function ProjectList({ onSelect, onNew }: { onSelect: (p: SkillProject) => void;
     },
   });
 
-  const STATUS_COLORS: Record<string, string> = {
-    completed: 'var(--success)', optimizing: 'var(--primary)', failed: 'var(--danger)',
-    pending: 'var(--text-subtle)', cancelled: 'var(--text-subtle)',
-  };
+  const { mutate: create, isPending } = useMutation({
+    mutationFn: async () => {
+      const res = await api.post<{ data: SkillProject }>('/api/v1/skill-opt/', { name: name.trim(), task_description: taskDesc.trim() });
+      return res.data.data;
+    },
+    onSuccess: (p) => { qc.invalidateQueries({ queryKey: ['skill-opt-projects'] }); onSelect(p); setShowCreate(false); setName(''); setTaskDesc(''); },
+  });
 
   const projects = data ?? [];
 
+  const STATUS_COLOR: Record<string, string> = { completed: 'var(--success)', optimizing: 'var(--primary)', failed: 'var(--danger)', pending: 'var(--text-subtle)', cancelled: 'var(--text-subtle)' };
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      {isLoading ? (
-        <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-subtle)', fontSize: 13 }}>Loading…</div>
-      ) : projects.length === 0 ? (
-        <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-subtle)', fontSize: 13 }}>
-          No skill projects yet.
-          <div style={{ marginTop: 8 }}>
-            <button className="ply-btn ply-btn-primary" onClick={onNew}><Icon name="plus" size={13} /> Create first project</button>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 0, height: '100%', overflow: 'hidden' }}>
+      {/* Header */}
+      <div style={{ padding: '18px 20px 14px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div>
+          <div style={{ fontSize: 16, fontWeight: 600, letterSpacing: '-.01em' }}>Skill projects</div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{projects.length} project{projects.length !== 1 ? 's' : ''}</div>
+        </div>
+        <button className="ply-btn ply-btn-primary ply-btn-sm" onClick={() => setShowCreate(true)}>
+          <Icon name="plus" size={13} /> New skill
+        </button>
+      </div>
+
+      {/* Create form */}
+      {showCreate && (
+        <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 10, background: 'var(--primary-soft)' }}>
+          <div style={{ fontSize: 12.5, fontWeight: 600 }}>New skill project</div>
+          <input value={name} onChange={e => setName(e.target.value)} placeholder='Name (e.g. "Finance Q&A")'
+            style={{ width: '100%', height: 34, padding: '0 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontSize: 12.5, outline: 'none', boxSizing: 'border-box' }} />
+          <textarea value={taskDesc} onChange={e => setTaskDesc(e.target.value)} rows={3} placeholder="Task description — what should the skill teach the agent to do well?"
+            style={{ width: '100%', padding: '8px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontSize: 12.5, resize: 'none', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button className="ply-btn ply-btn-primary ply-btn-sm" disabled={!name.trim() || taskDesc.trim().length < 10 || isPending} onClick={() => create()} style={{ opacity: (!name.trim() || taskDesc.trim().length < 10) ? 0.5 : 1 }}>
+              <Icon name="check" size={12} />{isPending ? 'Creating…' : 'Create'}
+            </button>
+            <button className="ply-btn ply-btn-sm" onClick={() => setShowCreate(false)}>Cancel</button>
           </div>
         </div>
-      ) : (
-        projects.map(p => (
-          <button key={p.id} onClick={() => onSelect(p)}
-            className="ply-card" style={{ padding: '14px 18px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 14, width: '100%', border: 0, textAlign: 'left' }}>
-            <div style={{ width: 34, height: 34, borderRadius: 9, background: 'var(--primary-soft)', border: '1px solid var(--primary-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)', flexShrink: 0 }}>
-              <Icon name="bolt" size={15} />
+      )}
+
+      {/* List */}
+      <div style={{ flex: 1, overflowY: 'auto' }}>
+        {isLoading && (
+          <div style={{ padding: '28px 20px', textAlign: 'center', color: 'var(--text-subtle)', fontSize: 12.5 }}>Loading…</div>
+        )}
+        {!isLoading && projects.length === 0 && (
+          <div style={{ padding: '48px 20px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 44, height: 44, borderRadius: 12, background: 'var(--primary-soft)', color: 'var(--primary)', display: 'grid', placeItems: 'center' }}>
+              <Icon name="bolt" size={20} />
             </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 500, fontSize: 13.5, marginBottom: 2 }}>{p.name}</div>
-              <div style={{ fontSize: 12, color: 'var(--text-subtle)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.task_description}</div>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>No skill projects yet</div>
+            <div style={{ color: 'var(--text-muted)', fontSize: 12.5, lineHeight: 1.55, maxWidth: 240 }}>Create a project, add Q&A examples, and run SkillOpt to evolve a compact skill document.</div>
+            <button className="ply-btn ply-btn-primary" onClick={() => setShowCreate(true)}><Icon name="plus" size={13} /> Create first project</button>
+          </div>
+        )}
+        {projects.map(p => (
+          <button key={p.id} onClick={() => onSelect(p)} style={{ width: '100%', padding: '14px 20px', border: 0, borderBottom: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 7, transition: 'background .1s' }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-2)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <span style={{ fontWeight: 500, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{p.name}</span>
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: STATUS_COLOR[p.status] ?? 'var(--text-subtle)', flexShrink: 0 }} />
             </div>
-            <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexShrink: 0 }}>
-              {p.example_count != null && <span style={{ fontSize: 11.5, color: 'var(--text-subtle)' }}>{p.example_count} examples</span>}
-              {p.score_after != null && (
-                <span className="ply-pill ply-pill-success" style={{ fontSize: 11 }}>{(p.score_after * 100).toFixed(1)}%</span>
+            <div style={{ fontSize: 11.5, color: 'var(--text-subtle)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.task_description}</div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <StatusPill status={p.status} />
+              {p.example_count != null && <span className="ply-pill" style={{ fontSize: 10 }}>{p.example_count} examples</span>}
+              {p.score_before != null && p.score_after != null && (
+                <span style={{ fontFamily: 'var(--mono)', fontSize: 10.5, color: 'var(--success)' }}>{(p.score_before*100).toFixed(0)}% → {(p.score_after*100).toFixed(0)}%</span>
               )}
-              <span style={{ width: 8, height: 8, borderRadius: '50%', background: STATUS_COLORS[p.status] ?? 'var(--text-subtle)', flexShrink: 0 }} />
-              <Icon name="chevronR" size={14} color="var(--text-subtle)" />
             </div>
           </button>
-        ))
-      )}
+        ))}
+      </div>
     </div>
   );
 }
 
 /* ── Page ────────────────────────────────────────────────────────── */
 export default function SkillOptPage() {
-  const [view, setView] = useState<'list' | 'create' | 'project'>('list');
   const [selected, setSelected] = useState<SkillProject | null>(null);
 
-  if (view === 'project' && selected) {
-    return (
-      <div style={{ height: '100%', overflow: 'hidden' }}>
-        <SkillWorkspace project={selected} onBack={() => { setView('list'); setSelected(null); }} />
-      </div>
-    );
-  }
-
   return (
-    <>
-      <PageHeader
-        title="Skill Optimizer"
-        subtitle="SkillOpt evolves a compact skill document for your task domain — arXiv:2605.23904"
-      />
-      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '20px 28px 80px' }}>
-        <div style={{ maxWidth: 800, display: 'flex', flexDirection: 'column', gap: 16 }}>
-
-          {/* Top action */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              {view === 'create' && (
-                <button className="ply-btn ply-btn-sm" onClick={() => setView('list')}>← Back to projects</button>
-              )}
-            </div>
-            {view === 'list' && (
-              <button className="ply-btn ply-btn-primary" onClick={() => setView('create')}>
-                <Icon name="plus" size={13} /> New project
-              </button>
-            )}
-          </div>
-
-          {view === 'create' ? (
-            <CreateProjectForm onCreated={p => { setSelected(p); setView('project'); }} />
-          ) : (
-            <ProjectList
-              onSelect={p => { setSelected(p); setView('project'); }}
-              onNew={() => setView('create')}
-            />
-          )}
-        </div>
+    <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
+      {/* Left sidebar — project list */}
+      <div style={{ width: 280, flexShrink: 0, borderRight: '1px solid var(--border)', height: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <ProjectList onSelect={p => setSelected(p)} />
       </div>
-    </>
+
+      {/* Right — workspace or placeholder */}
+      <div style={{ flex: 1, minWidth: 0, height: '100%', overflow: 'hidden' }}>
+        {selected ? (
+          <SkillWorkspace project={selected} onBack={() => setSelected(null)} />
+        ) : (
+          <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, color: 'var(--text-subtle)', padding: 40 }}>
+            <div style={{ width: 60, height: 60, borderRadius: 16, background: 'var(--primary-soft)', color: 'var(--primary)', display: 'grid', placeItems: 'center' }}>
+              <Icon name="bolt" size={26} />
+            </div>
+            <div style={{ textAlign: 'center', maxWidth: 380 }}>
+              <div style={{ fontSize: 18, fontWeight: 600, color: 'var(--text)', marginBottom: 8 }}>Skill Optimizer</div>
+              <div style={{ fontSize: 13.5, color: 'var(--text-muted)', lineHeight: 1.6 }}>
+                Select a project on the left, or create a new one. SkillOpt evolves a compact skill document through rollouts, reflection, and bounded edits.
+              </div>
+              <div style={{ marginTop: 10, fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--text-subtle)' }}>arXiv:2605.23904 · text-space optimizer for agent skills</div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
