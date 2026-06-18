@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, type ReactNode, type CSSProperties } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import type { SessionsGrouped, TransferJobListResponse } from '@/types/api';
@@ -10,7 +10,7 @@ import Link from 'next/link';
 import { PageHeader } from '@/components/layout/page-header';
 
 /* ── SVG icon helper ─────────────────────────────────────────────── */
-const ICON_PATHS: Record<string, React.ReactNode> = {
+const ICON_PATHS: Record<string, ReactNode> = {
   swords:      <><polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5"/><line x1="13" y1="19" x2="19" y2="13"/><line x1="16" y1="16" x2="20" y2="20"/><line x1="19" y1="21" x2="21" y2="19"/><polyline points="14.5 6.5 18 3 21 3 21 6 17.5 9.5"/><line x1="5" y1="14" x2="8.5" y2="17.5"/><line x1="4" y1="20" x2="6" y2="22"/><line x1="6" y1="20" x2="4" y2="22"/></>,
   sparkles:    <path d="m12 3-1.912 5.813a2 2 0 01-1.275 1.275L3 12l5.813 1.912a2 2 0 011.275 1.275L12 21l1.912-5.813a2 2 0 011.275-1.275L21 12l-5.813-1.912a2 2 0 01-1.275-1.275L12 3z"/>,
   grid:        <><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></>,
@@ -30,7 +30,7 @@ const ICON_PATHS: Record<string, React.ReactNode> = {
   info:        <><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></>,
 };
 
-function HIcon({ name, size = 14, color, style }: { name: string; size?: number; color?: string; style?: React.CSSProperties }) {
+function HIcon({ name, size = 14, color, style }: { name: string; size?: number; color?: string; style?: CSSProperties }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
       stroke={color || 'currentColor'} strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round"
@@ -121,7 +121,7 @@ function formatWhen(dateStr: string): string {
 }
 
 /* ── MetricCell ──────────────────────────────────────────────────── */
-function MetricCell({ k, v, primary }: { k: string; v: React.ReactNode; primary?: boolean }) {
+function MetricCell({ k, v, primary }: { k: string; v: ReactNode; primary?: boolean }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
       <span style={{ fontSize: 10, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 600, whiteSpace: 'nowrap' }}>{k}</span>
@@ -132,7 +132,7 @@ function MetricCell({ k, v, primary }: { k: string; v: React.ReactNode; primary?
 
 /* ── Session detail panels ───────────────────────────────────────── */
 function SessionDetail({ item }: { item: HistoryItem }) {
-  const Title = ({ children }: { children: React.ReactNode }) => (
+  const Title = ({ children }: { children: ReactNode }) => (
     <div style={{ fontSize: 10, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '.07em', fontWeight: 600, marginBottom: 8 }}>{children}</div>
   );
 
@@ -431,7 +431,7 @@ function SessionCard({ item }: { item: HistoryItem }) {
         >
           <HIcon name="fileText" size={12} /> {showPrompt ? 'Hide prompt' : 'View prompt'}
         </button>
-        <button className="ply-btn ply-btn-sm ply-btn-primary" disabled={running}>
+        <button className="ply-btn ply-btn-sm" disabled title="Re-run not yet implemented">
           <HIcon name="refresh" size={11} /> Re-run
         </button>
       </div>

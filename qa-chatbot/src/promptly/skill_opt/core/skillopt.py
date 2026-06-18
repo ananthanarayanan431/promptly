@@ -46,10 +46,20 @@ from promptly.utils.log import get_logger
 _log = get_logger(__name__)
 
 # ── Model config ──────────────────────────────────────────────────────────────
+# Default models when no llm_effort override is set
 _EXECUTOR_MODEL = "anthropic/claude-3.5-haiku"
 _OPTIMIZER_MODEL = "openai/gpt-4o-mini"
 _SCORER_MODEL = "openai/gpt-4o-mini"
 _SEED_MODEL = "openai/gpt-4o-mini"
+
+# Per-effort model overrides.
+# The EXECUTOR runs every example → its quality directly affects optimization signal.
+# The OPTIMIZER + SCORER stay cheap (meta-operations, not critical for quality).
+_LLM_EFFORT_EXECUTOR: dict[str, str] = {
+    "low": "google/gemini-2.0-flash",  # $0.10/1M — fast & cheap
+    "medium": "anthropic/claude-3.5-haiku",  # $0.80/1M — default
+    "high": "openai/gpt-4o",  # $2.50/1M — best answer quality
+}
 
 # ── Budget tiers ──────────────────────────────────────────────────────────────
 TIERS: dict[str, dict[str, int]] = {

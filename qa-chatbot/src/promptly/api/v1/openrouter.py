@@ -367,7 +367,7 @@ async def get_llm_tiers(
     # If the model cache is stale/empty, refresh it so we show live prices.
     # Fall back to hardcoded _COST_IO table if OpenRouter is unreachable.
     global _models_cache, _models_cache_ts  # noqa: PLW0603
-    if not _models_cache:
+    if not _models_cache or time.monotonic() - _models_cache_ts > _MODELS_TTL:
         try:
             headers = {"Authorization": f"Bearer {_api_key()}"}
             async with httpx.AsyncClient(timeout=5.0) as client:

@@ -477,6 +477,7 @@ async def reoptimize_domain(
     if is_gepa:
         task_kwargs["gepa_budget"] = gepa_tier["budget"]
         task_kwargs["gepa_n_pareto"] = gepa_tier["n_pareto"]
+        task_kwargs["gepa_credits"] = gepa_tier["credits"]
         run_gepa_optimization.apply_async(kwargs=task_kwargs)
         log.info(
             "domain_gepa_job_queued",

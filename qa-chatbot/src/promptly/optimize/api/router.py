@@ -475,7 +475,9 @@ async def list_sessions(
             (m.token_usage or {}).get("total_tokens", 0) for m in s.messages if m.token_usage
         )
         feedback_total = sum(1 for m in s.messages if m.feedback)
-        asst_msgs = [m for m in s.messages if m.role == "assistant"]
+        asst_msgs = sorted(
+            [m for m in s.messages if m.role == "assistant"], key=lambda m: m.created_at
+        )
         prompt_input = asst_msgs[0].raw_prompt if asst_msgs else None
         optimized_prompt = asst_msgs[-1].response if asst_msgs else None
         # Extract reasoning and council model names from the last assistant message

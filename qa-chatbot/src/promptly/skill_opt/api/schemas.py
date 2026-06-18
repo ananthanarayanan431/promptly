@@ -101,10 +101,6 @@ class SkillEditItem(BaseModel):
     accepted: bool
 
 
-class SkillOptLiveStateResponse(BaseModel):
-    state: SkillOptLiveState | None
-
-
 class SkillOptLiveState(BaseModel):
     phase: str  # seed | rollout | reflect | gate | slow_update | completed | failed
     epoch: int
@@ -118,3 +114,13 @@ class SkillOptLiveState(BaseModel):
     rollout_total: int
     recent_edits: list[SkillEditItem]
     current_skill_preview: str  # first ~300 chars of current skill
+
+
+class SkillOptLiveStateResponse(BaseModel):
+    """Wrapper so SuccessResponse generic constraint is satisfied (BaseModel required)."""
+
+    state: SkillOptLiveState | None
+
+
+class SkillRunListResponse(BaseModel):
+    runs: list[SkillRunResponse]

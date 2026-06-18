@@ -557,10 +557,10 @@ function EngineInfoPopover({ onClose }: { onClose: () => void }) {
   );
 }
 
-function EngineToggle({ engine, onChange }: { engine: Engine; onChange: (e: Engine) => void }) {
+function EngineToggle({ engine, onChange, disabled }: { engine: Engine; onChange: (e: Engine) => void; disabled?: boolean }) {
   const [showInfo, setShowInfo] = useState(false);
   return (
-    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, opacity: disabled ? 0.5 : 1 }}>
       <span style={{ fontSize: 10, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '.07em', fontWeight: 600, whiteSpace: 'nowrap' }}>Engine</span>
       <div role="radiogroup" aria-label="Optimization engine" style={{
         display: 'inline-flex', alignItems: 'center', gap: 2, padding: 2,
@@ -570,7 +570,8 @@ function EngineToggle({ engine, onChange }: { engine: Engine; onChange: (e: Engi
           const sel = engine === o.id;
           return (
             <button key={o.id} role="radio" aria-checked={sel}
-              onClick={() => onChange(o.id)}
+              onClick={() => !disabled && onChange(o.id)}
+              disabled={disabled}
               title={`${o.name} — ${o.desc}`}
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: 5,
@@ -1212,13 +1213,14 @@ function RunRow({ run, expanded, onToggle }: { run: OptimizationRun; expanded: b
 
   return (
     <div>
-      <div
+      <button
         onClick={onToggle}
         style={{
           display: 'grid', gridTemplateColumns: '160px 1fr 100px 100px 1fr',
           gap: 10, alignItems: 'center', padding: '12px 16px', fontSize: 12.5,
-          borderBottom: '1px solid var(--border)', cursor: 'pointer',
-          background: expanded ? 'var(--surface-2)' : undefined,
+          borderBottom: '1px solid var(--border)', cursor: 'pointer', width: '100%',
+          background: expanded ? 'var(--surface-2)' : 'transparent',
+          border: 0, textAlign: 'left',
           opacity: isFailed ? 0.8 : 1,
         }}
       >
@@ -1235,7 +1237,7 @@ function RunRow({ run, expanded, onToggle }: { run: OptimizationRun; expanded: b
         <span style={{ color: expanded ? 'var(--primary)' : 'var(--text-subtle)', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
           {expanded ? '▲ hide' : (isFailed ? '▼ view error' : '▼ view prompt')}
         </span>
-      </div>
+      </button>
       {expanded && (
         <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', background: 'var(--surface-2)', display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div>
@@ -1495,7 +1497,7 @@ export function DomainWorkspace() {
 
   useEffect(() => {
     setSessionResult(null);
-  }, [selectedId]);
+  }, [selectedId, engine]);
 
   useEffect(() => {
     if (!pollingJobId) return;
@@ -1620,7 +1622,7 @@ export function DomainWorkspace() {
                   </span>
                 )}
                 {tab === 'optimize' && (
-                  <EngineToggle engine={engine} onChange={setEngine} />
+                  <EngineToggle engine={engine} onChange={setEngine} disabled={reoptimizing || ['pending', 'preparing_dataset', 'optimizing'].includes(selected?.status ?? '')} />
                 )}
               </>
             )}

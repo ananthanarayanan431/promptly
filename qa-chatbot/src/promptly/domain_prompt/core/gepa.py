@@ -296,12 +296,16 @@ async def _run_and_score_batch(
     api_key: str,
     token_counter: list[int] | None = None,
 ) -> list[TraceResult]:
-    """Run a candidate on multiple examples concurrently."""
-    tasks = [
-        _run_and_score_example(prompt, ex["question"], ex["answer"], api_key, token_counter)
-        for ex in examples
-    ]
-    return list(await asyncio.gather(*tasks))
+    """Run a candidate on multiple examples concurrently with bounded parallelism."""
+    sem = asyncio.Semaphore(6)
+
+    async def _bounded(ex: dict[str, str]) -> TraceResult:
+        async with sem:
+            return await _run_and_score_example(
+                prompt, ex["question"], ex["answer"], api_key, token_counter
+            )
+
+    return list(await asyncio.gather(*[_bounded(ex) for ex in examples]))
 
 
 async def _reflective_mutation(
@@ -494,6 +498,11 @@ async def optimize_gepa_prompt(
         minibatch = random.sample(d_feedback, min(MINIBATCH, len(d_feedback)))
         await emit("loop", "6", sub="minibatch", pending=pending, baseline=baseline)
         mark("6")
+
+        # Guard: ensure enough budget remains for at least one full iteration
+        # (minibatch × 2 runs + full Pareto eval if accepted)
+        if budget_used + len(minibatch) * 2 > budget:
+            break
 
         if await cancel_check():
             raise InterruptedError(f"Cancelled at iteration {iter_idx}.")
@@ -703,8 +712,8 @@ async def optimize_gepa_prompt(
     best = max(pool, key=lambda c: c.avg_score)
     best.star = True
 
-    await emit("completed", None, baseline=baseline)
     mark("17")
+    await emit("completed", None, baseline=baseline)
 
     score_after = best.avg_score
     score_before = phi0.avg_score

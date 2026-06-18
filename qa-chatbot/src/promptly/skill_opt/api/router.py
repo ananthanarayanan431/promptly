@@ -35,6 +35,8 @@ from promptly.skill_opt.api.schemas import (
     SkillOptLiveStateResponse,
     SkillProjectListResponse,
     SkillProjectResponse,
+    SkillRunListResponse,
+    SkillRunResponse,
 )
 from promptly.skill_opt.data.models import SkillOptStatus
 from promptly.skill_opt.data.repository import SkillOptProjectRepository
@@ -310,6 +312,30 @@ async def poll_job(
             result=result,
             error=error,
         )
+    )
+
+
+# ── Epoch runs ────────────────────────────────────────────────────────────────
+
+
+@router.get(
+    "/{project_id}/runs",
+    response_model=SuccessResponse[SkillRunListResponse],
+    dependencies=[Depends(_read_limiter)],
+)
+async def get_runs(
+    project_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
+) -> SuccessResponse[SkillRunListResponse]:
+    """Return all epoch runs for a project."""
+    repo = SkillOptProjectRepository(db)
+    project = await repo.get_by_id_and_user(project_id, current_user.user_id)
+    if project is None:
+        raise SkillOptProjectNotFoundError()
+    runs = await repo.get_runs_by_project(project_id)
+    return SuccessResponse(
+        data=SkillRunListResponse(runs=[SkillRunResponse.model_validate(r) for r in runs])
     )
 
 

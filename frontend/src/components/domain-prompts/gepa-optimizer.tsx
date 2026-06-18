@@ -660,7 +660,7 @@ function GepaTheater({ state }: { state: GepaState }) {
             <div style={{ flexShrink: 0 }}>
               <GepaLabel>Step 13 · Full eval on D_pareto</GepaLabel>
               <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>
-                {GEPA_NPARETO} rollouts — only spent because the gate passed.
+                {state.n_pareto_size ?? GEPA_NPARETO} rollouts — only spent because the gate passed.
               </div>
             </div>
             <div className="ply-progress" style={{ flex: 1, height: 7 }}>

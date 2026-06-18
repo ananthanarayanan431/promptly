@@ -347,6 +347,8 @@ def run_domain_optimization(
                     "score_after": score_after,
                     "win_rate": win_rate,
                     "candidates_tried": candidates_tried,
+                    "rounds_run": rounds_run,
+                    "total_tokens": total_tokens,
                 },
             )
 
@@ -422,6 +424,7 @@ def run_gepa_optimization(
     prompt_to_optimize: str,
     gepa_budget: int = 350,
     gepa_n_pareto: int = 30,
+    gepa_credits: int = 8,
 ) -> None:
     async def _run() -> None:  # noqa: RUF029
         import json
@@ -588,7 +591,7 @@ def run_gepa_optimization(
 
                     async with AsyncSessionLocal() as refund_db:
                         _repo = _UserRepo(refund_db)
-                        await _repo.refund_credits(_UUID(user_id), 12)
+                        await _repo.refund_credits(_UUID(user_id), gepa_credits)
                         await refund_db.commit()
                 except Exception:  # noqa: BLE001
                     _log.exception("credit_refund_failed", user_id=user_id)
@@ -597,10 +600,8 @@ def run_gepa_optimization(
 
             raise self.retry(exc=exc) from exc
         finally:
-            try:
-                await clear_dp_gepa_state(domain_id)
-            except Exception:  # noqa: BLE001
-                _log.warning("gepa_state_clear_failed", domain_id=domain_id)
+            # Keep completed GEPA state so the frontend can poll the final result.
+            # Only clear on failure/cancel paths (handled above in exception handlers).
             await clear_dp_domain_active_job(domain_id)
             await dispose_async_engine()
 

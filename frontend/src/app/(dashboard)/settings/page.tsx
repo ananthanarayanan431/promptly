@@ -235,9 +235,9 @@ function CreditsSection({ credits }: { credits: number | undefined }) {
           {credits != null && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 5, alignItems: 'flex-end' }}>
               {[
-                { label: 'Council runs', val: Math.floor(credits / 10) },
-                { label: 'PDO Low runs', val: Math.floor(credits / 5) },
-                { label: 'GEPA Low runs', val: Math.floor(credits / 4) },
+                { label: 'Council runs',   val: Math.floor(credits / 10) },
+                { label: 'PDO Low runs',   val: Math.floor(credits / 5) },
+                { label: 'Skill Low runs', val: Math.floor(credits / 5) },
               ].map(chip => (
                 <div key={chip.label} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5 }}>
                   <span style={{ color: 'var(--text-subtle)' }}>{chip.label}</span>
@@ -293,6 +293,16 @@ function CreditsSection({ credits }: { credits: number | undefined }) {
           { label: 'Low',    cost: 4,  desc: 'B=100 rollouts' },
           { label: 'Medium', cost: 8,  desc: 'B=260 rollouts' },
           { label: 'High',   cost: 14, desc: 'B=460 rollouts' },
+        ]} />
+        <div style={{ height: 4 }} />
+      </FeatureGroup>
+
+      {/* SkillOpt */}
+      <FeatureGroup icon="M13 2L3 14h9l-1 8 10-12h-9l1-8z" title="Skill Optimizer (SkillOpt)" color="#06b6d4">
+        <TierCompare color="#06b6d4" tiers={[
+          { label: 'Low',    cost: 5,  desc: '2 epochs · 10 rollouts/epoch' },
+          { label: 'Medium', cost: 10, desc: '3 epochs · 20 rollouts/epoch' },
+          { label: 'High',   cost: 16, desc: '4 epochs · 30 rollouts/epoch' },
         ]} />
         <div style={{ height: 4 }} />
       </FeatureGroup>
@@ -812,16 +822,20 @@ function ModelPicker({ value, onChange, models, loading }: {
                   const slug = m.id.split('/').slice(1).join('/') || m.id;
                   const isSel = m.id === value;
                   return (
-                    <div
+                    <button
                       key={m.id}
+                      role="option"
+                      aria-selected={isSel}
                       onClick={() => { onChange(m.id); setOpen(false); }}
+                      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onChange(m.id); setOpen(false); } }}
                       style={{
-                        display: 'flex', alignItems: 'center', gap: 10,
+                        display: 'flex', alignItems: 'center', gap: 10, width: '100%',
                         padding: '7px 12px', cursor: 'pointer', transition: 'background .08s',
-                        background: isSel ? 'color-mix(in oklab, var(--primary) 8%, transparent)' : undefined,
+                        background: isSel ? 'color-mix(in oklab, var(--primary) 8%, transparent)' : 'transparent',
+                        border: 0, textAlign: 'left',
                       }}
-                      onMouseEnter={e => { if (!isSel) (e.currentTarget as HTMLDivElement).style.background = 'var(--surface-2)'; }}
-                      onMouseLeave={e => { if (!isSel) (e.currentTarget as HTMLDivElement).style.background = ''; }}
+                      onMouseEnter={e => { if (!isSel) (e.currentTarget as HTMLButtonElement).style.background = 'var(--surface-2)'; }}
+                      onMouseLeave={e => { if (!isSel) (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
                     >
                       <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: isSel ? 'var(--primary)' : 'var(--text)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: isSel ? 600 : 400 }}>
                         {slug}
@@ -832,7 +846,7 @@ function ModelPicker({ value, onChange, models, loading }: {
                         <span style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--text-subtle)' }}>${m.output}/out</span>
                       </span>
                       {isSel && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>}
-                    </div>
+                    </button>
                   );
                 })}
               </div>

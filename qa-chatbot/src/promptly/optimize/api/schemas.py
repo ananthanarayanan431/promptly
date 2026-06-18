@@ -73,6 +73,7 @@ class ChatRequest(BaseModel):
     )
     council_models: list[str] | None = Field(
         default=None,
+        min_length=4,
         max_length=4,
         description=(
             "Override the 4 council model slugs for this run "

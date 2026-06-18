@@ -459,7 +459,7 @@ function SkillWorkspace({ project, onBack }: { project: SkillProject; onBack: ()
       const res = await api.get<{ data: SkillProject }>(`/api/v1/skill-opt/${project.id}`);
       return res.data.data;
     },
-    refetchInterval: optimizing ? 3000 : false,
+    refetchInterval: (optimizing || project.status === 'optimizing') ? 3000 : false,
   });
 
   const p = current ?? project;

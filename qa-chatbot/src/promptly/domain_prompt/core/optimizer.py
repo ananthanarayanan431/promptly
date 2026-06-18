@@ -785,8 +785,9 @@ async def optimize_domain_prompt(
         if t % MUTATION_INTERVAL == 0:
             ranking = _copeland_ranking(wm, t)
 
-            # Prune bottom _PRUNE_COUNT candidates (paper: remove 10 lowest Copeland)
-            to_prune = ranking[len(ranking) - PRUNE_COUNT :]  # lowest Copeland indices
+            # Prune bottom PRUNE_COUNT candidates, but keep at least one alive.
+            safe_prune = min(PRUNE_COUNT, max(0, len(ranking) - 1))
+            to_prune = ranking[len(ranking) - safe_prune :] if safe_prune else []
             # Remove in reverse index order so earlier removals don't shift later indices
             for idx in sorted(to_prune, reverse=True):
                 candidates.pop(idx)
