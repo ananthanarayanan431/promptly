@@ -328,7 +328,7 @@ function SetupTab({ project, onSaved, onStart }: {
               <button className="ply-btn ply-btn-sm" onClick={() => setExamples(e => [...e, { input: '', expected: '' }])}><Icon name="plus" size={11} /> Add row</button>
             </div>
           }>
-            Q&amp;A Example Pairs <span style={{ color: 'var(--text-subtle)', textTransform: 'none', letterSpacing: 0, fontWeight: 400, marginLeft: 6 }}>{validCount} valid · minimum 6 required</span>
+            Q&amp;A Example Pairs <span style={{ color: 'var(--text-subtle)', textTransform: 'none', letterSpacing: 0, fontWeight: 400, marginLeft: 6 }}>{validCount} valid · minimum 15 required</span>
           </SectionHd>
 
           {showPaste && (
@@ -361,11 +361,11 @@ function SetupTab({ project, onSaved, onStart }: {
             ))}
           </div>
           <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
-            <button className="ply-btn ply-btn-primary ply-btn-sm" disabled={validCount < 6 || saving} onClick={() => saveExamples()} style={{ opacity: validCount < 6 ? 0.5 : 1 }}>
+            <button className="ply-btn ply-btn-primary ply-btn-sm" disabled={validCount < 15 || saving} onClick={() => saveExamples()} style={{ opacity: validCount < 15 ? 0.5 : 1 }}>
               <Icon name="check" size={12} /> {saving ? 'Saving…' : `Save ${validCount} examples`}
             </button>
             <span style={{ fontSize: 11.5, color: validCount >= 6 ? 'var(--success)' : 'var(--text-subtle)' }}>
-              {validCount >= 6 ? `✓ ${validCount} examples ready` : `${Math.max(0, 6 - validCount)} more needed to enable training`}
+              {validCount >= 15 ? `✓ ${validCount} examples ready` : `${Math.max(0, 15 - validCount)} more needed — 15 minimum for a meaningful validation gate (70/15/15 split)`}
             </span>
           </div>
         </div>
@@ -446,10 +446,10 @@ function SetupTab({ project, onSaved, onStart }: {
             <div>Lₜ = {lr} · {schedule}</div>
             <div>batch = {batch}</div>
           </div>
-          <button className="ply-btn ply-btn-primary" style={{ height: 38, fontSize: 13.5, opacity: (!project.example_count || project.example_count < 6) ? 0.45 : 1, cursor: (!project.example_count || project.example_count < 6) ? 'not-allowed' : 'pointer' }}
-            disabled={!project.example_count || project.example_count < 6} onClick={() => onStart(budgetTier)}>
+          <button className="ply-btn ply-btn-primary" style={{ height: 38, fontSize: 13.5, opacity: (!project.example_count || project.example_count < 15) ? 0.45 : 1, cursor: (!project.example_count || project.example_count < 15) ? 'not-allowed' : 'pointer' }}
+            disabled={!project.example_count || project.example_count < 15} onClick={() => onStart(budgetTier)}>
             <Icon name="bolt" size={14} />
-            {!project.example_count || project.example_count < 6 ? 'Add examples first' : `Train skill · ${TIERS[budgetTier].credits} credits`}
+            {!project.example_count || project.example_count < 15 ? 'Add examples first' : `Train skill · ${TIERS[budgetTier].credits} credits`}
           </button>
           <div style={{ fontFamily: 'var(--mono)', fontSize: 10.5, color: 'var(--text-subtle)', textAlign: 'center', lineHeight: 1.5 }}>
             Held-out gate · rejected-edit buffer · epoch-wise slow update
