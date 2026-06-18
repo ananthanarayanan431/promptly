@@ -467,7 +467,7 @@ function LLMEffortSection() {
         id="llm-effort"
         icon="M13 2L3 14h9l-1 8 10-12h-9l1-8z"
         title="LLM effort"
-        subtitle="Choose the model tier for Council, Bridge and domain optimizers. Saved as your default for all future runs."
+        subtitle="Choose the model tier for Council, Bridge, Domain and Skill optimizers. Saved as your default for all future runs."
       />
 
       {isLoading ? (
@@ -552,7 +552,7 @@ function LLMEffortSection() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ fontSize: 12, color: 'var(--text-subtle)', display: 'flex', alignItems: 'center', gap: 6 }}>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
-          Stored locally. Applied to every optimization including Council, Bridge, and Domain runs.
+          Stored locally. Applied to every optimization including Council, Bridge, Domain and Skill runs.
         </div>
         {saved && (
           <span style={{ fontSize: 12, color: 'var(--success)', display: 'flex', alignItems: 'center', gap: 5 }}>

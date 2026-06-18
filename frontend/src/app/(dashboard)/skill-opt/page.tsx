@@ -487,7 +487,11 @@ function SkillWorkspace({ project, onBack }: { project: SkillProject; onBack: ()
 
   async function startOptimization() {
     try {
-      const res = await api.post<{ data: { job_id: string } }>(`/api/v1/skill-opt/${project.id}/optimize`, { budget_tier: budgetTier });
+      const llmEffort = (() => { try { return localStorage.getItem('ply_llm_effort') ?? undefined; } catch { return undefined; } })();
+      const res = await api.post<{ data: { job_id: string } }>(`/api/v1/skill-opt/${project.id}/optimize`, {
+        budget_tier: budgetTier,
+        ...(llmEffort ? { llm_effort: llmEffort } : {}),
+      });
       setPollingJobId(res.data.data.job_id);
       setOptimizing(true);
       setTab('optimize' as any);
@@ -575,9 +579,22 @@ function SkillWorkspace({ project, onBack }: { project: SkillProject; onBack: ()
                   </div>
                 </div>
 
+                {/* LLM effort from settings */}
+                {(() => {
+                  const effort = (() => { try { return localStorage.getItem('ply_llm_effort') ?? 'medium'; } catch { return 'medium'; } })();
+                  const modelMap: Record<string, string> = { low: 'gemini-2.0-flash', medium: 'claude-3.5-haiku', high: 'gpt-4o' };
+                  return (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text-subtle)', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 7, padding: '7px 12px' }}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                      <span>Executor model from Settings <strong style={{ color: 'var(--text)', fontFamily: 'var(--mono)' }}>LLM effort</strong>:</span>
+                      <span className="ply-pill" style={{ fontSize: 10.5, color: 'var(--primary)' }}>{effort} — {modelMap[effort]}</span>
+                    </div>
+                  );
+                })()}
+
                 {/* Tier selector */}
                 <div>
-                  <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-muted)', marginBottom: 10 }}>Effort tier</div>
+                  <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-muted)', marginBottom: 10 }}>Budget tier (epochs &amp; rollouts)</div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
                     {(Object.entries(TIERS) as [string, { label: string; desc: string; credits: number }][]).map(([k, v]) => (
                       <button key={k} onClick={() => setBudgetTier(k as any)} style={{
@@ -665,8 +682,8 @@ function ProjectList({ onSelect, onNew }: { onSelect: (p: SkillProject) => void;
         </div>
       ) : (
         projects.map(p => (
-          <div key={p.id} onClick={() => onSelect(p)}
-            className="ply-card" style={{ padding: '14px 18px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 14 }}>
+          <button key={p.id} onClick={() => onSelect(p)}
+            className="ply-card" style={{ padding: '14px 18px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 14, width: '100%', border: 0, textAlign: 'left' }}>
             <div style={{ width: 34, height: 34, borderRadius: 9, background: 'var(--primary-soft)', border: '1px solid var(--primary-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)', flexShrink: 0 }}>
               <Icon name="bolt" size={15} />
             </div>
@@ -682,7 +699,7 @@ function ProjectList({ onSelect, onNew }: { onSelect: (p: SkillProject) => void;
               <span style={{ width: 8, height: 8, borderRadius: '50%', background: STATUS_COLORS[p.status] ?? 'var(--text-subtle)', flexShrink: 0 }} />
               <Icon name="chevronR" size={14} color="var(--text-subtle)" />
             </div>
-          </div>
+          </button>
         ))
       )}
     </div>

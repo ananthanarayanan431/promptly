@@ -28,6 +28,14 @@ class SetExamplesRequest(BaseModel):
 
 class OptimizeSkillRequest(BaseModel):
     budget_tier: str = Field(default="low", pattern="^(low|medium|high)$")
+    llm_effort: str | None = Field(
+        default=None,
+        pattern="^(low|medium|high)$",
+        description=(
+            "Model quality tier for the executor model. "
+            "'low'=gemini-2.0-flash, 'medium'=claude-3.5-haiku (default), 'high'=gpt-4o."
+        ),
+    )
 
 
 class SkillJobResponse(BaseModel):

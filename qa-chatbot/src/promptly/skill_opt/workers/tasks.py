@@ -21,6 +21,7 @@ def run_skillopt(
     project_id: str,
     user_id: str,
     budget_tier: str = "medium",
+    llm_effort: str | None = None,
 ) -> None:
     async def _run() -> None:
         import json
@@ -111,6 +112,7 @@ def run_skillopt(
                 examples=examples,
                 api_key=api_key,
                 budget_tier=budget_tier,
+                llm_effort=llm_effort,
                 project_id=project_id,
                 cancel_check=lambda: is_so_job_cancelled(job_id),
                 emit_state=emit,
@@ -172,6 +174,13 @@ def run_skillopt(
 
         except InterruptedError:
             _log.info("skillopt_task_cancelled")
+            async with AsyncSessionLocal() as cancel_db:
+                cancel_repo = SkillOptProjectRepository(cancel_db)
+                cancel_project = await cancel_repo.get_by_id(UUID(project_id))
+                if cancel_project is not None:
+                    await cancel_repo.set_status(cancel_project, SkillOptStatus.cancelled)
+                    await cancel_db.commit()
+            await set_so_job_status(job_id, "cancelled")
             return
 
         except Exception as exc:

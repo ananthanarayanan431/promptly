@@ -37,7 +37,7 @@ async def get_so_job_status(job_id: str) -> str | None:
 
 async def set_so_job_owner(job_id: str, user_id: str) -> None:
     redis = await get_redis_client()
-    await redis.set(f"{_job_key(job_id)}:owner", user_id, ex=_TTL)
+    await redis.set(f"{_job_key(job_id)}:owner", user_id)  # no TTL — ownership is permanent
 
 
 async def get_so_job_owner(job_id: str) -> str | None:
@@ -48,7 +48,7 @@ async def get_so_job_owner(job_id: str) -> str | None:
 
 async def set_so_job_project_id(job_id: str, project_id: str) -> None:
     redis = await get_redis_client()
-    await redis.set(f"{_job_key(job_id)}:project_id", project_id, ex=_TTL)
+    await redis.set(f"{_job_key(job_id)}:project_id", project_id)  # no TTL — ownership is permanent
 
 
 async def get_so_job_project_id(job_id: str) -> str | None:

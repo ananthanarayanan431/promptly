@@ -102,7 +102,7 @@ def _cosine_lr(base: int, epoch: int, total: int) -> int:
     """Cosine decay: lr_budget decreases from base to ceil(base/2) across epochs."""
     if total <= 1:
         return base
-    factor = 0.5 * (1 + math.cos(math.pi * epoch / total))
+    factor = 0.5 * (1 + math.cos(math.pi * epoch / (total - 1)))
     return max(1, round(base * (0.5 + 0.5 * factor)))
 
 
@@ -174,8 +174,9 @@ async def _run_executor(
     example: Example,
     api_key: str,
     token_counter: list[int] | None = None,
+    executor_model: str = _EXECUTOR_MODEL,
 ) -> str:
-    llm = _build(_EXECUTOR_MODEL, temperature=0.3, max_tokens=512, api_key=api_key)
+    llm = _build(executor_model, temperature=0.3, max_tokens=512, api_key=api_key)
     try:
         resp = await llm.ainvoke(
             [
@@ -219,7 +220,7 @@ async def _score_answer(
             if meta:
                 token_counter[0] += meta.get("total_tokens", 0) or 0
         obj = _json_safe(str(resp.content))
-        return float(obj.get("score", 0.3)), str(obj.get("feedback", ""))
+        return max(0.0, min(1.0, float(obj.get("score", 0.3)))), str(obj.get("feedback", ""))
     except Exception as exc:
         _log.warning("scorer_failed", error=str(exc))
         return 0.3, "Scoring failed."
@@ -230,8 +231,9 @@ async def _run_and_score(
     example: Example,
     api_key: str,
     token_counter: list[int] | None = None,
+    executor_model: str = _EXECUTOR_MODEL,
 ) -> Trace:
-    output = await _run_executor(skill, example, api_key, token_counter)
+    output = await _run_executor(skill, example, api_key, token_counter, executor_model)
     score, feedback = await _score_answer(example, output, api_key, token_counter)
     return Trace(example=example, output=output, score=score, feedback=feedback)
 
@@ -241,8 +243,9 @@ async def _rollout_batch(
     batch: list[Example],
     api_key: str,
     token_counter: list[int] | None = None,
+    executor_model: str = _EXECUTOR_MODEL,
 ) -> list[Trace]:
-    tasks = [_run_and_score(skill, ex, api_key, token_counter) for ex in batch]
+    tasks = [_run_and_score(skill, ex, api_key, token_counter, executor_model) for ex in batch]
     return list(await asyncio.gather(*tasks))
 
 
@@ -251,11 +254,14 @@ async def _score_on_selection(
     d_sel: list[Example],
     api_key: str,
     token_counter: list[int] | None = None,
+    executor_model: str = _EXECUTOR_MODEL,
 ) -> float:
     if not d_sel:
         return 0.0
     traces = list(
-        await asyncio.gather(*[_run_and_score(skill, ex, api_key, token_counter) for ex in d_sel])
+        await asyncio.gather(
+            *[_run_and_score(skill, ex, api_key, token_counter, executor_model) for ex in d_sel]
+        )
     )
     return sum(t.score for t in traces) / len(traces)
 
@@ -422,6 +428,7 @@ async def optimize_skill(
     examples: list[dict[str, str]],
     api_key: str,
     budget_tier: str = "medium",
+    llm_effort: str | None = None,
     project_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
     emit_state: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
@@ -429,19 +436,21 @@ async def optimize_skill(
     """
     Run SkillOpt and return the best skill document.
 
+    Args:
+        budget_tier: Controls epochs/rollout count (low/medium/high).
+        llm_effort:  Controls which executor model is used (low/medium/high).
+                     Low = cheap/fast, Medium = default, High = frontier quality.
+
     Returns:
-        best_skill      (str)  — optimized skill markdown
-        seed_skill      (str)  — initial skill document
-        score_before    (float)
-        score_after     (float)
-        epochs_run      (int)
-        edits_accepted  (int)
-        edits_rejected  (int)
-        example_count   (int)
-        epoch_results   (list[dict])
-        total_tokens    (int)
+        best_skill, seed_skill, score_before, score_after,
+        epochs_run, edits_accepted, edits_rejected, example_count,
+        epoch_results, total_tokens, executor_model
     """
     tier = TIERS.get(budget_tier, TIERS["medium"])
+
+    # Resolve executor model from llm_effort (falls back to default medium)
+    executor_model = _LLM_EFFORT_EXECUTOR.get(llm_effort or "medium", _EXECUTOR_MODEL)
+    _log.info("skillopt_models", executor=executor_model, optimizer=_OPTIMIZER_MODEL)
     n_epochs = tier["epochs"]
     rollout_batch = tier["rollout_batch"]
     reflect_mini = tier["reflect_minibatch"]
@@ -484,7 +493,9 @@ async def optimize_skill(
     _log.info("skillopt_seed_generated", chars=len(current_skill))
 
     # Baseline score on D_sel
-    current_score = await _score_on_selection(current_skill, d_sel, api_key, token_counter)
+    current_score = await _score_on_selection(
+        current_skill, d_sel, api_key, token_counter, executor_model
+    )
     best_score = current_score
     best_skill = current_skill
 
@@ -529,7 +540,7 @@ async def optimize_skill(
                 }
             )
 
-        traces = await _rollout_batch(current_skill, batch, api_key, token_counter)
+        traces = await _rollout_batch(current_skill, batch, api_key, token_counter, executor_model)
 
         if cancel_check and await cancel_check():
             raise InterruptedError("Cancelled by user.")
@@ -733,4 +744,5 @@ async def optimize_skill(
         "example_count": len(parsed),
         "epoch_results": epoch_results,
         "total_tokens": token_counter[0],
+        "executor_model": executor_model,
     }

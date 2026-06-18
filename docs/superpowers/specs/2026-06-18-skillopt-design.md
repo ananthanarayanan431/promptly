@@ -38,7 +38,7 @@ can apply to any frozen model.
 
 ## Algorithm (adapted for web cost)
 
-```
+```pseudocode
 Input : task_description, examples (D), seed_skill Φ₀
 Output: best_skill.md
 
@@ -113,7 +113,7 @@ return best_skill, best_score
 
 ## Backend Architecture
 
-```
+```text
 qa-chatbot/src/promptly/skill_opt/
 ├── __init__.py                   # exports router
 ├── api/
@@ -189,7 +189,7 @@ edits_rejected, rollout_count, status, created_at
 
 ## Frontend Architecture
 
-```
+```text
 frontend/src/
 ├── app/(dashboard)/skill-opt/
 │   └── page.tsx                  # main Skill Opt page

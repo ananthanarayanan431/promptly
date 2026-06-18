@@ -250,28 +250,39 @@ async def start_optimization(
     if current_user.credits < credit_cost:
         raise SkillOptInsufficientCreditsError()
 
+    # Set status first to reduce the race window: a second concurrent request
+    # will hit SkillOptAlreadyRunningError once we flush this status change.
+    await repo.set_status(project, SkillOptStatus.optimizing, example_count=project.example_count)
+    project.credits_charged = credit_cost
+    await db.flush()
+
     user_repo = UserRepository(db)
     deducted = await user_repo.deduct_credits(current_user.user_id, credit_cost)
     if not deducted:
         raise SkillOptInsufficientCreditsError()
-
-    await repo.set_status(project, SkillOptStatus.optimizing, example_count=project.example_count)
-    project.credits_charged = credit_cost
-    await db.commit()
 
     job_id = str(uuid.uuid4())
     await set_so_job_status(job_id, "queued")
     await set_so_job_owner(job_id, str(current_user.user_id))
     await set_so_job_project_id(job_id, str(project_id))
 
-    run_skillopt.apply_async(
-        kwargs={
-            "job_id": job_id,
-            "project_id": str(project_id),
-            "user_id": str(current_user.user_id),
-            "budget_tier": body.budget_tier,
-        }
-    )
+    try:
+        run_skillopt.apply_async(
+            kwargs={
+                "job_id": job_id,
+                "project_id": str(project_id),
+                "user_id": str(current_user.user_id),
+                "budget_tier": body.budget_tier,
+                "llm_effort": body.llm_effort,
+            }
+        )
+    except Exception:
+        # Rollback status + credits if we can't queue the job
+        await db.rollback()
+        log.exception("skillopt_enqueue_failed", project_id=str(project_id))
+        raise
+
+    await db.commit()
     log.info("skillopt_job_queued", job_id=job_id, project_id=str(project_id))
 
     return SuccessResponse(data=SkillJobResponse(job_id=job_id, project_id=project_id))
