@@ -14,6 +14,7 @@ from promptly.api.v1 import (
 from promptly.domain_prompt import router as domain_prompt_router
 from promptly.optimize.api.router import router as optimize_router
 from promptly.prompt_bridge import router as prompt_bridge_router
+from promptly.skill_opt import router as skill_opt_router
 
 api_router = APIRouter()
 
@@ -29,3 +30,4 @@ api_router.include_router(categories.router)
 api_router.include_router(openrouter.router)
 api_router.include_router(domain_prompt_router)
 api_router.include_router(prompt_bridge_router)
+api_router.include_router(skill_opt_router)

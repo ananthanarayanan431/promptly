@@ -33,6 +33,7 @@ const NAV_GROUPS = [
     items: [
       { href: '/optimize',      label: 'Optimize',       icon: 'sparkles', primary: true },
       { href: '/domain-prompts', label: 'Domain',         icon: 'flask',    primary: true },
+      { href: '/skill-opt',     label: 'Skill',           icon: 'zap',      primary: true },
       { href: '/bridge',         label: 'Bridge',          icon: 'bridge',   primary: true },
       { href: '/analyze',       label: 'Analyze',         icon: 'activity' },
     ],
@@ -70,6 +71,7 @@ function NavIcon({ name }: { name: string }) {
     image: 'M21 15l-5-5L5 21M21 3H3a2 2 0 00-2 2v14a2 2 0 002 2h18a2 2 0 002-2V5a2 2 0 00-2-2zM8.5 10a1.5 1.5 0 100-3 1.5 1.5 0 000 3z',
     bridge: 'M4 12h4M16 12h4M8 12a4 4 0 008 0M8 12V8M16 12V8M8 8h8M6 5h3M15 5h3',
     dashboard: 'M3 3h8v8H3zM13 3h8v8h-8zM3 13h8v8H3zM13 13h8v8h-8z',
+    zap: 'M13 2L3 14h9l-1 8 10-12h-9l1-8z',
     settings: 'M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z',
   };
   const d = paths[name] || '';

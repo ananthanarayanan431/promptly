@@ -8,6 +8,7 @@ import type { User } from '@/types/api';
 
 const CRUMBS: Record<string, string[]> = {
   '/optimize':  ['Workspace', 'Optimize'],
+  '/skill-opt': ['Workspace', 'Skill'],
   '/analyze':   ['Workspace', 'Analyze'],
   '/versions':  ['Workspace', 'Versions'],
   '/history':   ['Workspace', 'History'],
