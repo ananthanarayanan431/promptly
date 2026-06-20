@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from promptly.admin.api.router import router as admin_router
 from promptly.api.v1 import (
     api_keys,
     categories,
@@ -31,3 +32,4 @@ api_router.include_router(openrouter.router)
 api_router.include_router(domain_prompt_router)
 api_router.include_router(prompt_bridge_router)
 api_router.include_router(skill_opt_router)
+api_router.include_router(admin_router)

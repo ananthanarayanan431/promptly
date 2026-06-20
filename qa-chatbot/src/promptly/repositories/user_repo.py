@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 
 from promptly.models.user import User
 from promptly.repositories.base import BaseRepository
@@ -88,3 +88,45 @@ class UserRepository(BaseRepository[User]):
         await self.db.execute(
             update(User).where(User.id == user_id).values(token_balance=User.token_balance + amount)
         )
+
+    async def get_all_paginated(self, page: int, per_page: int) -> tuple[list[User], int]:
+        """Return a page of users and the total count."""
+        total_result = await self.db.execute(select(func.count()).select_from(User))
+        total: int = total_result.scalar_one()
+
+        result = await self.db.execute(
+            select(User)
+            .order_by(User.created_at.desc())
+            .offset((page - 1) * per_page)
+            .limit(per_page)
+        )
+        users = list(result.scalars().all())
+        return users, total
+
+    async def update_admin_fields(
+        self,
+        user_id: UUID,
+        *,
+        is_active: bool | None = None,
+        is_admin: bool | None = None,
+        credits_delta: int | None = None,
+    ) -> User | None:
+        """Patch admin-controllable fields. Returns None if user not found."""
+        values: dict[str, object] = {}
+        if is_active is not None:
+            values["is_active"] = is_active
+        if is_admin is not None:
+            values["is_admin"] = is_admin
+        if not values and credits_delta is None:
+            return await self.get_by_id(user_id)
+
+        if values:
+            await self.db.execute(update(User).where(User.id == user_id).values(**values))
+
+        if credits_delta is not None:
+            await self.db.execute(
+                update(User).where(User.id == user_id).values(credits=User.credits + credits_delta)
+            )
+
+        await self.db.flush()
+        return await self.get_by_id(user_id)
