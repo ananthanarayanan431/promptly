@@ -29,6 +29,9 @@ class User(Base, UUIDMixin, TimestampMixin):
     token_balance: Mapped[int] = mapped_column(
         BigInteger, default=3_000_000, server_default="3000000", nullable=False
     )
+    is_admin: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
 
     sessions: Mapped[list[ChatSession]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
