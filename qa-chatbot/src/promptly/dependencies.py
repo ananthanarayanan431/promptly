@@ -8,7 +8,7 @@ from fastapi import Depends, Request
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from promptly.core.exceptions import UnauthorizedException
+from promptly.core.exceptions import ForbiddenException, UnauthorizedException
 from promptly.core.supabase_auth import verify_supabase_token
 from promptly.core.user_context import UserContext
 from promptly.db.session import get_async_session
@@ -131,3 +131,12 @@ async def get_current_user(
         token_balance=user.token_balance,
         is_admin=user.is_admin,
     )
+
+
+async def require_admin(
+    current_user: Annotated[UserContext, Depends(get_current_user)],
+) -> UserContext:
+    """Dependency that restricts access to admin users only."""
+    if not current_user.is_admin:
+        raise ForbiddenException(detail="Admin access required")
+    return current_user
