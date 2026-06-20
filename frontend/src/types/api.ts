@@ -2,6 +2,7 @@ export interface User {
   id: string;
   email: string;
   credits: number;
+  token_balance: number;
   created_at: string;
 }
 

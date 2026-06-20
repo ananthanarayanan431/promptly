@@ -611,16 +611,16 @@ function EngineToggle({ engine, onChange, disabled }: { engine: Engine; onChange
 /* ── Effort tier selector ─────────────────────────────────────────── */
 type BudgetTier = 'low' | 'medium' | 'high';
 
-const BUDGET_TIERS: Record<BudgetTier, { label: string; budget: number; nPareto: number; credits: number }> = {
-  low:    { label: 'Low',    budget: 100, nPareto: 10, credits: 4  },
-  medium: { label: 'Medium', budget: 260, nPareto: 22, credits: 8  },
-  high:   { label: 'High',   budget: 460, nPareto: 38, credits: 14 },
+const BUDGET_TIERS: Record<BudgetTier, { label: string; budget: number; nPareto: number; tokensEst: string }> = {
+  low:    { label: 'Low',    budget: 100, nPareto: 10, tokensEst: '~100K' },
+  medium: { label: 'Medium', budget: 260, nPareto: 22, tokensEst: '~260K' },
+  high:   { label: 'High',   budget: 460, nPareto: 38, tokensEst: '~460K' },
 };
 
-const PDO_TIERS: Record<BudgetTier, { label: string; rounds: number; candidates: number; credits: number }> = {
-  low:    { label: 'Low',    rounds: 15, candidates: 6,  credits: 5  },
-  medium: { label: 'Medium', rounds: 30, candidates: 10, credits: 10 },
-  high:   { label: 'High',   rounds: 50, candidates: 15, credits: 16 },
+const PDO_TIERS: Record<BudgetTier, { label: string; rounds: number; candidates: number; tokensEst: string }> = {
+  low:    { label: 'Low',    rounds: 15, candidates: 6,  tokensEst: '~50K'  },
+  medium: { label: 'Medium', rounds: 30, candidates: 10, tokensEst: '~100K' },
+  high:   { label: 'High',   rounds: 50, candidates: 15, tokensEst: '~200K' },
 };
 
 function EffortSelector({ tier, onChange }: { tier: BudgetTier; onChange: (t: BudgetTier) => void }) {
@@ -882,7 +882,7 @@ function OptimizeTab({ domain, onReoptimize, reoptimizing, sessionResult, onClea
               <Icon name={engine === 'gepa' ? 'sparkle2' : 'trophy'} size={14} />
               {busy ? (engine === 'gepa' ? 'Running GEPA…' : 'Running PDO…') : hasResult ? 'Run again' : (engine === 'gepa' ? 'Run GEPA' : 'Run PDO')}
               <span className="mono" style={{ marginLeft: 6, fontSize: 11, opacity: .75, paddingLeft: 8, borderLeft: '1px solid rgba(255,255,255,.25)' }}>
-                {engine === 'gepa' ? `−${BUDGET_TIERS[budgetTier].credits} cr` : `−${PDO_TIERS[budgetTier].credits} cr`}
+                {engine === 'gepa' ? BUDGET_TIERS[budgetTier].tokensEst : PDO_TIERS[budgetTier].tokensEst}
               </span>
             </button>
           </div>
@@ -1439,7 +1439,7 @@ function DomainSwitcher({ domains, selected, onSelect, onNewDomain }: {
           ))}
           <div style={{ padding: 6, borderTop: '1px solid var(--border)', marginTop: 4 }}>
             <button className="ply-btn ply-btn-sm" style={{ width: '100%', justifyContent: 'flex-start' }} onClick={() => { onNewDomain(); setOpen(false); }}>
-              <Icon name="upload" size={12} /> Upload new PDF · 10 credits
+              <Icon name="upload" size={12} /> Upload new PDF · token-metered
             </button>
           </div>
         </div>

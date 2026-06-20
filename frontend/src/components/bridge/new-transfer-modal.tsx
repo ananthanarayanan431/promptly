@@ -274,7 +274,7 @@ export function NewTransferModal({ onClose, onJobStarted, defaultSourceModel = '
                   : 'linear-gradient(135deg, var(--primary), #a855f7)',
                 color: '#fff', letterSpacing: '0.05em',
               }}>
-                {isPrefilled ? 'CACHED · 1 credit' : 'BRIDGE · 1–5 credits'}
+                {isPrefilled ? 'CACHED · fast' : 'BRIDGE · calibrates models'}
               </span>
             </div>
             <p style={{ margin: 0, fontSize: 12, color: 'var(--text-subtle)', lineHeight: 1.5 }}>
@@ -334,7 +334,7 @@ export function NewTransferModal({ onClose, onJobStarted, defaultSourceModel = '
             background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 8,
             padding: '8px 12px', fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5,
           }}>
-            <span style={{ color: 'var(--primary)' }}>5 credits</span> for a new model pair (builds reusable calibration) ·{' '}
+            <span style={{ color: 'var(--primary)' }}>tokens</span> for a new model pair (builds reusable calibration) ·{' '}
             <span style={{ color: 'var(--accent)' }}>1 credit</span> when a mapping already exists
           </div>
 

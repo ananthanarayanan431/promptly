@@ -234,7 +234,7 @@ export function ChatInput({
       {!hasPreviousTurns && (
         <p style={{ marginTop: 8, textAlign: 'center', fontFamily: 'var(--font-geist-mono, monospace)',
           fontSize: 11, color: 'var(--text-subtle)' }}>
-          Enter to optimize · Shift+Enter for new line · 10 credits per run
+          Enter to optimize · Shift+Enter for new line · tokens deducted per run
         </p>
       )}
     </div>

@@ -612,8 +612,8 @@ function BridgeProgress({ stage, source, target, expanded, onToggle, sourceScore
             {reused ? 'Reusing saved bridge' : 'Building a new bridge'}
           </span>
           {reused
-            ? <span style={{ fontSize: 10.5, padding: '2px 7px', borderRadius: 20, background: 'var(--success-soft, oklch(95% 0.05 150))', color: 'var(--success)', border: '1px solid transparent' }}>1 credit</span>
-            : <span style={{ fontSize: 10.5, padding: '2px 7px', borderRadius: 20, background: 'var(--warning-soft, oklch(95% 0.06 80))', color: 'var(--warning)', border: '1px solid transparent' }}>5 credits · first time</span>
+            ? <span style={{ fontSize: 10.5, padding: '2px 7px', borderRadius: 20, background: 'var(--success-soft, oklch(95% 0.05 150))', color: 'var(--success)', border: '1px solid transparent' }}>fast · cached</span>
+            : <span style={{ fontSize: 10.5, padding: '2px 7px', borderRadius: 20, background: 'var(--warning-soft, oklch(95% 0.06 80))', color: 'var(--warning)', border: '1px solid transparent' }}>new pair calibration</span>
           }
         </div>
         {stage !== 'done' && (
@@ -740,8 +740,8 @@ function BridgeResult({ original, adapted, source, target, reused, onTryAnother,
             </div>
             <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
               {reused
-                ? 'Used your saved bridge for this model pair (1 credit)'
-                : 'New bridge created and saved for reuse (5 credits)'}
+                ? 'Used your saved bridge for this model pair'
+                : 'New bridge created and saved for reuse'}
             </div>
           </div>
         </div>
@@ -1117,7 +1117,7 @@ function MappingDetailDrawer({
             <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round">
               <path d="M5 12h14M12 5l7 7-7 7" />
             </svg>
-            Use this bridge · 1 credit
+            Use this bridge
           </button>
           <button
             onClick={onClose}
@@ -1157,7 +1157,7 @@ function MappingsPanel({ mappings, onView, models }: { mappings: PromptMapping[]
           color: 'var(--text-subtle)',
         }}>{mappings.length}</span>
         <span style={{ flex: 1 }} />
-        <span style={{ fontSize: 11, color: 'var(--text-subtle)' }}>1 credit on reuse</span>
+        <span style={{ fontSize: 11, color: 'var(--text-subtle)' }}>token-metered</span>
       </div>
 
       {mappings.length === 0 ? (
@@ -1502,9 +1502,9 @@ export function BridgeWorkspace() {
               <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
             </svg>
             {existingMapping ? (
-              <span>You have a saved bridge for this pair — reuse for <strong style={{ fontFamily: 'var(--font-geist-mono, monospace)' }}>1 credit</strong></span>
+              <span>You have a saved bridge for this pair — reuse at lower token cost</span>
             ) : (
-              <span>No saved bridge yet — first translation calibrates both models · <strong style={{ fontFamily: 'var(--font-geist-mono, monospace)' }}>5 credits</strong></span>
+              <span>No saved bridge yet — first translation calibrates both models · <strong style={{ fontFamily: 'var(--font-geist-mono, monospace)' }}>~20K tokens</strong></span>
             )}
           </div>
           {existingMapping && (

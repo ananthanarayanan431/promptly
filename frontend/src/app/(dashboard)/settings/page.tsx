@@ -64,7 +64,7 @@ function SettingsRow({ label, value, mono }: { label: string; value: React.React
    ① PROFILE SECTION
 ══════════════════════════════════════════════════════════════════════ */
 function ProfileSection({ user, sbUser }: {
-  user: { id: string; email: string; credits: number } | undefined;
+  user: { id: string; email: string; credits: number; token_balance?: number } | undefined;
   sbUser: SupabaseUser | null;
 }) {
   const name = (sbUser?.user_metadata?.full_name as string | undefined) ?? '—';
@@ -130,16 +130,16 @@ function ProfileSection({ user, sbUser }: {
 /* ══════════════════════════════════════════════════════════════════════
    ② CREDITS SECTION
 ══════════════════════════════════════════════════════════════════════ */
-const MAX_CR = 16; // for bar width calculation
+// Token cost bars (costs in K tokens, max scale 500K)
 
 function CreditBar({ cost, color }: { cost: number; color: string }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
       <div style={{ flex: 1, height: 4, background: 'var(--border)', borderRadius: 99 }}>
-        <div style={{ height: '100%', width: `${(cost / MAX_CR) * 100}%`, background: color, borderRadius: 99, transition: 'width .3s' }} />
+        <div style={{ height: '100%', width: `${Math.min(100, (cost / 500) * 100)}%`, background: color, borderRadius: 99, transition: 'width .3s' }} />
       </div>
       <span style={{ fontFamily: 'var(--mono)', fontSize: 12, fontWeight: 700, color, minWidth: 36, textAlign: 'right', flexShrink: 0 }}>
-        {cost} cr
+        ~{cost}K tok
       </span>
     </div>
   );
@@ -169,10 +169,10 @@ function TierCompare({ tiers, color }: {
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 5 }}>
             <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>{t.label}</span>
-            <span style={{ fontFamily: 'var(--mono)', fontSize: 13, fontWeight: 700, color }}>{t.cost} cr</span>
+            <span style={{ fontFamily: 'var(--mono)', fontSize: 13, fontWeight: 700, color }}>~{t.cost}K</span>
           </div>
           <div style={{ height: 3, background: 'var(--border)', borderRadius: 99, marginBottom: 5 }}>
-            <div style={{ height: '100%', width: `${(t.cost / MAX_CR) * 100}%`, background: color, borderRadius: 99 }} />
+            <div style={{ height: '100%', width: `${Math.min(100, (t.cost / 500) * 100)}%`, background: color, borderRadius: 99 }} />
           </div>
           <div style={{ fontSize: 10.5, color: 'var(--text-subtle)' }}>{t.desc}</div>
         </div>
@@ -202,18 +202,22 @@ function FeatureGroup({ icon, title, color, children }: {
   );
 }
 
-function CreditsSection({ credits }: { credits: number | undefined }) {
-  const low = (credits ?? 0) < 20;
-  const bal = credits ?? 0;
-  const pct = Math.min(100, (bal / 100) * 100);
+function CreditsSection({ credits: _credits, tokenBalance }: { credits?: number; tokenBalance?: number }) {
+  const TOKEN_START = 3_000_000;
+  // Clamp at 0 — never reveal the internal overdraft buffer to users.
+  const bal = Math.max(0, tokenBalance ?? TOKEN_START);
+  const isDepleted = bal === 0;
+  const low = !isDepleted && bal < TOKEN_START * 0.1;
+  const pct = Math.min(100, (bal / TOKEN_START) * 100);
+  const fmtBal = (n: number) => n === 0 ? '0' : n >= 1_000_000 ? `${(n / 1_000_000).toFixed(2)}M` : n >= 1_000 ? `${(n / 1_000).toFixed(0)}K` : String(n);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <SectionTitle
         id="credits"
         icon="M2 5h20v14H2zM2 10h20"
-        title="Credits"
-        subtitle="Each feature costs a fixed number of credits. New accounts start with 100."
+        title="Token Balance"
+        subtitle="Every LLM call is metered. New accounts start with 3 M tokens — tokens are deducted based on actual usage."
       />
 
       {/* Balance card */}
@@ -224,21 +228,20 @@ function CreditsSection({ credits }: { credits: number | undefined }) {
       }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 14 }}>
           <div>
-            <div style={{ fontSize: 10, fontWeight: 700, color: low ? '#ff6b7a' : 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 6 }}>
-              Current balance
+            <div style={{ fontSize: 10, fontWeight: 700, color: (isDepleted || low) ? '#ff6b7a' : 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 6 }}>
+              Token balance
             </div>
-            <div style={{ fontSize: 40, fontWeight: 700, fontFamily: 'var(--mono)', letterSpacing: '-0.03em', color: low ? '#ff6b7a' : 'var(--text)', lineHeight: 1 }}>
-              {credits ?? '—'}
+            <div style={{ fontSize: 40, fontWeight: 700, fontFamily: 'var(--mono)', letterSpacing: '-0.03em', color: (isDepleted || low) ? '#ff6b7a' : 'var(--text)', lineHeight: 1 }}>
+              {fmtBal(bal)}
             </div>
           </div>
           {/* Quick math chips */}
-          {credits != null && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 5, alignItems: 'flex-end' }}>
+<div style={{ display: 'flex', flexDirection: 'column', gap: 5, alignItems: 'flex-end' }}>
               {[
-                { label: 'Council runs',   val: Math.floor(credits / 10) },
-                { label: 'PDO Low runs',   val: Math.floor(credits / 5) },
-                { label: 'Skill Low runs', val: Math.floor(credits / 5) },
-              ].map(chip => (
+                { label: 'Council opts', val: `~${Math.floor(bal / 50_000)}` },
+                { label: 'Health scores', val: `~${Math.floor(bal / 3_000)}` },
+                { label: 'SkillOpt Low', val: `~${Math.floor(bal / 100_000)}` },
+              ].filter(() => bal > 0).map(chip => (
                 <div key={chip.label} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5 }}>
                   <span style={{ color: 'var(--text-subtle)' }}>{chip.label}</span>
                   <span style={{ fontFamily: 'var(--mono)', fontWeight: 700, color: 'var(--text)', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 5, padding: '1px 7px' }}>
@@ -247,25 +250,24 @@ function CreditsSection({ credits }: { credits: number | undefined }) {
                 </div>
               ))}
             </div>
-          )}
         </div>
         {/* Progress bar */}
         <div style={{ height: 5, background: 'var(--border)', borderRadius: 99 }}>
           <div style={{
             height: '100%', borderRadius: 99, transition: 'width .4s ease',
             width: `${pct}%`,
-            background: low ? '#ff6b7a' : pct > 50 ? 'var(--success)' : '#f59e0b',
+            background: isDepleted ? '#ef4444' : low ? '#f59e0b' : pct > 50 ? 'var(--success)' : 'var(--primary)',
           }} />
         </div>
         <div style={{ fontSize: 11.5, color: 'var(--text-subtle)', marginTop: 6 }}>
-          {low ? '⚠ Running low — contact us to top up.' : `${bal} of 100 starting credits remaining`}
+          {isDepleted ? '⛔ No tokens remaining — top up to continue.' : low ? `⚠ Low — ${fmtBal(bal)} tokens remaining` : `${fmtBal(bal)} of 3M starting tokens remaining`}
         </div>
       </div>
 
       {/* Council Optimizer */}
       <FeatureGroup icon="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M5.6 18.4l2.8-2.8M15.6 8.4l2.8-2.8" title="Council Optimizer" color="var(--primary)">
-        <FeatureRow label="Optimize" desc="4-model council · critic · synthesize · 3 rounds" cost={10} color="var(--primary)" />
-        <FeatureRow label="Health score" desc="8-dimension quality audit" cost={5} color="var(--primary)" />
+        <FeatureRow label="Optimize" desc="4-model council · critic · synthesize · 3 rounds" cost={50} color="var(--primary)" />
+        <FeatureRow label="Health score" desc="8-dimension quality audit" cost={3} color="var(--primary)" />
         <FeatureRow label="Advisory" desc="Strengths, weaknesses & improvement suggestions" cost={5} color="var(--primary)" />
         <div style={{ height: 4 }} />
       </FeatureGroup>
@@ -377,14 +379,14 @@ function OptimizationDefaultsSection() {
           { value: 'gepa', label: 'GEPA — Reflective evolution' },
         ]} />
         <SelectRow label="PDO default tier" field="pdoTier" options={[
-          { value: 'low',    label: 'Low — 15 rounds · 5 cr' },
-          { value: 'medium', label: 'Medium — 30 rounds · 10 cr' },
-          { value: 'high',   label: 'High — 50 rounds · 16 cr' },
+          { value: 'low',    label: 'Low — 15 rounds · ~50K tokens' },
+          { value: 'medium', label: 'Medium — 30 rounds · ~100K tokens' },
+          { value: 'high',   label: 'High — 50 rounds · ~200K tokens' },
         ]} />
         <SelectRow label="GEPA default tier" field="gepaTier" options={[
-          { value: 'low',    label: 'Low — B=100 · 4 cr' },
-          { value: 'medium', label: 'Medium — B=260 · 8 cr' },
-          { value: 'high',   label: 'High — B=460 · 14 cr' },
+          { value: 'low',    label: 'Low — B=100 · ~100K tokens' },
+          { value: 'medium', label: 'Medium — B=260 · ~260K tokens' },
+          { value: 'high',   label: 'High — B=460 · ~460K tokens' },
         ]} />
         <div style={{ padding: '12px 0', display: 'flex', justifyContent: 'flex-end' }}>
           {saved && (
@@ -443,13 +445,14 @@ function LLMEffortSection() {
   });
   const [saved, setSaved] = useState(false);
 
-  const { data, isLoading } = useQuery<{ tiers: TierInfo[]; default_tier: string }>({
+  const { data, isLoading, isError } = useQuery<{ tiers: TierInfo[]; default_tier: string }>({
     queryKey: ['llm-tiers'],
     queryFn: async () => {
       const res = await api.get<{ data: { tiers: TierInfo[]; default_tier: string } }>('/api/v1/openrouter/tiers');
       return res.data.data;
     },
     staleTime: 5 * 60_000,
+    retry: 1,
   });
 
   const tiers = data?.tiers ?? [];
@@ -470,9 +473,18 @@ function LLMEffortSection() {
         subtitle="Choose the model tier for Council, Bridge, Domain and Skill optimizers. Saved as your default for all future runs."
       />
 
-      {isLoading ? (
-        <div className="ply-card" style={{ padding: '20px 18px', color: 'var(--text-subtle)', fontSize: 13 }}>Loading pricing…</div>
-      ) : (
+      {isLoading && (
+        <div className="ply-card" style={{ padding: '20px 18px', display: 'flex', alignItems: 'center', gap: 10, color: 'var(--text-subtle)', fontSize: 13 }}>
+          <span className="ply-dot ply-dot-pulse" style={{ background: 'var(--primary)', width: 7, height: 7 }} />
+          Loading live pricing from OpenRouter…
+        </div>
+      )}
+      {isError && !isLoading && (
+        <div className="ply-card" style={{ padding: '14px 18px', fontSize: 12.5, color: 'var(--text-muted)' }}>
+          Pricing unavailable — OpenRouter unreachable. Tier selection still works; model costs shown at inference time.
+        </div>
+      )}
+      {!isLoading && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
           {tiers.map(tier => {
             const active = selected === tier.key;
@@ -862,13 +874,14 @@ function PipelineSection() {
   const [config, setConfig] = useState<PipelineConfig>(loadPipeline);
   const [saved, setSaved] = useState(false);
 
-  const { data: modelsData, isLoading } = useQuery<{ models: { id: string; name: string; pricing?: { prompt_per_token: number; completion_per_token: number } | null }[] }>({
+  const { data: modelsData, isLoading, isError: modelsError } = useQuery<{ models: { id: string; name: string; pricing?: { prompt_per_token: number; completion_per_token: number } | null }[] }>({
     queryKey: ['openrouter-models'],
     queryFn: async () => {
       const res = await api.get<{ data: { models: { id: string; name: string; pricing?: { prompt_per_token: number; completion_per_token: number } | null }[]; cached: boolean } }>('/api/v1/openrouter/models');
       return res.data.data;
     },
     staleTime: 10 * 60_000,
+    retry: 1,
   });
 
   const models: ModelOption[] = (modelsData?.models ?? []).map(m => ({
@@ -903,14 +916,21 @@ function PipelineSection() {
       />
 
       {/* Council models — interactive dropdowns */}
-      <div className="ply-card" style={{ padding: 0, overflow: 'hidden' }}>
-        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      {/* overflow must stay visible so the model-picker dropdowns can escape the card boundary */}
+      <div className="ply-card" style={{ padding: 0, overflow: 'visible' }}>
+        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderRadius: '12px 12px 0 0' }}>
           <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.06em' }}>
             Council models
           </span>
           {isLoading && (
-            <span style={{ fontSize: 11, color: 'var(--text-subtle)', fontFamily: 'var(--mono)' }}>
+            <span style={{ fontSize: 11, color: 'var(--text-subtle)', fontFamily: 'var(--mono)', display: 'flex', alignItems: 'center', gap: 5 }}>
+              <span className="ply-dot ply-dot-pulse" style={{ background: 'var(--text-subtle)', width: 5, height: 5 }} />
               Loading from OpenRouter…
+            </span>
+          )}
+          {modelsError && !isLoading && (
+            <span style={{ fontSize: 11, color: 'var(--warning)', fontFamily: 'var(--mono)' }}>
+              OpenRouter unreachable — type a model ID manually
             </span>
           )}
         </div>
@@ -1292,7 +1312,7 @@ export default function SettingsPage() {
   const { data: userData } = useQuery({
     queryKey: ['user-me'],
     queryFn: async () => {
-      const res = await api.get<{ data: { id: string; email: string; credits: number } }>('/api/v1/users/me');
+      const res = await api.get<{ data: { id: string; email: string; credits: number; token_balance: number } }>('/api/v1/users/me');
       return res.data.data;
     },
   });
@@ -1373,7 +1393,7 @@ export default function SettingsPage() {
           </div>
 
           <ProfileSection user={userData} sbUser={sbUser} />
-          <CreditsSection credits={userData?.credits} />
+          <CreditsSection credits={userData?.credits} tokenBalance={userData?.token_balance} />
           <OptimizationDefaultsSection />
           <LLMEffortSection />
           <PipelineSection />

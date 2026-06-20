@@ -80,7 +80,7 @@ export function NewDomainModal({ onClose, onJobStarted }: Props) {
             fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 4,
             background: 'linear-gradient(135deg, #f59e0b, #ef4444)',
             color: '#fff', marginRight: 12,
-          }}>PREMIUM · 10 credits</span>
+          }}>PREMIUM · token-metered</span>
           <button onClick={onClose} style={{
             background: 'none', border: 'none', color: 'var(--text-subtle)', cursor: 'pointer', fontSize: 18,
           }}>×</button>

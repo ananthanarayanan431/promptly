@@ -222,9 +222,9 @@ function SetupTab({ project, onSaved, onStart }: {
   const shortOptimizer = OPTIMIZER_MODELS.find(m => m.id === optimizerModel)?.short ?? 'gpt-4o-mini';
 
   const TIERS = {
-    low:    { label: 'Low',    desc: '2 epochs · 10 rollouts/epoch', credits: 5  },
-    medium: { label: 'Medium', desc: '3 epochs · 20 rollouts/epoch', credits: 10 },
-    high:   { label: 'High',   desc: '4 epochs · 30 rollouts/epoch', credits: 16 },
+    low:    { label: 'Low',    desc: '2 epochs · 10 rollouts/epoch', tokensEst: '~100K', barPct: 20 },
+    medium: { label: 'Medium', desc: '3 epochs · 20 rollouts/epoch', tokensEst: '~200K', barPct: 50 },
+    high:   { label: 'High',   desc: '4 epochs · 30 rollouts/epoch', tokensEst: '~400K', barPct: 100 },
   };
 
   const ModelCard = ({ m, selected, onSelect }: { m: { id: string; short: string; note: string }; selected: boolean; onSelect: () => void }) => (
@@ -430,10 +430,10 @@ function SetupTab({ project, onSaved, onStart }: {
                 <button key={k} onClick={() => setBudgetTier(k as 'low'|'medium'|'high')} style={{ padding: '9px 10px', borderRadius: 8, border: `1px solid ${budgetTier === k ? 'var(--primary)' : 'var(--border)'}`, background: budgetTier === k ? 'var(--primary-soft)' : 'var(--surface)', cursor: 'pointer', textAlign: 'left', boxShadow: budgetTier === k ? '0 0 0 3px color-mix(in oklab, var(--primary) 12%, transparent)' : 'none' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 3 }}>
                     <span style={{ fontSize: 12, fontWeight: 600, color: budgetTier === k ? 'var(--primary)' : 'var(--text)' }}>{v.label}</span>
-                    <span style={{ fontFamily: 'var(--mono)', fontSize: 10.5, fontWeight: 700, color: budgetTier === k ? 'var(--primary)' : 'var(--text-muted)' }}>{v.credits} cr</span>
+                    <span style={{ fontFamily: 'var(--mono)', fontSize: 10.5, fontWeight: 700, color: budgetTier === k ? 'var(--primary)' : 'var(--text-muted)' }}>{v.tokensEst}</span>
                   </div>
                   <div style={{ height: 2, borderRadius: 99, background: 'var(--border)', marginBottom: 4 }}>
-                    <div style={{ height: '100%', width: `${(v.credits / 16) * 100}%`, background: budgetTier === k ? 'var(--primary)' : 'var(--border)', borderRadius: 99 }} />
+                    <div style={{ height: '100%', width: `${v.barPct}%`, background: budgetTier === k ? 'var(--primary)' : 'var(--border)', borderRadius: 99 }} />
                   </div>
                   <div style={{ fontSize: 10, color: 'var(--text-subtle)' }}>{v.desc}</div>
                 </button>
@@ -449,7 +449,7 @@ function SetupTab({ project, onSaved, onStart }: {
           <button className="ply-btn ply-btn-primary" style={{ height: 38, fontSize: 13.5, opacity: (!project.example_count || project.example_count < 15) ? 0.45 : 1, cursor: (!project.example_count || project.example_count < 15) ? 'not-allowed' : 'pointer' }}
             disabled={!project.example_count || project.example_count < 15} onClick={() => onStart(budgetTier)}>
             <Icon name="bolt" size={14} />
-            {!project.example_count || project.example_count < 15 ? 'Add examples first' : `Train skill · ${TIERS[budgetTier].credits} credits`}
+            {!project.example_count || project.example_count < 15 ? 'Add examples first' : `Train skill · ${TIERS[budgetTier].tokensEst} tokens`}
           </button>
           <div style={{ fontFamily: 'var(--mono)', fontSize: 10.5, color: 'var(--text-subtle)', textAlign: 'center', lineHeight: 1.5 }}>
             Held-out gate · rejected-edit buffer · epoch-wise slow update

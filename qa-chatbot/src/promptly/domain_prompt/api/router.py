@@ -139,10 +139,6 @@ async def create_domain(
     Cost: 10 credits, deducted immediately.
     Returns HTTP 202 with a job_id to poll for progress.
     """
-    if current_user.credits < 10:
-        log.warning("insufficient_credits", required=10, available=current_user.credits)
-        raise DomainInsufficientCreditsException()
-
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise InvalidPDFException()
 
@@ -154,8 +150,7 @@ async def create_domain(
         raise InvalidPDFException(detail="Uploaded file does not appear to be a valid PDF.")
 
     user_repo = UserRepository(db)
-    deducted = await user_repo.deduct_credits(current_user.user_id, 10)
-    if not deducted:
+    if not await user_repo.has_min_tokens(current_user.user_id):
         raise DomainInsufficientCreditsException()
 
     domain_repo = DomainPromptRepository(db)
@@ -436,7 +431,6 @@ async def reoptimize_domain(
 
     gepa_tier = _GEPA_TIERS.get(body.budget_tier, _GEPA_TIERS["low"])
     pdo_tier = _PDO_TIERS.get(body.budget_tier, _PDO_TIERS["low"])
-    credit_cost = gepa_tier["credits"] if is_gepa else pdo_tier["credits"]
 
     repo = DomainPromptRepository(db)
     domain = await repo.get_by_id_and_user(domain_id, current_user.user_id)
@@ -449,19 +443,14 @@ async def reoptimize_domain(
     if domain.dataset is None or domain.dataset.dataset_key is None:
         raise DomainNotReadyException()
 
-    if current_user.credits < credit_cost:
-        log.warning("insufficient_credits", required=credit_cost, available=current_user.credits)
-        raise DomainInsufficientCreditsException()
-
     user_repo = UserRepository(db)
-    deducted = await user_repo.deduct_credits(current_user.user_id, credit_cost)
-    if not deducted:
+    if not await user_repo.has_min_tokens(current_user.user_id):
         raise DomainInsufficientCreditsException()
 
     await repo.set_status(domain, DomainPromptStatus.optimizing, last_prompt=body.prompt.strip())
     usage_repo = UsageEventRepository(db)
     action = "domain_gepa" if is_gepa else "domain_pdo"
-    await usage_repo.log(user_id=current_user.user_id, action=action, credits_spent=credit_cost)
+    await usage_repo.log(user_id=current_user.user_id, action=action, credits_spent=0)
     await db.commit()
 
     job_id = str(uuid.uuid4())

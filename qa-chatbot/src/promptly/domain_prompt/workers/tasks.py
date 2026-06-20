@@ -337,6 +337,14 @@ def run_domain_optimization(
                 )
                 await db.commit()
 
+            # Deduct actual tokens consumed by this PDO run.
+            if total_tokens:
+                async with AsyncSessionLocal() as tok_db:
+                    from promptly.repositories.user_repo import UserRepository as _TokRepo
+
+                    await _TokRepo(tok_db).deduct_tokens(UUID(user_id), total_tokens)
+                    await tok_db.commit()
+
             await set_dp_job_status(job_id, "completed")
             await set_dp_job_result(
                 job_id,
@@ -353,7 +361,6 @@ def run_domain_optimization(
             )
 
         except InterruptedError:
-            # Cancel endpoint already updated DB/Redis + refunded credits; just exit.
             _log.info("task_cancelled", job_id=job_id)
             return
 
@@ -534,6 +541,14 @@ def run_gepa_optimization(
                     total_tokens=gepa_total_tokens,
                 )
                 await db.commit()
+
+            # Deduct actual tokens consumed by this GEPA run.
+            if gepa_total_tokens:
+                async with AsyncSessionLocal() as tok_db:
+                    from promptly.repositories.user_repo import UserRepository as _TokRepo
+
+                    await _TokRepo(tok_db).deduct_tokens(UUID(user_id), gepa_total_tokens)
+                    await tok_db.commit()
 
             await set_dp_job_status(job_id, "completed")
             await set_dp_job_result(

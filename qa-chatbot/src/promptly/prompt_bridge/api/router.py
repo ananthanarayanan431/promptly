@@ -109,13 +109,8 @@ async def submit_transfer(
     reused = existing_mapping is not None
     cost = _REUSE_TRANSFER_COST if reused else _FULL_TRANSFER_COST
 
-    if current_user.credits < cost:
-        log.warning("insufficient_credits", required=cost, available=current_user.credits)
-        raise PBInsufficientCreditsException(required=cost)
-
     user_repo = UserRepository(db)
-    deducted = await user_repo.deduct_credits(current_user.user_id, cost)
-    if not deducted:
+    if not await user_repo.has_min_tokens(current_user.user_id):
         raise PBInsufficientCreditsException(required=cost)
 
     job_id = str(uuid.uuid4())
@@ -248,8 +243,6 @@ async def cancel_transfer_job_by_db_id(
         await job_repo.set_status(
             job, TransferJobStatus.cancelled, error_message="Cancelled by user."
         )
-        user_repo = UserRepository(db)
-        await user_repo.refund_credits(current_user.user_id, job.credits_charged)
         await db.commit()
         log.info("transfer_job_cancelled", job_id=str(db_job_id))
         return SuccessResponse(data=CancelJobResponse(job_id=str(db_job_id), cancelled=True))
@@ -267,8 +260,6 @@ async def cancel_transfer_job_by_db_id(
     await set_pb_job_result(redis_id, {"error": "Cancelled by user."})
 
     await job_repo.set_status(job, TransferJobStatus.cancelled, error_message="Cancelled by user.")
-    user_repo = UserRepository(db)
-    await user_repo.refund_credits(current_user.user_id, job.credits_charged)
     await db.commit()
     log.info("transfer_job_cancelled", job_id=str(db_job_id))
 
@@ -444,8 +435,6 @@ async def cancel_transfer_job(
             TransferJobStatus.cancelled,
             error_message="Cancelled by user.",
         )
-        user_repo = UserRepository(db)
-        await user_repo.refund_credits(current_user.user_id, matching.credits_charged)
         await db.commit()
 
     log.info("transfer_job_cancelled", job_id=job_id)

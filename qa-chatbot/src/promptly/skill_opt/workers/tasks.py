@@ -72,7 +72,6 @@ def run_skillopt(
         bucket = minio_cfg.MINIO_BUCKET_NAME
 
         is_terminal = False
-        credits_to_refund = {"low": 5, "medium": 10, "high": 16}.get(budget_tier, 10)
 
         try:
             await clear_so_live_state(project_id)
@@ -158,6 +157,13 @@ def run_skillopt(
 
                 await db.commit()
 
+            # Deduct actual tokens consumed by this SkillOpt run.
+            skill_tokens: int = result.get("total_tokens", 0) or 0
+            if skill_tokens:
+                async with AsyncSessionLocal() as tok_db:
+                    await UserRepository(tok_db).deduct_tokens(UUID(user_id), skill_tokens)
+                    await tok_db.commit()
+
             await set_so_job_status(job_id, "completed")
             await set_so_job_result(
                 job_id,
@@ -169,6 +175,7 @@ def run_skillopt(
                     "epochs_run": result["epochs_run"],
                     "edits_accepted": result["edits_accepted"],
                     "edits_rejected": result["edits_rejected"],
+                    "total_tokens": skill_tokens,
                 },
             )
 
@@ -199,14 +206,7 @@ def run_skillopt(
             await set_so_job_result(job_id, {"error": "Optimization failed."})
 
             if is_terminal:
-                # Refund credits for unrecoverable errors
-                try:
-                    async with AsyncSessionLocal() as refund_db:
-                        u_repo = UserRepository(refund_db)
-                        await u_repo.refund_credits(UUID(user_id), credits_to_refund)
-                        await refund_db.commit()
-                except Exception:  # noqa: BLE001
-                    _log.exception("skillopt_credit_refund_failed")
+                # No credits pre-deducted — tokens only deducted on successful completion.
                 raise exc
 
             raise self.retry(exc=exc) from exc

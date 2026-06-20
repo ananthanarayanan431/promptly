@@ -246,20 +246,14 @@ async def start_optimization(
     if not project.example_count or project.example_count < 6:
         raise SkillOptNoExamplesError()
 
-    credit_cost = _CREDIT_COST.get(body.budget_tier, 10)
-    if current_user.credits < credit_cost:
+    user_repo = UserRepository(db)
+    if not await user_repo.has_min_tokens(current_user.user_id):
         raise SkillOptInsufficientCreditsError()
 
     # Set status first to reduce the race window: a second concurrent request
     # will hit SkillOptAlreadyRunningError once we flush this status change.
     await repo.set_status(project, SkillOptStatus.optimizing, example_count=project.example_count)
-    project.credits_charged = credit_cost
     await db.flush()
-
-    user_repo = UserRepository(db)
-    deducted = await user_repo.deduct_credits(current_user.user_id, credit_cost)
-    if not deducted:
-        raise SkillOptInsufficientCreditsError()
 
     job_id = str(uuid.uuid4())
     await set_so_job_status(job_id, "queued")

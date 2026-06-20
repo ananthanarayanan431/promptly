@@ -299,7 +299,7 @@ function SessionDetail({ item }: { item: HistoryItem }) {
           <span style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>
             {isReused
               ? 'Reused existing mapping — adapter-only run (1 credit)'
-              : 'Full MAP-RPE calibration — built a new reusable mapping (5 credits)'}
+              : 'Full MAP-RPE calibration — built a new reusable mapping'}
           </span>
         </div>
         {item.mappingText && (
@@ -397,7 +397,7 @@ function SessionCard({ item }: { item: HistoryItem }) {
             <MetricCell k="Feedback" v={item.feedbackCount != null ? String(item.feedbackCount) : '—'} />
           </div>
         )}
-        <MetricCell k="Credits" v={`−${item.credits}`} />
+        {item.credits > 0 && <MetricCell k="Tokens" v={item.credits >= 1000 ? `~${(item.credits/1000).toFixed(0)}K` : `~${item.credits}`} />}
       </div>
 
       {/* Footer */}

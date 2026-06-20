@@ -35,9 +35,14 @@ export function Header() {
     staleTime: 1000 * 60 * 5,
   });
 
-  const credits = fetchedUser?.credits ?? 0;
-  const maxCredits = 1000;
-  const pct = Math.min(100, Math.round((credits / maxCredits) * 100));
+  const TOKEN_START = 3_000_000;
+  const raw = fetchedUser?.token_balance ?? TOKEN_START;
+  // Clamp at 0 — never show negative or reveal the internal buffer.
+  const tokens = Math.max(0, raw);
+  const pct = Math.min(100, Math.round((tokens / TOKEN_START) * 100));
+  const fmtTokens = (n: number) => n === 0 ? '0' : n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1_000 ? `${(n / 1_000).toFixed(0)}K` : String(n);
+  const isLow = tokens > 0 && tokens < TOKEN_START * 0.1;
+  const isDepleted = tokens === 0;
 
   return (
     <header style={{ height: 52, padding: '0 20px', display: 'flex', alignItems: 'center', gap: 16,
@@ -58,18 +63,18 @@ export function Header() {
       {/* Right slot */}
       <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
 
-        {/* Credits chip */}
+        {/* Token balance chip */}
         {fetchedUser && (
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8,
             height: 28, padding: '0 10px 0 8px', borderRadius: 999,
-            background: '#222226', border: '1px solid #2a2a2e',
+            background: '#222226', border: `1px solid ${isDepleted ? '#ef444466' : '#2a2a2e'}`,
             fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 12 }}>
             <div style={{ width: 40, height: 4, borderRadius: 2, background: '#2a2a2e', position: 'relative', overflow: 'hidden' }}>
               <span style={{ position: 'absolute', inset: '0 auto 0 0', width: `${pct}%`,
-                background: '#7c5cff', borderRadius: 2 }} />
+                background: isDepleted ? '#ef4444' : isLow ? '#f59e0b' : '#7c5cff', borderRadius: 2 }} />
             </div>
-            <span style={{ color: '#ededed' }}>{credits}</span>
-            <span style={{ color: '#5a5a60' }}>credits</span>
+            <span style={{ color: isDepleted ? '#ef4444' : '#ededed' }}>{fmtTokens(tokens)}</span>
+            <span style={{ color: '#5a5a60' }}>tokens</span>
           </div>
         )}
 

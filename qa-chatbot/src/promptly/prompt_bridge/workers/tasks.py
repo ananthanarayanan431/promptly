@@ -307,6 +307,15 @@ def run_prompt_transfer(
             await set_pb_job_status(job_id, "completed")
             await set_pb_job_progress(job_id, {"stage": "completed"})
 
+            # Deduct actual tokens consumed by this bridge run.
+            if tracker.total_tokens:
+                from promptly.db.session import AsyncSessionLocal
+                from promptly.repositories.user_repo import UserRepository as _TokRepo
+
+                async with AsyncSessionLocal() as tok_db:
+                    await _TokRepo(tok_db).deduct_tokens(UUID(user_id), tracker.total_tokens)
+                    await tok_db.commit()
+
         except Exception as exc:
             import re
 

@@ -84,22 +84,37 @@ function NavIcon({ name }: { name: string }) {
   );
 }
 
-const CREDITS_START = 100;
+const TOKEN_START = 3_000_000;
 
-function CreditsCard({ credits }: { credits: number }) {
-  const optimizationsLeft = Math.floor(credits / 10);
-  const pct = Math.min(100, (credits / CREDITS_START) * 100);
+function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
+  return String(n);
+}
+
+function TokenCard({ tokenBalance }: { tokenBalance: number }) {
+  // Clamp display at 0 — never reveal the internal overdraft buffer to users.
+  const displayed = Math.max(0, tokenBalance);
+  const isDepleted = displayed === 0;
+  const isLow = !isDepleted && displayed < TOKEN_START * 0.1;
+  const pct = Math.min(100, (displayed / TOKEN_START) * 100);
+  const barColor = isDepleted ? 'var(--danger)' : isLow ? 'var(--warning)' : 'linear-gradient(90deg, var(--primary), var(--accent))';
+
   return (
-    <div className="ply-card" style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8, boxShadow: 'none' }}>
+    <div className="ply-card" style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8, boxShadow: 'none', border: isDepleted ? '1px solid var(--danger)' : undefined }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Credits</span>
-        <span className="mono" style={{ fontWeight: 600, color: 'var(--text)' }}>{credits}</span>
+        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Tokens</span>
+        <span className="mono" style={{ fontWeight: 600, color: isDepleted ? 'var(--danger)' : isLow ? 'var(--warning)' : 'var(--text)' }}>
+          {isDepleted ? '0' : formatTokens(displayed)}
+        </span>
       </div>
       <div className="ply-progress">
-        <i style={{ width: `${pct}%`, background: 'linear-gradient(90deg, var(--primary), var(--accent))' }} />
+        <i style={{ width: `${pct}%`, background: barColor }} />
       </div>
-      <div style={{ fontSize: 11, color: 'var(--text-subtle)' }}>
-        ≈ {optimizationsLeft} optimizations remaining
+      <div style={{ fontSize: 11, color: isDepleted ? 'var(--danger)' : 'var(--text-subtle)' }}>
+        {isDepleted
+          ? 'No tokens remaining — top up to continue'
+          : `≈ ${Math.floor((displayed / TOKEN_START) * 10)} optimizations remaining`}
       </div>
     </div>
   );
@@ -167,7 +182,7 @@ export function Sidebar() {
     staleTime: 1000 * 60 * 5,
   });
 
-  const credits = fetchedUser?.credits ?? 0;
+  const tokenBalance = fetchedUser?.token_balance ?? TOKEN_START;
 
   return (
     <aside style={{
@@ -258,7 +273,7 @@ export function Sidebar() {
 
       {/* Bottom: credits + user */}
       <div style={{ padding: 12, borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <CreditsCard credits={credits} />
+        <TokenCard tokenBalance={tokenBalance} />
 
         <UserMenu />
       </div>
