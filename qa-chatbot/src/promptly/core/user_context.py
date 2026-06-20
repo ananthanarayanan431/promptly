@@ -9,3 +9,4 @@ class UserContext:
     email: str
     credits: int
     token_balance: int = 3_000_000
+    is_admin: bool = False

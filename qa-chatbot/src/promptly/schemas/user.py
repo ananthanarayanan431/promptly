@@ -19,5 +19,6 @@ class UserResponse(BaseModel):
     email: str
     credits: int
     token_balance: int = TOKEN_START
+    is_admin: bool = False
 
     model_config = ConfigDict(from_attributes=True)

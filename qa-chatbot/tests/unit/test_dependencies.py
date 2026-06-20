@@ -362,3 +362,34 @@ async def test_get_current_user_non_bearer_header_raises_unauthorized() -> None:
 
         with pytest.raises(UnauthorizedException):
             await get_current_user(request=request, db=mock_db)
+
+
+@pytest.mark.asyncio
+async def test_get_current_user_returns_is_admin_from_db() -> None:
+    """is_admin from the DB row is forwarded into UserContext."""
+    user = _make_user()
+    user.is_admin = True
+    user.token_balance = 3_000_000
+    fake_payload = {
+        "sub": user.supabase_user_id,
+        "email": user.email,
+        "user_metadata": {},
+    }
+
+    request = _make_request("Bearer valid.jwt.token")
+    mock_db = AsyncMock()
+    mock_user_repo = AsyncMock()
+    mock_user_repo.get_by_supabase_id.return_value = user
+    mock_api_key_repo = AsyncMock()
+
+    with (
+        patch("promptly.dependencies.verify_supabase_token", return_value=fake_payload),
+        patch("promptly.dependencies.UserRepository", return_value=mock_user_repo),
+        patch("promptly.dependencies.ApiKeyRepository", return_value=mock_api_key_repo),
+        patch("structlog.contextvars.bind_contextvars"),
+    ):
+        from promptly.dependencies import get_current_user
+
+        result = await get_current_user(request=request, db=mock_db)
+
+    assert result.is_admin is True
