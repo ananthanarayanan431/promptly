@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from promptly.api.types.response import SuccessResponse
+from promptly.api.types.response import SuccessResponse, error_responses
 from promptly.api.v1.exceptions.categories import (
     CategoryNotFoundException,
     CategorySlugConflictException,
@@ -58,6 +58,9 @@ def _sort_categories(cats: list[PromptCategory]) -> list[PromptCategory]:
     "",
     response_model=SuccessResponse[CategoryListResponse],
     dependencies=[Depends(_default_limiter)],
+    summary="List prompt categories",
+    description="Return all predefined and user-created prompt categories.",
+    responses=error_responses(401, 429, 500),
 )
 async def list_categories(
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -77,6 +80,9 @@ async def list_categories(
     response_model=SuccessResponse[CategoryCreateResponse],
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(_default_limiter)],
+    summary="Create category",
+    description="Create a custom prompt category for organizational grouping.",
+    responses=error_responses(401, 409, 422, 429, 500),
 )
 async def create_category(
     request: CategoryCreateRequest,
@@ -103,6 +109,9 @@ async def create_category(
     "/{slug}",
     status_code=status.HTTP_204_NO_CONTENT,
     dependencies=[Depends(_default_limiter)],
+    summary="Delete category",
+    description="Delete a user-created prompt category. Predefined categories cannot be deleted.",
+    responses=error_responses(401, 403, 404, 429, 500),
 )
 async def delete_category(
     slug: str,
