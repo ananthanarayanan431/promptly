@@ -57,8 +57,8 @@ export function AuthPanel() {
       setTimeout(() => {
         setActive(a => (a + 1) % SLIDES.length);
         setFading(false);
-      }, 350);
-    }, 4500);
+      }, 250);
+    }, 2500);
     return () => clearInterval(id);
   }, []);
 
@@ -88,7 +88,7 @@ export function AuthPanel() {
       <div style={{
         fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5,
         color: '#7c5cff', textTransform: 'uppercase', letterSpacing: '0.16em',
-        opacity: fading ? 0 : 1, transition: 'opacity 0.35s ease',
+        opacity: fading ? 0 : 1, transition: 'opacity 0.25s ease',
         position: 'relative',
       }}>
         {slide.eyebrow}
@@ -99,7 +99,7 @@ export function AuthPanel() {
         flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 32,
         opacity: fading ? 0 : 1,
         transform: fading ? 'translateY(10px)' : 'translateY(0)',
-        transition: 'opacity 0.35s ease, transform 0.35s ease',
+        transition: 'opacity 0.25s ease, transform 0.25s ease',
         position: 'relative',
       }}>
         <h2 style={{
@@ -125,7 +125,7 @@ export function AuthPanel() {
         {SLIDES.map((_, i) => (
           <button
             key={i}
-            onClick={() => { setFading(true); setTimeout(() => { setActive(i); setFading(false); }, 350); }}
+            onClick={() => { setFading(true); setTimeout(() => { setActive(i); setFading(false); }, 250); }}
             style={{
               width: i === active ? 22 : 6, height: 6, borderRadius: 3,
               background: i === active ? '#7c5cff' : '#2a2a30',
