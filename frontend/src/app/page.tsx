@@ -15,46 +15,6 @@ const STATS = [
   { n: '94%',            l: 'of users ship the result unchanged' },
 ];
 
-const PRODUCTS = [
-  {
-    tag: 'Optimize',
-    headline: 'Turn any rough prompt into a production-ready one.',
-    body: 'Paste what you have. Promptly runs a multi-model review — parallel proposals, blind peer critique, synthesis — and returns one result that\'s sharper than any single model could produce. Takes under a minute.',
-    pills: ['Any prompt', 'Any domain', 'One result'],
-    terminal: [
-      { c: '#5a5a60', t: '# your prompt' },
-      { c: '#b5b5ba', t: 'write a blog post about remote work' },
-      { c: '#7c5cff', t: '→ running multi-model review…', mt: 12 },
-      { c: '#5a5a60', t: '# result', mt: 12 },
-      { c: '#ededed', t: 'You are Maya, a distributed-work researcher…' },
-      { c: '#b5b5ba', t: 'Write 800 words (±5%). Open on a scene.' },
-      { c: '#b5b5ba', t: 'Weave in 3 cited stats. No "in conclusion."' },
-      { c: '#2fd589', t: '✓ done · 38s · quality +2.4 pts', mt: 10 },
-    ],
-    href: '/sign-up',
-    cta: 'Start optimizing',
-    accent: '#7c5cff',
-  },
-  {
-    tag: 'Domain',
-    headline: 'Empirically find the best prompt for your specific use case.',
-    body: 'Upload your domain knowledge as a PDF. Promptly builds a Q&A test suite from it, then runs head-to-head trials between prompt variants — returning the one that empirically wins against your real questions. Not guesswork. Evidence.',
-    pills: ['Your knowledge base', 'Head-to-head trials', 'Empirical winner'],
-    terminal: [
-      { c: '#5a5a60', t: '# knowledge base' },
-      { c: '#b5b5ba', t: 'finance-policy-v2.pdf  →  127 Q&A pairs' },
-      { c: '#f59e0b', t: '→ tournament running… round 18/40', mt: 12 },
-      { c: '#5a5a60', t: 'C0  wins: 6   C1  wins: 4' },
-      { c: '#5a5a60', t: 'C2  wins: 3   C3  wins: 5' },
-      { c: '#5a5a60', t: '# result', mt: 10 },
-      { c: '#ededed', t: 'winner: C0  win-rate: 78%' },
-      { c: '#2fd589', t: '✓ empirically tested · 40 rounds · 127 pairs', mt: 6 },
-    ],
-    href: '/sign-up',
-    cta: 'Try domain optimization',
-    accent: '#f59e0b',
-  },
-];
 
 const HOW_IT_WORKS = [
   {
@@ -167,7 +127,6 @@ const FAQS = [
 
 // ─── Style tokens ─────────────────────────────────────────────────────────────
 
-const paper   = '#fafaf7';
 const line    = '#e5e5e1';
 const violet  = '#7c5cff';
 const amber   = '#f59e0b';
