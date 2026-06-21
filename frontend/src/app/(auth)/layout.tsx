@@ -1,11 +1,5 @@
 import Link from 'next/link';
-
-const AGENTS = [
-  { letter: 'A', name: 'Analytical', color: '#7c5cff', blurb: 'Precision, constraints, output format.' },
-  { letter: 'C', name: 'Creative',   color: '#ff7ac6', blurb: 'Context, persona, exemplars.' },
-  { letter: 'O', name: 'Concise',    color: '#5cffb1', blurb: 'Radical brevity, signal density.' },
-  { letter: 'S', name: 'Structured', color: '#ffb85c', blurb: 'Logical decomposition, schemas.' },
-];
+import { AuthPanel } from '@/components/auth/auth-panel';
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -42,42 +36,8 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         </div>
       </div>
 
-      {/* ── Right: dark feature preview ────────────────────────────────────── */}
-      <div style={{ background: '#141414', color: '#ededed', padding: 48,
-        display: 'flex', flexDirection: 'column', justifyContent: 'center',
-        borderLeft: '1px solid #e5e5e1' }}>
-
-        <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 11,
-          color: '#7c5cff', textTransform: 'uppercase', letterSpacing: '0.14em', marginBottom: 20 }}>
-          What&apos;s inside
-        </div>
-
-        <div style={{ fontFamily: 'var(--font-instrument-serif, Georgia, serif)',
-          fontSize: 44, lineHeight: 1.05, letterSpacing: '-0.02em', color: '#ededed', marginBottom: 30 }}>
-          Four models.<br />Three rounds.<br />One answer.
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 30 }}>
-          {AGENTS.map(a => (
-            <div key={a.letter} style={{ background: '#1a1a1a', border: '1px solid #1f1f23',
-              borderRadius: 10, padding: 14 }}>
-              <div style={{ width: 26, height: 26, borderRadius: 6, background: a.color,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 12, fontWeight: 600, color: '#fff', marginBottom: 10 }}>{a.letter}</div>
-              <div style={{ color: '#ededed', fontSize: 13, fontWeight: 500 }}>{a.name}</div>
-              <div style={{ color: '#8a8a90', fontSize: 11.5, marginTop: 4, lineHeight: 1.4 }}>{a.blurb}</div>
-            </div>
-          ))}
-        </div>
-
-        <div style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 12.5,
-          color: '#8a8a90', lineHeight: 1.6 }}>
-          <span style={{ color: '#7c5cff' }}>$ </span>
-          curl promptly.dev/optimize \<br />
-          <span style={{ paddingLeft: 16 }}>-H &quot;Authorization: Bearer qac_...&quot; \</span><br />
-          <span style={{ paddingLeft: 16 }}>-d &apos;{'{"prompt": "..."}'}&apos;</span>
-        </div>
-      </div>
+      {/* ── Right: animated feature panel ──────────────────────────────────── */}
+      <AuthPanel />
     </div>
   );
 }
