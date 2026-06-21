@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import time
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -715,8 +716,14 @@ async def get_system_health(
         db_health = DatabaseHealth(status="error", response_time_ms=0.0)
 
     try:
-        inspector = celery_app.control.inspect(timeout=2.0)
-        active: dict[str, list[Any]] | None = inspector.active()
+
+        def _inspect_workers() -> dict[str, list[Any]] | None:
+            raw = celery_app.control.inspect(timeout=2.0).active()
+            if raw is None:
+                return None
+            return {k: list(v) for k, v in raw.items()}
+
+        active: dict[str, list[Any]] | None = await asyncio.to_thread(_inspect_workers)
         if not active:
             worker_health = WorkerHealth(status="error", active_count=0, worker_names=[])
         else:

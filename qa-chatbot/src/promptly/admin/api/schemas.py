@@ -283,7 +283,7 @@ class JobsMonitor(BaseModel):
 
 class BulkTokenRequest(BaseModel):
     user_ids: list[str]
-    amount: int
+    amount: int = Field(ge=1)
 
 
 class BulkTokenResult(BaseModel):

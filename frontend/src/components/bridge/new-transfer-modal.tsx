@@ -334,8 +334,8 @@ export function NewTransferModal({ onClose, onJobStarted, defaultSourceModel = '
             background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 8,
             padding: '8px 12px', fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5,
           }}>
-            <span style={{ color: 'var(--primary)' }}>tokens</span> for a new model pair (builds reusable calibration) ·{' '}
-            <span style={{ color: 'var(--accent)' }}>1 credit</span> when a mapping already exists
+            <span style={{ color: 'var(--primary)' }}>more tokens</span> for a new model pair (builds reusable calibration) ·{' '}
+            <span style={{ color: 'var(--accent)' }}>fewer tokens</span> when a mapping already exists
           </div>
 
           {error && (

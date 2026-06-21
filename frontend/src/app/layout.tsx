@@ -3,7 +3,7 @@ import localFont from 'next/font/local';
 import { Instrument_Serif } from 'next/font/google';
 import './globals.css';
 import { Providers } from '@/components/providers';
-import { Toaster } from '@/components/ui/sonner';
+import { Toaster } from '@/components/theme/toaster';
 import { SupabaseTokenSync } from '@/components/supabase-token-sync';
 
 const geist = localFont({
