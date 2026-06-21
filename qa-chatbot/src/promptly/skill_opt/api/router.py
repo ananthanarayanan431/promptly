@@ -9,7 +9,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from promptly.api.types.response import SuccessResponse
+from promptly.api.types.response import SuccessResponse, error_responses
 from promptly.config.env import get_minio_settings
 from promptly.core.rate_limit import RateLimiter
 from promptly.core.user_context import UserContext
@@ -75,6 +75,9 @@ _read_limiter = RateLimiter(requests=60, window_seconds=60)
     response_model=SuccessResponse[SkillProjectResponse],
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(_write_limiter)],
+    summary="Create skill project",
+    description="Create a new SkillOpt project with a task description. Add examples via `POST /{project_id}/examples` before training.",  # noqa: E501
+    responses=error_responses(401, 422, 429, 500),
 )
 async def create_project(
     body: CreateSkillProjectRequest,
@@ -98,6 +101,9 @@ async def create_project(
     "/",
     response_model=SuccessResponse[SkillProjectListResponse],
     dependencies=[Depends(_read_limiter)],
+    summary="List skill projects",
+    description="Return all SkillOpt projects owned by the current user.",
+    responses=error_responses(401, 429, 500),
 )
 async def list_projects(
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -116,6 +122,9 @@ async def list_projects(
     "/{project_id}",
     response_model=SuccessResponse[SkillProjectResponse],
     dependencies=[Depends(_read_limiter)],
+    summary="Get skill project",
+    description="Return metadata and training status for a single SkillOpt project.",
+    responses=error_responses(401, 404, 429, 500),
 )
 async def get_project(
     project_id: uuid.UUID,
@@ -133,6 +142,9 @@ async def get_project(
     "/{project_id}",
     response_model=SuccessResponse[DeleteSkillProjectResponse],
     dependencies=[Depends(_write_limiter)],
+    summary="Delete skill project",
+    description="Permanently delete a SkillOpt project and its associated skill artifacts.",
+    responses=error_responses(401, 404, 429, 500),
 )
 async def delete_project(
     project_id: uuid.UUID,
@@ -155,6 +167,9 @@ async def delete_project(
     "/{project_id}/examples",
     response_model=SuccessResponse[SkillExamplesResponse],
     dependencies=[Depends(_write_limiter)],
+    summary="Set training examples",
+    description="Upload or replace the Q&A training examples for a project. Minimum 15 examples required to start training.",  # noqa: E501
+    responses=error_responses(401, 404, 422, 429, 500),
 )
 async def set_examples(
     project_id: uuid.UUID,
@@ -190,6 +205,9 @@ async def set_examples(
     "/{project_id}/examples",
     response_model=SuccessResponse[SkillExamplesResponse],
     dependencies=[Depends(_read_limiter)],
+    summary="Get training examples",
+    description="Return the Q&A examples stored for a skill project.",
+    responses=error_responses(401, 404, 429, 500),
 )
 async def get_examples(
     project_id: uuid.UUID,
@@ -227,6 +245,9 @@ async def get_examples(
     response_model=SuccessResponse[SkillJobResponse],
     status_code=status.HTTP_202_ACCEPTED,
     dependencies=[Depends(_write_limiter)],
+    summary="Start skill training",
+    description="Start a SkillOpt training run: rollout → reflection → edit → gate loop. Costs tokens based on effort tier.",  # noqa: E501
+    responses=error_responses(401, 402, 404, 409, 422, 429, 500),
 )
 async def start_optimization(
     project_id: uuid.UUID,
@@ -289,6 +310,9 @@ async def start_optimization(
     "/jobs/{job_id}",
     response_model=SuccessResponse[SkillJobPollResponse],
     dependencies=[Depends(_read_limiter)],
+    summary="Poll training job",
+    description="Poll for the status of a SkillOpt training job.",
+    responses=error_responses(401, 404, 429, 500),
 )
 async def poll_job(
     job_id: str,
@@ -327,6 +351,9 @@ async def poll_job(
     "/{project_id}/runs",
     response_model=SuccessResponse[SkillRunListResponse],
     dependencies=[Depends(_read_limiter)],
+    summary="List training runs",
+    description="Return all past SkillOpt training runs for a project.",
+    responses=error_responses(401, 404, 429, 500),
 )
 async def get_runs(
     project_id: uuid.UUID,
@@ -351,6 +378,9 @@ async def get_runs(
     "/{project_id}/state",
     response_model=SuccessResponse[SkillOptLiveStateResponse],
     dependencies=[Depends(_read_limiter)],
+    summary="Get live training state",
+    description="Return the live training state (epoch progress, edit log, current skill) for a running SkillOpt job.",  # noqa: E501
+    responses=error_responses(401, 404, 429, 500),
 )
 async def get_live_state(
     project_id: uuid.UUID,

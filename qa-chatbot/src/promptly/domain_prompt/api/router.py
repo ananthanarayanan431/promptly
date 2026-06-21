@@ -7,7 +7,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from promptly.api.types.response import Response, SuccessResponse
+from promptly.api.types.response import SuccessResponse, error_responses
 from promptly.config.env import get_minio_settings
 from promptly.core.rate_limit import RateLimiter
 from promptly.core.user_context import UserContext
@@ -30,7 +30,6 @@ from promptly.domain_prompt.api.schemas import (
     DomainJobPollResponse,
     DomainListResponse,
     DomainPromptResponse,
-    GepaStateResponse,
     OptimizationRunResponse,
     OptimizeDomainRequest,
     QAPair,
@@ -45,11 +44,9 @@ from promptly.domain_prompt.data.repository import (
 )
 from promptly.domain_prompt.infrastructure.cache import (
     clear_dp_domain_active_job,
-    clear_dp_gepa_state,
     clear_dp_tournament_state,
     get_dp_celery_task_id,
     get_dp_domain_active_job,
-    get_dp_gepa_state,
     get_dp_job_domain_id,
     get_dp_job_owner,
     get_dp_job_result,
@@ -72,7 +69,6 @@ from promptly.domain_prompt.workers.tasks import (
     augment_domain_dataset,
     prepare_domain_dataset,
     run_domain_optimization,
-    run_gepa_optimization,
 )
 from promptly.repositories.usage_event_repo import UsageEventRepository
 from promptly.repositories.user_repo import UserRepository
@@ -81,18 +77,6 @@ from promptly.utils.log import get_logger
 log = get_logger(__name__)
 
 router = APIRouter(prefix="/domain-prompts", tags=["domain-prompts"])
-
-_PDO_TIERS: dict[str, dict[str, int]] = {
-    "low": {"rounds": 15, "candidates": 6, "credits": 5},
-    "medium": {"rounds": 30, "candidates": 10, "credits": 10},
-    "high": {"rounds": 50, "candidates": 15, "credits": 16},
-}
-
-_GEPA_TIERS: dict[str, dict[str, int]] = {
-    "low": {"budget": 100, "n_pareto": 10, "credits": 4},
-    "medium": {"budget": 260, "n_pareto": 22, "credits": 8},
-    "high": {"budget": 460, "n_pareto": 38, "credits": 14},
-}
 
 _write_limiter = RateLimiter(requests=10, window_seconds=60)
 _read_limiter = RateLimiter(requests=60, window_seconds=60)
@@ -106,6 +90,9 @@ def _to_response(domain: DomainPrompt) -> DomainPromptResponse:
     "/",
     response_model=SuccessResponse[DomainListResponse],
     dependencies=[Depends(_read_limiter)],
+    summary="List domain projects",
+    description="Return all domain-prompt projects owned by the current user.",
+    responses=error_responses(401, 429, 500),
 )
 async def list_domains(
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -122,6 +109,9 @@ async def list_domains(
     response_model=SuccessResponse[CreateDomainJobResponse],
     status_code=status.HTTP_202_ACCEPTED,
     dependencies=[Depends(_write_limiter)],
+    summary="Create domain project",
+    description="Upload a PDF to create a knowledge base. The PDF is parsed and a Q&A dataset is generated asynchronously. Costs tokens.",  # noqa: E501
+    responses=error_responses(401, 402, 422, 429, 500),
 )
 async def create_domain(
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -139,6 +129,10 @@ async def create_domain(
     Cost: 10 credits, deducted immediately.
     Returns HTTP 202 with a job_id to poll for progress.
     """
+    if current_user.credits < 10:
+        log.warning("insufficient_credits", required=10, available=current_user.credits)
+        raise DomainInsufficientCreditsException()
+
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise InvalidPDFException()
 
@@ -150,7 +144,8 @@ async def create_domain(
         raise InvalidPDFException(detail="Uploaded file does not appear to be a valid PDF.")
 
     user_repo = UserRepository(db)
-    if not await user_repo.has_min_tokens(current_user.user_id):
+    deducted = await user_repo.deduct_credits(current_user.user_id, 10)
+    if not deducted:
         raise DomainInsufficientCreditsException()
 
     domain_repo = DomainPromptRepository(db)
@@ -201,6 +196,9 @@ async def create_domain(
     "/jobs/{job_id}",
     response_model=SuccessResponse[DomainJobPollResponse],
     dependencies=[Depends(_read_limiter)],
+    summary="Poll domain job",
+    description="Poll for the status of a dataset-building or optimization job.",
+    responses=error_responses(401, 404, 429, 500),
 )
 async def poll_domain_job(
     job_id: str,
@@ -241,26 +239,12 @@ async def poll_domain_job(
 
 
 @router.get(
-    "/runs",
-    response_model=SuccessResponse[RunListResponse],
-    dependencies=[Depends(_read_limiter)],
-)
-async def list_all_runs(
-    db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[UserContext, Depends(get_current_user)],
-) -> SuccessResponse[RunListResponse]:
-    """Return all optimization runs across all domains owned by the current user."""
-    run_repo = DomainOptimizationRunRepository(db)
-    runs = await run_repo.get_all_runs_for_user(current_user.user_id)
-    return SuccessResponse(
-        data=RunListResponse(runs=[OptimizationRunResponse.model_validate(r) for r in runs])
-    )
-
-
-@router.get(
     "/{domain_id}",
     response_model=SuccessResponse[DomainPromptResponse],
     dependencies=[Depends(_read_limiter)],
+    summary="Get domain project",
+    description="Return metadata and dataset info for a single domain project.",
+    responses=error_responses(401, 404, 429, 500),
 )
 async def get_domain(
     domain_id: uuid.UUID,
@@ -279,6 +263,9 @@ async def get_domain(
     "/{domain_id}/dataset",
     response_model=SuccessResponse[DatasetRowsResponse],
     dependencies=[Depends(_read_limiter)],
+    summary="Get dataset",
+    description="Return the Q&A rows in this domain's knowledge base.",
+    responses=error_responses(401, 404, 429, 500),
 )
 async def get_dataset_rows(
     domain_id: uuid.UUID,
@@ -317,6 +304,9 @@ async def get_dataset_rows(
     "/{domain_id}/dataset",
     response_model=SuccessResponse[DatasetRowsResponse],
     dependencies=[Depends(_write_limiter)],
+    summary="Update dataset",
+    description="Replace the Q&A rows in this domain's knowledge base.",
+    responses=error_responses(401, 404, 422, 429, 500),
 )
 async def update_dataset_rows(
     domain_id: uuid.UUID,
@@ -354,6 +344,9 @@ async def update_dataset_rows(
     response_model=SuccessResponse[CreateDomainJobResponse],
     status_code=status.HTTP_202_ACCEPTED,
     dependencies=[Depends(_write_limiter)],
+    summary="Augment dataset",
+    description="Generate additional Q&A pairs for the domain's knowledge base using LLM.",
+    responses=error_responses(401, 404, 429, 500),
 )
 async def augment_dataset(
     domain_id: uuid.UUID,
@@ -390,6 +383,9 @@ async def augment_dataset(
     "/{domain_id}/tournament-state",
     response_model=SuccessResponse[TournamentStateResponse],
     dependencies=[Depends(_read_limiter)],
+    summary="Get tournament state",
+    description="Return the live PDO tournament state for a running optimization.",
+    responses=error_responses(401, 404, 429, 500),
 )
 async def get_tournament_state(
     domain_id: uuid.UUID,
@@ -414,6 +410,9 @@ async def get_tournament_state(
     response_model=SuccessResponse[CreateDomainJobResponse],
     status_code=status.HTTP_202_ACCEPTED,
     dependencies=[Depends(_write_limiter)],
+    summary="Start optimization",
+    description="Start a PDO or GEPA optimization run against this domain's knowledge base. Costs tokens based on effort tier.",  # noqa: E501
+    responses=error_responses(401, 402, 404, 409, 429, 500),
 )
 async def reoptimize_domain(
     domain_id: uuid.UUID,
@@ -422,16 +421,12 @@ async def reoptimize_domain(
     current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> SuccessResponse[CreateDomainJobResponse]:
     """
-    Optimize a prompt against this domain's knowledge base.
+    Optimize a prompt against this domain's knowledge base. Cost: 10 credits.
 
-    PDO: low=5cr/15rds/6c, medium=10cr/30rds/10c, high=16cr/50rds/15c.
-    GEPA: low=4cr/B=100, medium=8cr/B=260, high=14cr/B=460.
+    The domain's Q&A dataset (built from its PDF) is used to score and improve
+    the supplied prompt. You can call this endpoint repeatedly with different
+    prompts — the domain dataset is reused each time.
     """
-    is_gepa = body.algorithm == "gepa"
-
-    gepa_tier = _GEPA_TIERS.get(body.budget_tier, _GEPA_TIERS["low"])
-    pdo_tier = _PDO_TIERS.get(body.budget_tier, _PDO_TIERS["low"])
-
     repo = DomainPromptRepository(db)
     domain = await repo.get_by_id_and_user(domain_id, current_user.user_id)
     if domain is None:
@@ -443,49 +438,33 @@ async def reoptimize_domain(
     if domain.dataset is None or domain.dataset.dataset_key is None:
         raise DomainNotReadyException()
 
+    if current_user.credits < 10:
+        log.warning("insufficient_credits", required=10, available=current_user.credits)
+        raise DomainInsufficientCreditsException()
+
     user_repo = UserRepository(db)
-    if not await user_repo.has_min_tokens(current_user.user_id):
+    deducted = await user_repo.deduct_credits(current_user.user_id, 10)
+    if not deducted:
         raise DomainInsufficientCreditsException()
 
     await repo.set_status(domain, DomainPromptStatus.optimizing, last_prompt=body.prompt.strip())
     usage_repo = UsageEventRepository(db)
-    action = "domain_gepa" if is_gepa else "domain_pdo"
-    await usage_repo.log(user_id=current_user.user_id, action=action, credits_spent=0)
+    await usage_repo.log(user_id=current_user.user_id, action="domain_pdo", credits_spent=10)
     await db.commit()
 
     job_id = str(uuid.uuid4())
     await set_dp_job_status(job_id, "queued")
     await set_dp_job_owner(job_id, str(current_user.user_id))
 
-    task_kwargs: dict[str, object] = {
-        "job_id": job_id,
-        "domain_id": str(domain_id),
-        "user_id": str(current_user.user_id),
-        "prompt_to_optimize": body.prompt.strip(),
-    }
-    if is_gepa:
-        task_kwargs["gepa_budget"] = gepa_tier["budget"]
-        task_kwargs["gepa_n_pareto"] = gepa_tier["n_pareto"]
-        task_kwargs["gepa_credits"] = gepa_tier["credits"]
-        run_gepa_optimization.apply_async(kwargs=task_kwargs)
-        log.info(
-            "domain_gepa_job_queued",
-            job_id=job_id,
-            domain_id=str(domain_id),
-            tier=body.budget_tier,
-            budget=gepa_tier["budget"],
-        )
-    else:
-        task_kwargs["pdo_num_candidates"] = pdo_tier["candidates"]
-        task_kwargs["pdo_rounds"] = pdo_tier["rounds"]
-        run_domain_optimization.apply_async(kwargs=task_kwargs)
-        log.info(
-            "domain_pdo_job_queued",
-            job_id=job_id,
-            domain_id=str(domain_id),
-            tier=body.budget_tier,
-            rounds=pdo_tier["rounds"],
-        )
+    run_domain_optimization.apply_async(
+        kwargs={
+            "job_id": job_id,
+            "domain_id": str(domain_id),
+            "user_id": str(current_user.user_id),
+            "prompt_to_optimize": body.prompt.strip(),
+        }
+    )
+    log.info("domain_optimize_job_queued", job_id=job_id, domain_id=str(domain_id))
 
     return SuccessResponse(data=CreateDomainJobResponse(job_id=job_id, domain_id=domain_id))
 
@@ -494,6 +473,9 @@ async def reoptimize_domain(
     "/{domain_id}/runs",
     response_model=SuccessResponse[RunListResponse],
     dependencies=[Depends(_read_limiter)],
+    summary="List domain runs",
+    description="Return all past optimization runs for a specific domain project.",
+    responses=error_responses(401, 404, 429, 500),
 )
 async def list_domain_runs(
     domain_id: uuid.UUID,
@@ -513,37 +495,13 @@ async def list_domain_runs(
     )
 
 
-@router.get(
-    "/{domain_id}/gepa-state",
-    response_model=Response[GepaStateResponse],
-    dependencies=[Depends(_read_limiter)],
-)
-async def get_gepa_state(
-    domain_id: uuid.UUID,
-    db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[UserContext, Depends(get_current_user)],
-) -> Response[GepaStateResponse]:
-    """Return live GEPA evolution state written by the worker during a running GEPA job.
-
-    Returns 200 + data=null when no run is in progress (no Redis state), so the
-    frontend can poll without flooding logs with 404s.
-    """
-    repo = DomainPromptRepository(db)
-    domain = await repo.get_by_id_and_user(domain_id, current_user.user_id)
-    if domain is None:
-        raise DomainNotFoundException()
-
-    state = await get_dp_gepa_state(str(domain_id))
-    if state is None:
-        return Response(success=True, data=None)
-
-    return Response(success=True, data=GepaStateResponse(**state))
-
-
 @router.post(
     "/{domain_id}/stop",
     response_model=SuccessResponse[DomainPromptResponse],
     dependencies=[Depends(_write_limiter)],
+    summary="Force-stop optimization",
+    description="Force-stop a stuck or running optimization job.",
+    responses=error_responses(401, 404, 429, 500),
 )
 async def stop_domain_tournament(
     domain_id: uuid.UUID,
@@ -611,7 +569,6 @@ async def _do_cancel(
     await set_dp_job_result(job_id, {"error": "Cancelled by user."})
     await clear_dp_domain_active_job(str(domain.id))
     await clear_dp_tournament_state(str(domain.id))
-    await clear_dp_gepa_state(str(domain.id))
 
     cancellable_statuses = (
         DomainPromptStatus.pending,
@@ -642,6 +599,9 @@ async def _do_cancel(
     "/jobs/{job_id}/cancel",
     response_model=SuccessResponse[CancelDomainJobResponse],
     dependencies=[Depends(_write_limiter)],
+    summary="Cancel job",
+    description="Cancel a queued or running domain job and refund the reserved tokens.",
+    responses=error_responses(401, 404, 409, 429, 500),
 )
 async def cancel_domain_job(
     job_id: str,
@@ -685,6 +645,9 @@ async def cancel_domain_job(
     "/{domain_id}/cancel",
     response_model=SuccessResponse[CancelDomainJobResponse],
     dependencies=[Depends(_write_limiter)],
+    summary="Cancel active domain job",
+    description="Cancel the currently active job for a domain project.",
+    responses=error_responses(401, 404, 429, 500),
 )
 async def cancel_domain_by_id(
     domain_id: uuid.UUID,
@@ -750,6 +713,9 @@ async def cancel_domain_by_id(
     "/{domain_id}",
     response_model=SuccessResponse[DeleteDomainResponse],
     dependencies=[Depends(_write_limiter)],
+    summary="Delete domain project",
+    description="Permanently delete a domain project, its dataset, and all optimization runs.",
+    responses=error_responses(401, 404, 429, 500),
 )
 async def delete_domain(
     domain_id: uuid.UUID,

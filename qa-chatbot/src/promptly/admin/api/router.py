@@ -19,10 +19,9 @@ from promptly.admin.api.schemas import (
     RateLimitEntry,
     RateLimitList,
 )
-from promptly.api.types.response import SuccessResponse
+from promptly.api.types.response import SuccessResponse, error_responses
 from promptly.config.app import get_app_settings
 from promptly.core.exceptions import NotFoundException
-from promptly.core.user_context import UserContext
 from promptly.db.redis import get_redis_client
 from promptly.dependencies import get_db, require_admin
 from promptly.models.session import ChatSession
@@ -36,10 +35,18 @@ router = APIRouter(
 )
 
 
-@router.get("/stats", response_model=SuccessResponse[AdminStats])
+@router.get(
+    "/stats",
+    summary="Admin — aggregate stats",
+    description=(
+        "Return platform-wide counters: total users, total optimizations, tokens consumed,"
+        " and active users in the last 7 days. Admin-only."
+    ),
+    response_model=SuccessResponse[AdminStats],
+    responses=error_responses(401, 403, 500),
+)
 async def get_stats(
     db: Annotated[AsyncSession, Depends(get_db)],
-    _: Annotated[UserContext, Depends(require_admin)],
 ) -> SuccessResponse[AdminStats]:
     """Aggregate application statistics."""
     total_users_result = await db.execute(select(func.count()).select_from(User))
@@ -69,10 +76,18 @@ async def get_stats(
     )
 
 
-@router.get("/users", response_model=SuccessResponse[AdminUserList])
+@router.get(
+    "/users",
+    summary="Admin — list users",
+    description=(
+        "Return a paginated list of all registered users with token balance and admin flag."
+        " Admin-only."
+    ),
+    response_model=SuccessResponse[AdminUserList],
+    responses=error_responses(401, 403, 429, 500),
+)
 async def list_users(
     db: Annotated[AsyncSession, Depends(get_db)],
-    _: Annotated[UserContext, Depends(require_admin)],
     page: int = Query(default=1, ge=1),
     per_page: int = Query(default=50, ge=1, le=200),
 ) -> SuccessResponse[AdminUserList]:
@@ -89,12 +104,19 @@ async def list_users(
     )
 
 
-@router.patch("/users/{user_id}", response_model=SuccessResponse[AdminUserItem])
+@router.patch(
+    "/users/{user_id}",
+    summary="Admin — update user",
+    description=(
+        "Update `is_active`, `is_admin`, or apply a token-balance delta for any user. Admin-only."
+    ),
+    response_model=SuccessResponse[AdminUserItem],
+    responses=error_responses(401, 403, 404, 422, 500),
+)
 async def patch_user(
     user_id: uuid.UUID,
     body: AdminUserPatch,
     db: Annotated[AsyncSession, Depends(get_db)],
-    _: Annotated[UserContext, Depends(require_admin)],
 ) -> SuccessResponse[AdminUserItem]:
     """Update is_active, is_admin, or credits for any user."""
     repo = UserRepository(db)
@@ -106,13 +128,21 @@ async def patch_user(
     )
     if updated is None:
         raise NotFoundException(detail="User not found")
+    await db.commit()
     return SuccessResponse(data=AdminUserItem.model_validate(updated))
 
 
-@router.get("/rate-limits", response_model=SuccessResponse[RateLimitList])
-async def get_rate_limits(
-    _: Annotated[UserContext, Depends(require_admin)],
-) -> SuccessResponse[RateLimitList]:
+@router.get(
+    "/rate-limits",
+    summary="Admin — rate-limit hits",
+    description=(
+        "Return current rate-limit hit counts from Redis (`rl:user:*` keys),"
+        " sorted by hit count descending. Admin-only."
+    ),
+    response_model=SuccessResponse[RateLimitList],
+    responses=error_responses(401, 403, 500),
+)
+async def get_rate_limits() -> SuccessResponse[RateLimitList]:
     """Current rate limit hit counts from Redis (rl:user:* keys)."""
     redis = await get_redis_client()
     entries = []
@@ -138,10 +168,17 @@ async def get_rate_limits(
     return SuccessResponse(data=RateLimitList(entries=entries))
 
 
-@router.get("/errors", response_model=SuccessResponse[GlitchTipIssueList])
-async def get_errors(
-    _: Annotated[UserContext, Depends(require_admin)],
-) -> SuccessResponse[GlitchTipIssueList]:
+@router.get(
+    "/errors",
+    summary="Admin — recent errors",
+    description=(
+        "Proxy recent unresolved issues from the GlitchTip error tracker."
+        " Returns an empty list when GlitchTip is not configured. Admin-only."
+    ),
+    response_model=SuccessResponse[GlitchTipIssueList],
+    responses=error_responses(401, 403, 500, 502),
+)
+async def get_errors() -> SuccessResponse[GlitchTipIssueList]:
     """Proxy recent issues from GlitchTip API."""
     settings = get_app_settings()
 

@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from promptly.api.types.response import SuccessResponse
+from promptly.api.types.response import SuccessResponse, error_responses
 from promptly.core.rate_limit import RateLimiter
 from promptly.core.user_context import UserContext
 from promptly.dependencies import get_current_user, get_db
@@ -146,6 +146,9 @@ async def _fetch_key_info() -> dict[str, object]:
     "/models",
     response_model=SuccessResponse[ModelListResponse],
     dependencies=[Depends(_limiter)],
+    summary="List OpenRouter models",
+    description="Return the full OpenRouter model catalogue with pricing. Response is cached for 10 minutes.",  # noqa: E501
+    responses=error_responses(401, 429, 500, 502),
 )
 async def get_models(
     _: Annotated[UserContext, Depends(get_current_user)],
@@ -241,6 +244,9 @@ async def get_models(
     "/stats",
     response_model=SuccessResponse[OpenRouterStats],
     dependencies=[Depends(_limiter)],
+    summary="OpenRouter account stats",
+    description="Return spend, limits, and top model usage from the OpenRouter account linked to this deployment.",  # noqa: E501
+    responses=error_responses(401, 429, 500, 502),
 )
 async def get_openrouter_stats(
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -357,6 +363,9 @@ def _model_pricing(model_id: str, cached_models: list[ModelInfo]) -> tuple[float
     "/tiers",
     response_model=SuccessResponse[TiersResponse],
     dependencies=[Depends(_limiter)],
+    summary="LLM effort tiers",
+    description="Return the three effort tiers (low / medium / high) with live per-token pricing fetched from OpenRouter.",  # noqa: E501
+    responses=error_responses(401, 429, 500, 502),
 )
 async def get_llm_tiers(
     _: Annotated[Any, Depends(get_current_user)],  # auth required

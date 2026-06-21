@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class AdminUserItem(BaseModel):
@@ -23,7 +23,7 @@ class AdminUserItem(BaseModel):
 class AdminUserPatch(BaseModel):
     is_active: bool | None = None
     is_admin: bool | None = None
-    credits_delta: int | None = None
+    credits_delta: int | None = Field(default=None, ge=-10_000)
 
 
 class AdminUserList(BaseModel):

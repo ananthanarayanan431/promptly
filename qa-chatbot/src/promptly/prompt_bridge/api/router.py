@@ -19,7 +19,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from promptly.api.types.response import SuccessResponse
+from promptly.api.types.response import SuccessResponse, error_responses
 from promptly.core.rate_limit import RateLimiter
 from promptly.core.user_context import UserContext
 from promptly.dependencies import get_current_user, get_db
@@ -77,9 +77,12 @@ _REUSE_TRANSFER_COST = 1
 
 @router.post(
     "/transfer",
+    summary="Submit transfer job",
+    description="Translate a prompt optimised for one LLM to work well with a different target model. First-time calibration costs ~20K tokens; reuse of an existing mapping costs far less.",  # noqa: E501
     response_model=SuccessResponse[TransferJobCreatedResponse],
     status_code=status.HTTP_202_ACCEPTED,
     dependencies=[Depends(_write_limiter)],
+    responses=error_responses(400, 401, 402, 422, 429, 500),
 )
 async def submit_transfer(
     body: TransferRequest,
@@ -109,8 +112,13 @@ async def submit_transfer(
     reused = existing_mapping is not None
     cost = _REUSE_TRANSFER_COST if reused else _FULL_TRANSFER_COST
 
+    if current_user.credits < cost:
+        log.warning("insufficient_credits", required=cost, available=current_user.credits)
+        raise PBInsufficientCreditsException(required=cost)
+
     user_repo = UserRepository(db)
-    if not await user_repo.has_min_tokens(current_user.user_id):
+    deducted = await user_repo.deduct_credits(current_user.user_id, cost)
+    if not deducted:
         raise PBInsufficientCreditsException(required=cost)
 
     job_id = str(uuid.uuid4())
@@ -171,8 +179,11 @@ async def submit_transfer(
 
 @router.get(
     "/jobs/{job_id}",
+    summary="Poll transfer job",
+    description="Return the current status and result of a prompt-bridge transfer job. Poll until `status` is `completed` or `failed`.",  # noqa: E501
     response_model=SuccessResponse[TransferJobPollResponse],
     dependencies=[Depends(_read_limiter)],
+    responses=error_responses(401, 404, 429, 500),
 )
 async def poll_transfer_job(
     job_id: str,
@@ -215,8 +226,11 @@ async def poll_transfer_job(
 
 @router.post(
     "/jobs/{db_job_id}/cancel-by-id",
+    summary="Cancel transfer job by DB ID",
+    description="Cancel a job using its database UUID (useful after page reload when the Redis job ID is not available).",  # noqa: E501
     response_model=SuccessResponse[CancelJobResponse],
     dependencies=[Depends(_write_limiter)],
+    responses=error_responses(401, 404, 409, 429, 500),
 )
 async def cancel_transfer_job_by_db_id(
     db_job_id: uuid.UUID,
@@ -243,6 +257,8 @@ async def cancel_transfer_job_by_db_id(
         await job_repo.set_status(
             job, TransferJobStatus.cancelled, error_message="Cancelled by user."
         )
+        user_repo = UserRepository(db)
+        await user_repo.refund_credits(current_user.user_id, job.credits_charged)
         await db.commit()
         log.info("transfer_job_cancelled", job_id=str(db_job_id))
         return SuccessResponse(data=CancelJobResponse(job_id=str(db_job_id), cancelled=True))
@@ -260,6 +276,8 @@ async def cancel_transfer_job_by_db_id(
     await set_pb_job_result(redis_id, {"error": "Cancelled by user."})
 
     await job_repo.set_status(job, TransferJobStatus.cancelled, error_message="Cancelled by user.")
+    user_repo = UserRepository(db)
+    await user_repo.refund_credits(current_user.user_id, job.credits_charged)
     await db.commit()
     log.info("transfer_job_cancelled", job_id=str(db_job_id))
 
@@ -268,8 +286,11 @@ async def cancel_transfer_job_by_db_id(
 
 @router.delete(
     "/jobs/{job_id}",
+    summary="Delete transfer job",
+    description="Delete a completed, failed, or cancelled transfer job record. Running jobs must be cancelled first.",  # noqa: E501
     response_model=SuccessResponse[DeleteJobResponse],
     dependencies=[Depends(_write_limiter)],
+    responses=error_responses(401, 404, 409, 429, 500),
 )
 async def delete_transfer_job(
     job_id: uuid.UUID,
@@ -299,8 +320,11 @@ async def delete_transfer_job(
 
 @router.get(
     "/jobs",
+    summary="List transfer jobs",
+    description="Return the current user's transfer jobs, newest first.",
     response_model=SuccessResponse[TransferJobListResponse],
     dependencies=[Depends(_read_limiter)],
+    responses=error_responses(401, 429, 500),
 )
 async def list_transfer_jobs(
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -309,19 +333,18 @@ async def list_transfer_jobs(
     """List the current user's transfer jobs (newest first, max 50)."""
     repo = TransferJobRepository(db)
     jobs: list[TransferJob] = await repo.get_by_user(current_user.user_id)
-    summaries = [
-        TransferJobSummary.model_validate(j).model_copy(
-            update={"mapping_text": j.mapping.mapping_text if j.mapping else None}
-        )
-        for j in jobs
-    ]
-    return SuccessResponse(data=TransferJobListResponse(jobs=summaries))
+    return SuccessResponse(
+        data=TransferJobListResponse(jobs=[TransferJobSummary.model_validate(j) for j in jobs])
+    )
 
 
 @router.get(
     "/mappings",
+    summary="List model mappings",
+    description="Return all saved source-to-target model-pair mappings for the current user. Reusing a mapping skips calibration.",  # noqa: E501
     response_model=SuccessResponse[MappingListResponse],
     dependencies=[Depends(_read_limiter)],
+    responses=error_responses(401, 429, 500),
 )
 async def list_mappings(
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -339,8 +362,11 @@ async def list_mappings(
 
 @router.get(
     "/mappings/{mapping_id}",
+    summary="Get mapping detail",
+    description="Return a specific mapping including all calibrated prompt pairs.",
     response_model=SuccessResponse[PromptMappingDetailResponse],
     dependencies=[Depends(_read_limiter)],
+    responses=error_responses(401, 404, 429, 500),
 )
 async def get_mapping(
     mapping_id: uuid.UUID,
@@ -357,8 +383,11 @@ async def get_mapping(
 
 @router.delete(
     "/mappings/{mapping_id}",
+    summary="Delete mapping",
+    description="Delete a saved model-pair mapping and all its calibrated prompt pairs.",
     response_model=SuccessResponse[DeleteMappingResponse],
     dependencies=[Depends(_write_limiter)],
+    responses=error_responses(401, 404, 429, 500),
 )
 async def delete_mapping(
     mapping_id: uuid.UUID,
@@ -377,8 +406,11 @@ async def delete_mapping(
 
 @router.post(
     "/jobs/{job_id}/cancel",
+    summary="Cancel transfer job",
+    description="Cancel a queued or in-progress transfer job. Uses a two-pronged approach: removes from Celery queue and sets a cooperative cancel flag.",  # noqa: E501
     response_model=SuccessResponse[CancelJobResponse],
     dependencies=[Depends(_write_limiter)],
+    responses=error_responses(401, 404, 409, 429, 500),
 )
 async def cancel_transfer_job(
     job_id: str,
@@ -435,6 +467,8 @@ async def cancel_transfer_job(
             TransferJobStatus.cancelled,
             error_message="Cancelled by user.",
         )
+        user_repo = UserRepository(db)
+        await user_repo.refund_credits(current_user.user_id, matching.credits_charged)
         await db.commit()
 
     log.info("transfer_job_cancelled", job_id=job_id)

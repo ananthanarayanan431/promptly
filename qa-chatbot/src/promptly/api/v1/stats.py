@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import Date, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from promptly.api.types.response import SuccessResponse
+from promptly.api.types.response import SuccessResponse, error_responses
 from promptly.core.rate_limit import RateLimiter
 from promptly.core.user_context import UserContext
 from promptly.dependencies import get_current_user, get_db
@@ -45,7 +45,12 @@ _MODEL_DISPLAY: dict[str, str] = {
 
 
 @router.get(
-    "", response_model=SuccessResponse[DashboardStats], dependencies=[Depends(_default_limiter)]
+    "",
+    response_model=SuccessResponse[DashboardStats],
+    dependencies=[Depends(_default_limiter)],
+    summary="Dashboard stats",
+    description="Return aggregated usage statistics for the current user: optimization counts, token usage, activity chart data, and quality trend.",  # noqa: E501
+    responses=error_responses(401, 429, 500),
 )
 async def get_dashboard_stats(
     db: Annotated[AsyncSession, Depends(get_db)],

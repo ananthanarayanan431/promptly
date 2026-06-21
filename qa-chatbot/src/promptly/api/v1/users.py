@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from promptly.api.types.response import SuccessResponse
+from promptly.api.types.response import SuccessResponse, error_responses
 from promptly.core.exceptions import NotFoundException
 from promptly.core.rate_limit import RateLimiter
 from promptly.core.user_context import UserContext
@@ -19,7 +19,12 @@ _default_limiter = RateLimiter(requests=60, window_seconds=60)
 
 
 @router.get(
-    "/me", response_model=SuccessResponse[UserResponse], dependencies=[Depends(_default_limiter)]
+    "/me",
+    response_model=SuccessResponse[UserResponse],
+    dependencies=[Depends(_default_limiter)],
+    summary="Get current user",
+    description="Return the authenticated user's profile including email, token balance, and account creation date.",  # noqa: E501
+    responses=error_responses(401, 500),
 )
 async def get_me(
     current_user: Annotated[UserContext, Depends(get_current_user)],
@@ -38,6 +43,9 @@ async def get_me(
     "/credits",
     response_model=SuccessResponse[CreditResponse],
     dependencies=[Depends(_default_limiter)],
+    summary="Get credit balance",
+    description="Return the current credit balance for the authenticated user.",
+    responses=error_responses(401, 500),
 )
 async def get_credits(
     current_user: Annotated[UserContext, Depends(get_current_user)],
@@ -50,6 +58,9 @@ async def get_credits(
     "/credits/add",
     response_model=SuccessResponse[CreditResponse],
     dependencies=[Depends(_default_limiter)],
+    summary="Add credits",
+    description="Add credits to the authenticated user's account balance.",
+    responses=error_responses(401, 404, 500),
 )
 async def add_credits(
     request: AddCreditRequest,

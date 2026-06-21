@@ -4,7 +4,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from promptly.api.types.response import SuccessResponse
+from promptly.api.types.response import SuccessResponse, error_responses
 from promptly.api.v1.exceptions.favorites import (
     FavoriteNotFoundException,
     FavoriteVersionNotFoundException,
@@ -52,7 +52,12 @@ def _to_response(fav: FavoritePrompt) -> FavoriteResponse:
 
 
 @router.post(
-    "", response_model=SuccessResponse[FavoriteResponse], dependencies=[Depends(_default_limiter)]
+    "",
+    summary="Add to favourites",
+    description="Save a prompt version to the current user's Prompt Library. Returns 201 on first save, 200 if already favourited.",  # noqa: E501
+    response_model=SuccessResponse[FavoriteResponse],
+    dependencies=[Depends(_default_limiter)],
+    responses=error_responses(401, 404, 429, 500),
 )
 async def like(
     request: FavoriteCreateRequest,
@@ -85,8 +90,11 @@ async def like(
 
 @router.get(
     "/status",
+    summary="Favourite status",
+    description="Check whether a specific prompt version is in the current user's Prompt Library.",
     response_model=SuccessResponse[FavoriteStatusResponse],
     dependencies=[Depends(_default_limiter)],
+    responses=error_responses(401, 429, 500),
 )
 async def status_endpoint(
     prompt_version_id: Annotated[uuid.UUID, Query()],
@@ -102,8 +110,11 @@ async def status_endpoint(
 
 @router.get(
     "",
+    summary="List favourites",
+    description="Return a paginated, filterable list of the current user's saved prompts.",
     response_model=SuccessResponse[FavoriteListResponse],
     dependencies=[Depends(_default_limiter)],
+    responses=error_responses(401, 429, 500),
 )
 async def list_favorites(
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -137,8 +148,11 @@ async def list_favorites(
 
 @router.get(
     "/tags",
+    summary="List favourite tags",
+    description="Return all distinct tags used across the current user's saved prompts.",
     response_model=SuccessResponse[FavoriteTagsResponse],
     dependencies=[Depends(_default_limiter)],
+    responses=error_responses(401, 429, 500),
 )
 async def list_tags(
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -151,8 +165,11 @@ async def list_tags(
 
 @router.delete(
     "/by-version/{prompt_version_id}",
+    summary="Remove favourite by version",
+    description="Remove a prompt version from the Prompt Library by its version ID.",
     status_code=status.HTTP_204_NO_CONTENT,
     dependencies=[Depends(_default_limiter)],
+    responses=error_responses(401, 404, 429, 500),
 )
 async def unlike_by_version(
     prompt_version_id: uuid.UUID,
@@ -172,8 +189,11 @@ async def unlike_by_version(
 
 @router.get(
     "/{favorite_id}",
+    summary="Get favourite",
+    description="Return a single Prompt Library entry by its favourite ID.",
     response_model=SuccessResponse[FavoriteResponse],
     dependencies=[Depends(_default_limiter)],
+    responses=error_responses(401, 404, 429, 500),
 )
 async def get_favorite(
     favorite_id: uuid.UUID,
@@ -189,8 +209,11 @@ async def get_favorite(
 
 @router.patch(
     "/{favorite_id}",
+    summary="Update favourite",
+    description="Update the note, tags, category, or pin status of a saved prompt.",
     response_model=SuccessResponse[FavoriteResponse],
     dependencies=[Depends(_default_limiter)],
+    responses=error_responses(401, 404, 422, 429, 500),
 )
 async def update_favorite(
     favorite_id: uuid.UUID,
@@ -224,8 +247,11 @@ async def update_favorite(
 
 @router.post(
     "/{favorite_id}/use",
+    summary="Record prompt use",
+    description="Increment the use counter for a saved prompt. Call this when the user copies or deploys a prompt from the library.",  # noqa: E501
     status_code=status.HTTP_204_NO_CONTENT,
     dependencies=[Depends(_default_limiter)],
+    responses=error_responses(401, 404, 429, 500),
 )
 async def use_favorite(
     favorite_id: uuid.UUID,
@@ -242,8 +268,11 @@ async def use_favorite(
 
 @router.delete(
     "/{favorite_id}",
+    summary="Remove favourite",
+    description="Remove a prompt from the Prompt Library by its favourite ID.",
     status_code=status.HTTP_204_NO_CONTENT,
     dependencies=[Depends(_default_limiter)],
+    responses=error_responses(401, 404, 429, 500),
 )
 async def unlike(
     favorite_id: uuid.UUID,
