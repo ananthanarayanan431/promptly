@@ -73,6 +73,7 @@ function NavIcon({ name }: { name: string }) {
     dashboard: 'M3 3h8v8H3zM13 3h8v8h-8zM3 13h8v8H3zM13 13h8v8h-8z',
     zap: 'M13 2L3 14h9l-1 8 10-12h-9l1-8z',
     settings: 'M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z',
+    shield: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z',
   };
   const d = paths[name] || '';
   return (
@@ -269,6 +270,40 @@ export function Sidebar() {
 
         {/* Recent sessions */}
         <RecentSessions />
+
+        {/* Admin link — only visible to admins */}
+        {fetchedUser?.is_admin && (
+          <div>
+            <div style={{
+              padding: '4px 10px 6px', fontSize: 10.5, letterSpacing: '.08em',
+              textTransform: 'uppercase', color: 'var(--text-subtle)', fontWeight: 600,
+            }}>
+              Admin
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+              {[{ href: '/admin', label: 'Admin Panel', icon: 'shield' }].map(item => {
+                const active = pathname === item.href || pathname.startsWith(item.href + '/');
+                return (
+                  <Link key={item.href} href={item.href} style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '7px 10px', height: 32,
+                    borderRadius: 7, border: '1px solid transparent',
+                    background: active ? 'var(--surface)' : 'transparent',
+                    color: active ? 'var(--text)' : 'var(--text-muted)',
+                    fontWeight: active ? 500 : 400,
+                    boxShadow: active ? 'var(--shadow-sm)' : 'none',
+                    borderColor: active ? 'var(--border)' : 'transparent',
+                    fontSize: 13, textDecoration: 'none',
+                    transition: 'background .12s, color .12s',
+                  }}>
+                    <NavIcon name={item.icon} />
+                    <span>Admin Panel</span>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </nav>
 
       {/* Bottom: credits + user */}
