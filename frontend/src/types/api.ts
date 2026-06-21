@@ -181,7 +181,7 @@ export interface HealthScoreResponse {
 
 // --- Dashboard Stats ---
 
-export interface DailyActivity {
+export interface ActivityPoint {
   date: string; // YYYY-MM-DD
   count: number;
 }
@@ -231,7 +231,7 @@ export interface DashboardStats {
   last_optimized_at: string | null; // ISO datetime
   top_model: string | null;
   // Chart data
-  daily_activity: DailyActivity[];
+  daily_activity: ActivityPoint[];
   model_breakdown: ModelStats[];
   quality_trend: QualityTrendPoint[];
 }
@@ -468,6 +468,7 @@ export interface AdminUserItem {
   id: string;
   email: string;
   full_name: string | null;
+  avatar_url: string | null;
   credits: number;
   token_balance: number;
   is_active: boolean;
@@ -489,11 +490,23 @@ export interface AdminUserPatch {
   credits_delta?: number;
 }
 
+export interface DailyActivity { date: string; calls: number; tokens: number; }
+export interface FeatureUsage { feature: string; calls: number; label: string; }
+export interface TopUser { email: string; tokens_consumed: number; token_balance: number; calls: number; }
+
 export interface AdminStats {
   total_users: number;
+  new_users_7d: number;
+  new_users_30d: number;
+  active_users_7d: number;
   total_optimizations: number;
   total_tokens_consumed: number;
-  active_users_7d: number;
+  total_token_budget: number;
+  avg_tokens_per_user: number;
+  token_budget_used_pct: number;
+  feature_usage: FeatureUsage[];
+  daily_activity: DailyActivity[];
+  top_users: TopUser[];
 }
 
 export interface RateLimitEntry {

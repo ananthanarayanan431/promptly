@@ -1,6 +1,6 @@
 'use client';
 
-import { DailyActivity } from '@/types/api';
+import { ActivityPoint } from '@/types/api';
 import {
   ResponsiveContainer,
   LineChart,
@@ -13,7 +13,7 @@ import {
 import { format, parseISO } from 'date-fns';
 
 interface Props {
-  data: DailyActivity[];
+  data: ActivityPoint[];
 }
 
 export function ActivityChart({ data }: Props) {

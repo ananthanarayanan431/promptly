@@ -10,6 +10,7 @@ class AdminUserItem(BaseModel):
     id: uuid.UUID
     email: str
     full_name: str | None
+    avatar_url: str | None
     credits: int
     token_balance: int
     is_active: bool
@@ -33,11 +34,43 @@ class AdminUserList(BaseModel):
     users: list[AdminUserItem]
 
 
+class DailyActivity(BaseModel):
+    date: str  # YYYY-MM-DD
+    calls: int
+    tokens: int
+
+
+class FeatureUsage(BaseModel):
+    feature: str
+    calls: int
+    label: str
+
+
+class TopUser(BaseModel):
+    email: str
+    tokens_consumed: int
+    token_balance: int
+    calls: int
+
+
 class AdminStats(BaseModel):
+    # Users
     total_users: int
+    new_users_7d: int
+    new_users_30d: int
+    active_users_7d: int
+    # Usage
     total_optimizations: int
     total_tokens_consumed: int
-    active_users_7d: int
+    total_token_budget: int
+    avg_tokens_per_user: int
+    token_budget_used_pct: float
+    # Feature breakdown
+    feature_usage: list[FeatureUsage]
+    # Chart data (last 14 days)
+    daily_activity: list[DailyActivity]
+    # Top consumers
+    top_users: list[TopUser]
 
 
 class RateLimitEntry(BaseModel):

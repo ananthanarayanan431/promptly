@@ -31,6 +31,7 @@ async def _provision_user(
     supabase_user_id: str,
     email: str,
     full_name: str | None,
+    avatar_url: str | None = None,
 ) -> Any:  # noqa: ANN401
     """Create the local DB record on first Supabase login.
 
@@ -44,6 +45,7 @@ async def _provision_user(
             supabase_user_id=supabase_user_id,
             email=email,
             full_name=full_name or None,
+            avatar_url=avatar_url or None,
         )
         log.info("user_auto_provisioned", supabase_user_id=supabase_user_id, email=email)
         return user
@@ -110,14 +112,19 @@ async def get_current_user(
     payload = verify_supabase_token(token)
     supabase_user_id: str = payload["sub"]
     email: str = payload.get("email", "")
-    full_name: str | None = payload.get("user_metadata", {}).get("full_name")
+    user_metadata: dict[str, Any] = payload.get("user_metadata", {})
+    full_name: str | None = user_metadata.get("full_name")
+    avatar_url: str | None = user_metadata.get("avatar_url") or user_metadata.get("picture")
 
     if not email:
         raise UnauthorizedException(detail="Token missing email claim")
 
     user = await user_repo.get_by_supabase_id(supabase_user_id)
     if user is None:
-        user = await _provision_user(user_repo, supabase_user_id, email, full_name)
+        user = await _provision_user(user_repo, supabase_user_id, email, full_name, avatar_url)
+    else:
+        if avatar_url and user.avatar_url != avatar_url:
+            user = await user_repo.update(user, avatar_url=avatar_url)
     if not user.is_active:
         raise UnauthorizedException(detail="User account is inactive")
 

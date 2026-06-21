@@ -14,10 +14,13 @@ from promptly.admin.api.schemas import (
     AdminUserItem,
     AdminUserList,
     AdminUserPatch,
+    DailyActivity,
+    FeatureUsage,
     GlitchTipIssue,
     GlitchTipIssueList,
     RateLimitEntry,
     RateLimitList,
+    TopUser,
 )
 from promptly.api.types.response import SuccessResponse, error_responses
 from promptly.config.app import get_app_settings
@@ -25,6 +28,7 @@ from promptly.core.exceptions import NotFoundException
 from promptly.db.redis import get_redis_client
 from promptly.dependencies import get_db, require_admin
 from promptly.models.session import ChatSession
+from promptly.models.usage_event import UsageEvent
 from promptly.models.user import User
 from promptly.repositories.user_repo import UserRepository
 
@@ -33,6 +37,16 @@ router = APIRouter(
     tags=["admin"],
     dependencies=[Depends(require_admin)],
 )
+
+_FEATURE_LABELS: dict[str, str] = {
+    "optimize": "Council Optimizer",
+    "health_score": "Health Score",
+    "advisory": "Advisory",
+    "domain_pdo": "Domain PDO",
+    "domain_gepa": "Domain GEPA",
+    "bridge": "Bridge",
+    "domain_gepa_augment": "Dataset Augment",
+}
 
 
 @router.get(
@@ -48,30 +62,120 @@ router = APIRouter(
 async def get_stats(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> SuccessResponse[AdminStats]:
-    """Aggregate application statistics."""
-    total_users_result = await db.execute(select(func.count()).select_from(User))
-    total_users: int = total_users_result.scalar_one()
+    """Aggregate platform-wide statistics with feature breakdown, daily chart, and top consumers."""
+    now = datetime.now(UTC)
+    cutoff_7d = now - timedelta(days=7)
+    cutoff_30d = now - timedelta(days=30)
+    cutoff_14d = now - timedelta(days=14)
 
-    total_opts_result = await db.execute(select(func.count()).select_from(ChatSession))
-    total_optimizations: int = total_opts_result.scalar_one()
+    # ── User counters ──────────────────────────────────────────────────────────
+    total_users: int = (await db.execute(select(func.count()).select_from(User))).scalar_one()
+    new_7d: int = (
+        await db.execute(select(func.count()).select_from(User).where(User.created_at >= cutoff_7d))
+    ).scalar_one()
+    new_30d: int = (
+        await db.execute(
+            select(func.count()).select_from(User).where(User.created_at >= cutoff_30d)
+        )
+    ).scalar_one()
+    active_7d: int = (
+        await db.execute(
+            select(func.count()).select_from(User).where(User.last_login_at >= cutoff_7d)
+        )
+    ).scalar_one()
 
-    tokens_result = await db.execute(
+    # ── Token metrics ──────────────────────────────────────────────────────────
+    total_opts: int = (await db.execute(select(func.count()).select_from(ChatSession))).scalar_one()
+    total_budget = total_users * 3_000_000
+    consumed_result = await db.execute(
         select(func.coalesce(func.sum(3_000_000 - User.token_balance), 0)).select_from(User)
     )
-    total_tokens_consumed: int = tokens_result.scalar_one()
+    total_consumed: int = max(0, int(consumed_result.scalar_one()))
+    avg_per_user = total_consumed // max(1, total_users)
+    budget_pct = round((total_consumed / max(1, total_budget)) * 100, 1)
 
-    cutoff = datetime.now(UTC) - timedelta(days=7)
-    active_result = await db.execute(
-        select(func.count()).select_from(User).where(User.last_login_at >= cutoff)
+    # ── Feature usage from usage_events ───────────────────────────────────────
+    feature_rows = (
+        await db.execute(
+            select(UsageEvent.action, func.count().label("cnt"))
+            .group_by(UsageEvent.action)
+            .order_by(func.count().desc())
+        )
+    ).fetchall()
+    feature_usage = [
+        FeatureUsage(
+            feature=row.action,
+            calls=row.cnt,
+            label=_FEATURE_LABELS.get(row.action, row.action.replace("_", " ").title()),
+        )
+        for row in feature_rows
+    ]
+
+    # ── Daily activity (last 14 days) ─────────────────────────────────────────
+    from sqlalchemy import Date as SqlDate
+    from sqlalchemy import cast
+
+    daily_rows = (
+        await db.execute(
+            select(
+                cast(UsageEvent.created_at, SqlDate).label("day"),
+                func.count().label("calls"),
+            )
+            .where(UsageEvent.created_at >= cutoff_14d)
+            .group_by(cast(UsageEvent.created_at, SqlDate))
+            .order_by(cast(UsageEvent.created_at, SqlDate))
+        )
+    ).fetchall()
+    # Fill in missing days with zeros
+    daily_map = {str(r.day): r.calls for r in daily_rows}
+    daily_activity = [
+        DailyActivity(
+            date=str((cutoff_14d + timedelta(days=i)).date()),
+            calls=daily_map.get(str((cutoff_14d + timedelta(days=i)).date()), 0),
+            tokens=0,  # token-per-day requires expensive join; calls is actionable
+        )
+        for i in range(14)
+    ]
+
+    # ── Top consumers (top 8 by tokens burned) ────────────────────────────────
+    top_rows = (
+        (await db.execute(select(User).order_by((3_000_000 - User.token_balance).desc()).limit(8)))
+        .scalars()
+        .all()
     )
-    active_users_7d: int = active_result.scalar_one()
+
+    # Get per-user call count from usage_events
+    call_counts_rows = (
+        await db.execute(
+            select(UsageEvent.user_id, func.count().label("cnt")).group_by(UsageEvent.user_id)
+        )
+    ).fetchall()
+    call_map = {str(r.user_id): r.cnt for r in call_counts_rows}
+
+    top_users = [
+        TopUser(
+            email=u.email,
+            tokens_consumed=max(0, 3_000_000 - u.token_balance),
+            token_balance=u.token_balance,
+            calls=call_map.get(str(u.id), 0),
+        )
+        for u in top_rows
+    ]
 
     return SuccessResponse(
         data=AdminStats(
             total_users=total_users,
-            total_optimizations=total_optimizations,
-            total_tokens_consumed=total_tokens_consumed,
-            active_users_7d=active_users_7d,
+            new_users_7d=new_7d,
+            new_users_30d=new_30d,
+            active_users_7d=active_7d,
+            total_optimizations=total_opts,
+            total_tokens_consumed=total_consumed,
+            total_token_budget=total_budget,
+            avg_tokens_per_user=avg_per_user,
+            token_budget_used_pct=budget_pct,
+            feature_usage=feature_usage,
+            daily_activity=daily_activity,
+            top_users=top_users,
         )
     )
 
