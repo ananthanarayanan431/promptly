@@ -13,10 +13,13 @@ from promptly.admin.api.schemas import (
     AdminUserItem,
     AdminUserList,
     AdminUserPatch,
+    RateLimitEntry,
+    RateLimitList,
 )
 from promptly.api.types.response import SuccessResponse
 from promptly.core.exceptions import NotFoundException
 from promptly.core.user_context import UserContext
+from promptly.db.redis import get_redis_client
 from promptly.dependencies import get_db, require_admin
 from promptly.models.session import ChatSession
 from promptly.models.user import User
@@ -100,3 +103,32 @@ async def patch_user(
     if updated is None:
         raise NotFoundException(detail="User not found")
     return SuccessResponse(data=AdminUserItem.model_validate(updated))
+
+
+@router.get("/rate-limits", response_model=SuccessResponse[RateLimitList])
+async def get_rate_limits(
+    _: Annotated[UserContext, Depends(require_admin)],
+) -> SuccessResponse[RateLimitList]:
+    """Current rate limit hit counts from Redis (rl:user:* keys)."""
+    redis = await get_redis_client()
+    entries = []
+
+    cursor = 0
+    while True:
+        cursor, keys = await redis.scan(cursor, match="rl:user:*", count=200)
+        for key in keys:
+            raw = await redis.get(key)
+            if raw is None:
+                continue
+            # key format: rl:user:{user_id}:{route_path}
+            parts = key.split(":", 3)
+            if len(parts) < 4:  # noqa: PLR2004
+                continue
+            user_id = parts[2]
+            route = parts[3]
+            entries.append(RateLimitEntry(user_id=user_id, route=route, hit_count=int(raw)))
+        if cursor == 0:
+            break
+
+    entries.sort(key=lambda e: e.hit_count, reverse=True)
+    return SuccessResponse(data=RateLimitList(entries=entries))
