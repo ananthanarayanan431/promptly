@@ -164,12 +164,6 @@ const FAQS = [
   { q: 'Is there a refund policy?', a: "If the optimized prompt doesn't beat your original on our health score, we refund the tokens automatically. No ticket required." },
 ];
 
-const INTEGRATIONS = [
-  { g: 'A',  n: 'Anthropic' }, { g: 'O',  n: 'OpenAI' },   { g: 'G',  n: 'Google' },
-  { g: 'M',  n: 'Mistral' },   { g: 'H',  n: 'Hugging Face' }, { g: 'L', n: 'Ollama' },
-  { g: 'Ln', n: 'LangChain' }, { g: 'Ll', n: 'LlamaIndex' }, { g: 'Vc', n: 'Vercel AI' },
-  { g: 'Py', n: 'Python SDK' }, { g: 'Ts', n: 'TypeScript' }, { g: 'cli', n: 'CLI' },
-];
 
 // ─── Style tokens ─────────────────────────────────────────────────────────────
 
@@ -821,46 +815,6 @@ export default function LandingPage() {
                   </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
-
-        {/* ── Integrations ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr',
-          gap: 60, alignItems: 'end', marginBottom: 48, paddingTop: 96,
-          marginTop: 40, borderTop: `1px solid ${line}` }}>
-          <div>
-            <div style={{ fontFamily: mono, fontSize: 11, color: '#888',
-              textTransform: 'uppercase', letterSpacing: '0.14em', marginBottom: 12 }}>
-              Works with
-            </div>
-            <h2 style={{ fontFamily: serif, fontWeight: 400,
-              fontSize: 'clamp(38px, 5vw, 60px)',
-              letterSpacing: '-0.025em', lineHeight: 1.05, margin: 0, color: ink }}>
-              Every model,<br />
-              every stack.
-            </h2>
-          </div>
-          <p style={{ fontSize: 15.5, lineHeight: 1.65, color: muted, maxWidth: 360, margin: 0 }}>
-            Optimized prompts are plain text — copy them into any SDK, API, or product.
-            No lock-in, no runtime dependency on Promptly.
-          </p>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)',
-          gap: 1, background: line, border: `1px solid ${line}`,
-          borderRadius: 14, overflow: 'hidden' }}>
-          {INTEGRATIONS.map((item, i) => (
-            <div key={i} style={{ background: '#fff', padding: '28px 18px',
-              display: 'flex', flexDirection: 'column', alignItems: 'center',
-              justifyContent: 'center', gap: 10, fontSize: 12.5,
-              color: muted, textAlign: 'center' }}>
-              <div style={{ width: 28, height: 28, borderRadius: 7,
-                background: 'linear-gradient(135deg, #1a1a1a, #444)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color: '#fff', fontFamily: mono, fontSize: 11, fontWeight: 600 }}>
-                {item.g}
-              </div>
-              <span>{item.n}</span>
             </div>
           ))}
         </div>
