@@ -143,13 +143,13 @@ const PRICING = [
   {
     plan: 'Pro', price: '$29', per: '/ month',
     desc: 'For people shipping LLM features at work. Most teams start here.',
-    features: ['30M tokens / month', 'All engines: PDO · GEPA · SkillOpt · Bridge', 'Unlimited prompt families · API access', 'Version history · Prompt Library', 'Priority email support'],
+    features: ['3M tokens / month', 'All engines: PDO · GEPA · SkillOpt · Bridge', 'Unlimited prompt families · API access', 'Version history · Prompt Library', 'Priority email support'],
     cta: 'Go Pro', href: '/sign-up', featured: true,
   },
   {
     plan: 'Team', price: '$99', per: '/ month',
     desc: 'Shared workspaces, roles, and billing. Built for crews of 3–20.',
-    features: ['150M tokens pooled', 'Up to 10 seats', 'Shared domain knowledge bases', 'SSO + audit log', 'Dedicated Slack channel'],
+    features: ['10M tokens pooled', 'Up to 10 seats', 'Shared domain knowledge bases', 'SSO + audit log', 'Dedicated Slack channel'],
     cta: 'Start team trial', href: '/sign-up', featured: false,
   },
 ];
