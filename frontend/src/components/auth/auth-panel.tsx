@@ -16,6 +16,24 @@ const SLIDES = [
     visual: <PipelineVisual />,
   },
   {
+    eyebrow: 'PDO · arXiv 2510.13907',
+    heading: <>Ten prompts<br />enter. One<br />survives.</>,
+    body: 'Prompt Duel Optimizer runs a 30-round tournament — prompts compete head-to-head on real Q&A examples, a dual LLM judge picks the winner, and top performers mutate into the next generation. Returns the Copeland champion.',
+    visual: <PDOVisual />,
+  },
+  {
+    eyebrow: 'GEPA · arXiv 2507.19457',
+    heading: <>678 rollouts.<br />One evolved<br />prompt.</>,
+    body: 'Reflective Prompt Evolution maintains a Pareto frontier of candidates. Each round: sample a leader, collect execution traces, let a meta-LLM reflect on failures and propose targeted edits — accept only if the score improves.',
+    visual: <GEPAVisual />,
+  },
+  {
+    eyebrow: 'SkillOpt · arXiv 2605.23904',
+    heading: <>Teach your<br />agent. Freeze<br />the model.</>,
+    body: 'SkillOpt evolves the system prompt — the "skill file" — while the target model stays frozen. ADD, REPLACE, and DELETE edits are gated on measured score improvement across your task examples. The model never changes; the skill does.',
+    visual: <SkillOptVisual />,
+  },
+  {
     eyebrow: 'Quality scoring',
     heading: <>Ten dimensions.<br />One health<br />score.</>,
     body: 'Clarity, specificity, injection robustness, goal alignment and six more — each scored and explained so you know exactly what to fix.',
@@ -216,6 +234,111 @@ function ScoringVisual() {
           <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 11, color: '#4a4a55', minWidth: 16, textAlign: 'right' }}>{d.score}</span>
         </div>
       ))}
+    </div>
+  );
+}
+
+function PDOVisual() {
+  const rounds = [
+    { label: 'Initial pool', prompts: 10, color: '#7c5cff' },
+    { label: 'After round 10 (mutate)', prompts: 7, color: '#ff7ac6' },
+    { label: 'After round 20 (mutate)', prompts: 5, color: '#ffb85c' },
+    { label: 'Copeland winner', prompts: 1, color: '#5cffb1' },
+  ];
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {rounds.map((r, i) => (
+        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{ fontSize: 11, color: '#5a5a65', minWidth: 148 }}>{r.label}</span>
+          <div style={{ display: 'flex', gap: 4, flex: 1 }}>
+            {Array.from({ length: r.prompts }).map((_, j) => (
+              <div key={j} style={{
+                height: 20, flex: 1, borderRadius: 4,
+                background: i === rounds.length - 1 ? r.color : r.color + '33',
+                border: `1px solid ${r.color}55`,
+              }} />
+            ))}
+            {Array.from({ length: 10 - r.prompts }).map((_, j) => (
+              <div key={j} style={{ height: 20, flex: 1, borderRadius: 4, background: '#1a1a20' }} />
+            ))}
+          </div>
+          <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 11, color: r.color, minWidth: 16, textAlign: 'right' }}>{r.prompts}</span>
+        </div>
+      ))}
+      <div style={{ marginTop: 6, padding: '8px 12px', background: '#141418', borderRadius: 8, border: '1px solid #1f1f26' }}>
+        <span style={{ fontSize: 11, color: '#5a5a65' }}>Duelling on </span>
+        <span style={{ fontSize: 11, color: '#ffb85c', fontFamily: 'var(--font-geist-mono, monospace)' }}>real Q&A examples</span>
+        <span style={{ fontSize: 11, color: '#5a5a65' }}> · dual LLM judge · D-TS sampling</span>
+      </div>
+    </div>
+  );
+}
+
+function GEPAVisual() {
+  const phases = [
+    { label: 'Phase 0', desc: 'Split dataset → Pareto 30%, feedback 50%', icon: '📂' },
+    { label: 'Phase 1', desc: 'Seed prompt scored on 50 Pareto examples', icon: '🌱' },
+    { label: 'Phase 2', desc: '678 rollouts: reflect → mutate → gate → accept', icon: '🔄' },
+    { label: 'Phase 3', desc: 'Return Φ* = argmax score on Pareto set', icon: '🏆' },
+  ];
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {phases.map((p, i) => (
+        <div key={i} style={{
+          display: 'flex', alignItems: 'flex-start', gap: 10,
+          padding: '9px 12px', background: '#141418',
+          border: '1px solid #1f1f26', borderRadius: 9,
+        }}>
+          <span style={{ fontSize: 15, flexShrink: 0 }}>{p.icon}</span>
+          <div>
+            <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 10.5, color: '#7c5cff', fontWeight: 700 }}>{p.label}</span>
+            <span style={{ fontSize: 11.5, color: '#5a5a65', marginLeft: 8 }}>{p.desc}</span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SkillOptVisual() {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {/* Three-player diagram */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+        {[
+          { tag: 'FROZEN', title: 'Target model', desc: 'Executes tasks · weights never touched', color: '#5a5a65', border: '#2a2a30' },
+          { tag: 'EVOLVES', title: 'Skill file', desc: 'System prompt · the only thing that changes', color: '#7c5cff', border: '#7c5cff44' },
+          { tag: 'OPTIMIZER', title: 'SkillOpt', desc: 'Proposes ADD / REPLACE / DELETE edits', color: '#5cffb1', border: '#5cffb144' },
+        ].map(p => (
+          <div key={p.title} style={{
+            padding: '10px 12px', background: '#141418',
+            border: `1px solid ${p.border}`, borderRadius: 9,
+          }}>
+            <div style={{ fontSize: 9, fontFamily: 'var(--font-geist-mono, monospace)', color: p.color, fontWeight: 700, letterSpacing: '.08em', marginBottom: 4 }}>{p.tag}</div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#e8e8ed', marginBottom: 3 }}>{p.title}</div>
+            <div style={{ fontSize: 10.5, color: '#4a4a55', lineHeight: 1.4 }}>{p.desc}</div>
+          </div>
+        ))}
+      </div>
+      {/* Edit types */}
+      <div style={{ display: 'flex', gap: 6 }}>
+        {[
+          { op: 'ADD', color: '#5cffb1' },
+          { op: 'REPLACE', color: '#7c5cff' },
+          { op: 'DELETE', color: '#ff7ac6' },
+        ].map(e => (
+          <div key={e.op} style={{
+            flex: 1, padding: '6px 10px', borderRadius: 7,
+            background: e.color + '11', border: `1px solid ${e.color}33`,
+            textAlign: 'center',
+          }}>
+            <span style={{ fontFamily: 'var(--font-geist-mono, monospace)', fontSize: 11, fontWeight: 700, color: e.color }}>{e.op}</span>
+          </div>
+        ))}
+        <div style={{ flex: 2, padding: '6px 10px', borderRadius: 7, background: '#141418', border: '1px solid #1f1f26' }}>
+          <span style={{ fontSize: 11, color: '#4a4a55' }}>→ gated on score improvement</span>
+        </div>
+      </div>
     </div>
   );
 }
