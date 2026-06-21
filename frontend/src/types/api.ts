@@ -3,6 +3,7 @@ export interface User {
   email: string;
   credits: number;
   token_balance: number;
+  is_admin: boolean;
   created_at: string;
 }
 
@@ -459,4 +460,61 @@ export interface TransferJobSummary {
 
 export interface TransferJobListResponse {
   jobs: TransferJobSummary[];
+}
+
+// ── Admin ─────────────────────────────────────────────────────────────────
+
+export interface AdminUserItem {
+  id: string;
+  email: string;
+  full_name: string | null;
+  credits: number;
+  token_balance: number;
+  is_active: boolean;
+  is_admin: boolean;
+  last_login_at: string | null;
+  created_at: string;
+}
+
+export interface AdminUserList {
+  page: number;
+  per_page: number;
+  total: number;
+  users: AdminUserItem[];
+}
+
+export interface AdminUserPatch {
+  is_active?: boolean;
+  is_admin?: boolean;
+  credits_delta?: number;
+}
+
+export interface AdminStats {
+  total_users: number;
+  total_optimizations: number;
+  total_tokens_consumed: number;
+  active_users_7d: number;
+}
+
+export interface RateLimitEntry {
+  user_id: string;
+  route: string;
+  hit_count: number;
+}
+
+export interface RateLimitList {
+  entries: RateLimitEntry[];
+}
+
+export interface GlitchTipIssue {
+  id: string;
+  title: string;
+  occurrences: number;
+  status: string;
+  first_seen: string;
+  last_seen: string;
+}
+
+export interface GlitchTipIssueList {
+  issues: GlitchTipIssue[];
 }
