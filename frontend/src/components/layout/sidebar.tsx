@@ -234,6 +234,36 @@ export function Sidebar() {
 
       {/* Nav groups */}
       <nav style={{ padding: '8px 8px', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {/* Admin section — shown first, only for admins */}
+        {fetchedUser?.is_admin && (() => {
+          const active = pathname === '/admin' || pathname.startsWith('/admin/');
+          return (
+            <div>
+              <div style={{ padding: '4px 10px 6px', fontSize: 10.5, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--text-subtle)', fontWeight: 600 }}>
+                Admin
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                <Link href="/admin" style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  padding: '7px 10px', height: 32,
+                  borderRadius: 7, border: '1px solid transparent',
+                  background: active ? 'var(--surface)' : 'transparent',
+                  color: active ? 'var(--text)' : 'var(--text-muted)',
+                  fontWeight: active ? 500 : 400,
+                  boxShadow: active ? 'var(--shadow-sm)' : 'none',
+                  borderColor: active ? 'var(--border)' : 'transparent',
+                  fontSize: 13, textDecoration: 'none',
+                  transition: 'background .12s, color .12s',
+                  whiteSpace: 'nowrap',
+                }}>
+                  <NavIcon name="shield" />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>Admin Panel</span>
+                </Link>
+              </div>
+            </div>
+          );
+        })()}
+
         {NAV_GROUPS.map(group => (
           <div key={group.group}>
             <div style={{
@@ -271,39 +301,6 @@ export function Sidebar() {
         {/* Recent sessions */}
         <RecentSessions />
 
-        {/* Admin link — only visible to admins */}
-        {fetchedUser?.is_admin && (
-          <div>
-            <div style={{
-              padding: '4px 10px 6px', fontSize: 10.5, letterSpacing: '.08em',
-              textTransform: 'uppercase', color: 'var(--text-subtle)', fontWeight: 600,
-            }}>
-              Admin
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-              {[{ href: '/admin', label: 'Admin Panel', icon: 'shield' }].map(item => {
-                const active = pathname === item.href || pathname.startsWith(item.href + '/');
-                return (
-                  <Link key={item.href} href={item.href} style={{
-                    display: 'flex', alignItems: 'center', gap: 10,
-                    padding: '7px 10px', height: 32,
-                    borderRadius: 7, border: '1px solid transparent',
-                    background: active ? 'var(--surface)' : 'transparent',
-                    color: active ? 'var(--text)' : 'var(--text-muted)',
-                    fontWeight: active ? 500 : 400,
-                    boxShadow: active ? 'var(--shadow-sm)' : 'none',
-                    borderColor: active ? 'var(--border)' : 'transparent',
-                    fontSize: 13, textDecoration: 'none',
-                    transition: 'background .12s, color .12s',
-                  }}>
-                    <NavIcon name={item.icon} />
-                    <span>Admin Panel</span>
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-        )}
       </nav>
 
       {/* Bottom: credits + user */}
