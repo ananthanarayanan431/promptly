@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import type { User } from '@/types/api';
 import { formatDistanceToNow } from 'date-fns';
 import { listApiKeys, createApiKey, revokeApiKey } from '@/lib/api-keys';
 import type { ApiKeyStatus } from '@/lib/api-keys';
@@ -1284,6 +1285,70 @@ function DangerZoneSection() {
 }
 
 /* ══════════════════════════════════════════════════════════════════════
+   ⑦ PRIVACY SECTION
+══════════════════════════════════════════════════════════════════════ */
+function PrivacySection() {
+  const qc = useQueryClient();
+
+  const { data: privacyUser } = useQuery<User>({
+    queryKey: ['user', 'me'],
+    queryFn: async () => {
+      const res = await api.get<{ data: User }>('/api/v1/users/me');
+      return res.data.data;
+    },
+    staleTime: 30_000,
+  });
+
+  const { mutate: toggle, isPending } = useMutation({
+    mutationFn: async (current: boolean) => {
+      await api.patch('/api/v1/users/me', { data_sharing_enabled: !current });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['user', 'me'] }),
+  });
+
+  const enabled = privacyUser?.data_sharing_enabled ?? false;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <SectionTitle
+        id="privacy"
+        icon="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"
+        title="Privacy"
+        subtitle="Control what data the administrator can access"
+      />
+      <div className="ply-card" style={{ padding: '0 18px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 0', borderBottom: '1px solid var(--border)' }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)' }}>Share prompt data</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+              Allow the administrator to view your optimization history and prompt content
+            </div>
+          </div>
+          <button
+            role="switch"
+            aria-checked={enabled}
+            onClick={() => toggle(enabled)}
+            disabled={isPending}
+            style={{
+              width: 40, height: 22, borderRadius: 11, border: 'none', cursor: isPending ? 'not-allowed' : 'pointer',
+              position: 'relative', transition: 'background .2s',
+              background: enabled ? 'var(--success)' : 'var(--border)',
+              flexShrink: 0, opacity: isPending ? 0.6 : 1,
+            }}
+          >
+            <span style={{
+              position: 'absolute', top: 3, left: enabled ? 21 : 3,
+              width: 16, height: 16, borderRadius: '50%', background: '#fff',
+              boxShadow: '0 1px 3px rgba(0,0,0,.2)', transition: 'left .2s',
+            }} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════════
    LEFT NAV
 ══════════════════════════════════════════════════════════════════════ */
 const NAV_ITEMS = [
@@ -1293,6 +1358,7 @@ const NAV_ITEMS = [
   { id: 'llm-effort', label: 'LLM effort',            icon: 'M13 2L3 14h9l-1 8 10-12h-9l1-8z' },
   { id: 'pipeline',   label: 'Pipeline',              icon: 'M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5' },
   { id: 'api-keys',   label: 'API keys',              icon: 'M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4' },
+  { id: 'privacy',    label: 'Privacy',               icon: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z' },
   { id: 'danger',     label: 'Danger zone',           icon: 'M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0zM12 9v4M12 17h.01' },
 ];
 
@@ -1398,6 +1464,7 @@ export default function SettingsPage() {
           <LLMEffortSection />
           <PipelineSection />
           <ApiKeysSection />
+          <PrivacySection />
           <DangerZoneSection />
 
         </div>

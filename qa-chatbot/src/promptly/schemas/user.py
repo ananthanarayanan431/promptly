@@ -19,5 +19,10 @@ class UserResponse(BaseModel):
     credits: int
     token_balance: int = TOKEN_START
     is_admin: bool = False
+    data_sharing_enabled: bool = False
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class UserSettingsPatch(BaseModel):
+    data_sharing_enabled: bool | None = None

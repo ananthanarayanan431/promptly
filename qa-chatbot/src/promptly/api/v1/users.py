@@ -9,7 +9,7 @@ from promptly.core.rate_limit import RateLimiter
 from promptly.core.user_context import UserContext
 from promptly.dependencies import get_current_user, get_db
 from promptly.repositories.user_repo import UserRepository
-from promptly.schemas.user import AddTokenRequest, TokenResponse, UserResponse
+from promptly.schemas.user import AddTokenRequest, TokenResponse, UserResponse, UserSettingsPatch
 from promptly.utils.log import get_logger
 
 log = get_logger(__name__)
@@ -35,6 +35,29 @@ async def get_me(
     user = await repo.get_by_id(current_user.user_id)
     if user is None:
         raise NotFoundException(detail="User not found")
+    return SuccessResponse(data=UserResponse.model_validate(user))
+
+
+@router.patch(
+    "/me",
+    response_model=SuccessResponse[UserResponse],
+    dependencies=[Depends(_default_limiter)],
+    summary="Update current user settings",
+    description="Update user-controlled settings such as data sharing preference.",
+    responses=error_responses(401, 404, 500),
+)
+async def patch_me(
+    body: UserSettingsPatch,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
+) -> SuccessResponse[UserResponse]:
+    repo = UserRepository(db)
+    user = await repo.get_by_id(current_user.user_id)
+    if user is None:
+        raise NotFoundException(detail="User not found")
+    if body.data_sharing_enabled is not None:
+        user = await repo.update(user, data_sharing_enabled=body.data_sharing_enabled)
+    await db.commit()
     return SuccessResponse(data=UserResponse.model_validate(user))
 
 
