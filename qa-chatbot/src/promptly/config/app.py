@@ -23,6 +23,8 @@ class AppSettings(BaseSettings):
     MAX_REQUEST_BODY_BYTES: int = 100 * 1024 * 1024  # 100 MB (PDF uploads)
     REQUEST_TIMEOUT_SECONDS: float = 60.0
     SENTRY_DSN: SecretStr | None = None
+    GLITCHTIP_API_URL: str | None = None
+    GLITCHTIP_API_TOKEN: SecretStr | None = None
 
 
 @lru_cache

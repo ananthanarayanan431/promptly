@@ -82,6 +82,9 @@ async def subject_classifier_node(state: GraphState) -> dict[str, Any]:
     Returns partial state with subject_about and subject_suggestions populated,
     or both None on any failure (fail-open: a broken analysis must never block optimization).
     """
+    if state.get("skip_subject_classifier"):
+        return {"subject_about": None, "subject_suggestions": None}
+
     raw = state.get("raw_prompt", "").strip()
     feedback = state.get("feedback")
     job_id = state.get("job_id")

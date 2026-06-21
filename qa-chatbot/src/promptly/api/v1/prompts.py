@@ -4,7 +4,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from promptly.api.types.response import SuccessResponse
+from promptly.api.types.response import SuccessResponse, error_responses
 from promptly.api.v1.exceptions.prompts import (
     PromptInsufficientCreditsException,
     PromptVersionNotFoundException,
@@ -14,6 +14,7 @@ from promptly.core.user_context import UserContext
 from promptly.dependencies import get_current_user, get_db
 from promptly.repositories.prompt_version_repo import PromptVersionRepository
 from promptly.repositories.usage_event_repo import UsageEventRepository
+from promptly.repositories.user_repo import UserRepository
 from promptly.schemas.prompt import (
     PaginatedPromptFamilyListResponse,
     PromptAdvisoryRequest,
@@ -46,6 +47,9 @@ router = APIRouter(prefix="/prompts", tags=["prompts"])
     "/health-score",
     response_model=SuccessResponse[PromptHealthScoreResponse],
     dependencies=[Depends(_expensive_limiter)],
+    summary="Score prompt quality",
+    description="Evaluate a prompt across eight quality dimensions (clarity, specificity, completeness, conciseness, tone, actionability, context richness, goal alignment). Returns a 1–10 score with rationale for each dimension.",  # noqa: E501
+    responses=error_responses(401, 402, 422, 429, 500),
 )
 async def prompt_health_score(
     request: PromptHealthScoreRequest,
@@ -57,11 +61,9 @@ async def prompt_health_score(
     conciseness, tone, actionability, context richness, and goal alignment.
     Returns a 1–10 score with a rationale for each dimension plus an overall score.
     """
-    if current_user.credits < 5:
-        log.warning("insufficient_credits", required=5, available=current_user.credits)
+    user_repo = UserRepository(db)
+    if not await user_repo.has_min_tokens(current_user.user_id):
         raise PromptInsufficientCreditsException()
-    current_user.credits -= 5
-    await db.flush()
 
     log.info("health_score_requested")
     service = PromptService(db=db)
@@ -70,8 +72,12 @@ async def prompt_health_score(
         user_id=str(current_user.user_id),
     )
 
+    token_count = result.pop("_token_usage", 0)
+    if token_count:
+        await user_repo.deduct_tokens(current_user.user_id, token_count)
+
     usage_repo = UsageEventRepository(db)
-    await usage_repo.log(user_id=current_user.user_id, action="health_score", credits_spent=5)
+    await usage_repo.log(user_id=current_user.user_id, action="health_score", credits_spent=0)
     await db.commit()
 
     return SuccessResponse(data=PromptHealthScoreResponse(**result))
@@ -81,6 +87,9 @@ async def prompt_health_score(
     "/advisory",
     response_model=SuccessResponse[PromptAdvisoryResponse],
     dependencies=[Depends(_expensive_limiter)],
+    summary="Advisory review",
+    description="Return a detailed qualitative review of a prompt: strengths, weaknesses, actionable improvements, and dimension-level scores.",  # noqa: E501
+    responses=error_responses(401, 402, 422, 429, 500),
 )
 async def prompt_advisory(
     request: PromptAdvisoryRequest,
@@ -92,11 +101,9 @@ async def prompt_advisory(
     Returns specific strengths, weaknesses, actionable improvements,
     and an overall assessment of the prompt's effectiveness.
     """
-    if current_user.credits < 5:
-        log.warning("insufficient_credits", required=5, available=current_user.credits)
+    user_repo = UserRepository(db)
+    if not await user_repo.has_min_tokens(current_user.user_id):
         raise PromptInsufficientCreditsException()
-    current_user.credits -= 5
-    await db.flush()
 
     log.info("advisory_requested")
     service = PromptService(db=db)
@@ -105,8 +112,12 @@ async def prompt_advisory(
         user_id=str(current_user.user_id),
     )
 
+    token_count = result.pop("_token_usage", 0)
+    if token_count:
+        await user_repo.deduct_tokens(current_user.user_id, token_count)
+
     usage_repo = UsageEventRepository(db)
-    await usage_repo.log(user_id=current_user.user_id, action="advisory", credits_spent=5)
+    await usage_repo.log(user_id=current_user.user_id, action="advisory", credits_spent=0)
     await db.commit()
 
     return SuccessResponse(data=PromptAdvisoryResponse(**result))
@@ -121,6 +132,9 @@ async def prompt_advisory(
     "/versions",
     response_model=SuccessResponse[PaginatedPromptFamilyListResponse],
     dependencies=[Depends(_default_limiter)],
+    summary="List prompt families",
+    description="Return a paginated list of versioned prompt families owned by the current user.",
+    responses=error_responses(401, 429, 500),
 )
 async def list_prompt_families(
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -143,6 +157,9 @@ async def list_prompt_families(
     "/versions",
     response_model=SuccessResponse[PromptVersionCreateResponse],
     dependencies=[Depends(_default_limiter)],
+    summary="Create prompt version",
+    description="Save a new version under an existing or new prompt family.",
+    responses=error_responses(401, 404, 422, 429, 500),
 )
 async def create_prompt_version(
     request: PromptVersionCreateRequest,
@@ -167,6 +184,9 @@ async def create_prompt_version(
     "/versions/{prompt_id}",
     response_model=SuccessResponse[PromptVersionListResponse],
     dependencies=[Depends(_default_limiter)],
+    summary="Get prompt versions",
+    description="List all versions belonging to a specific prompt family.",
+    responses=error_responses(401, 404, 429, 500),
 )
 async def list_prompt_versions(
     prompt_id: uuid.UUID,
@@ -188,6 +208,9 @@ async def list_prompt_versions(
     "/versions/{prompt_id}/diff",
     response_model=SuccessResponse[PromptDiffResponse],
     dependencies=[Depends(_default_limiter)],
+    summary="Compute prompt diff",
+    description="Return a structured diff between two versions of a prompt.",
+    responses=error_responses(401, 404, 429, 500),
 )
 async def diff_prompt_versions(
     prompt_id: uuid.UUID,

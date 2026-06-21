@@ -125,7 +125,8 @@ export function UserMenu() {
         : '');
   const initials = deriveInitials(fullName);
   const email = fetchedUser?.email ?? supabaseEmail;
-  const credits = fetchedUser?.credits ?? 0;
+  const tokenBalance = fetchedUser?.token_balance ?? 3_000_000;
+  const fmtTok = (n: number) => n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1_000 ? `${(n / 1_000).toFixed(0)}K` : String(n);
   const optimizations = stats?.prompts_optimized ?? 0;
   const healthChecks = stats?.usage?.all_time?.health_score_calls ?? 0;
 
@@ -239,7 +240,7 @@ export function UserMenu() {
               gap: 6,
             }}
           >
-            <InfoRow label="Credits" value={credits} />
+            <InfoRow label="Tokens" value={fmtTok(tokenBalance)} />
             <InfoRow label="Optimizations" value={optimizations} />
             <InfoRow label="Health checks" value={healthChecks} />
           </div>

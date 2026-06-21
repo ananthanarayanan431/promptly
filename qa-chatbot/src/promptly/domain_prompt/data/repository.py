@@ -101,6 +101,8 @@ class DomainOptimizationRunRepository(BaseRepository[DomainOptimizationRun]):
         dataset_size: int | None = None,
         status: str = "completed",
         error_message: str | None = None,
+        algorithm: str = "pdo",
+        total_tokens: int | None = None,
     ) -> DomainOptimizationRun:
         run = DomainOptimizationRun(
             domain_id=domain_id,
@@ -115,6 +117,8 @@ class DomainOptimizationRunRepository(BaseRepository[DomainOptimizationRun]):
             dataset_size=dataset_size,
             status=status,
             error_message=error_message,
+            algorithm=algorithm,
+            total_tokens=total_tokens,
         )
         self.db.add(run)
         await self.db.flush()
@@ -126,6 +130,19 @@ class DomainOptimizationRunRepository(BaseRepository[DomainOptimizationRun]):
         result = await self.db.execute(
             select(DomainOptimizationRun)
             .where(DomainOptimizationRun.domain_id == domain_id)
+            .order_by(DomainOptimizationRun.created_at.desc())
+            .limit(limit)
+        )
+        return list(result.scalars().all())
+
+    async def get_all_runs_for_user(
+        self, user_id: uuid.UUID, *, limit: int = 100
+    ) -> list[DomainOptimizationRun]:
+        """Return all optimization runs across all domains owned by this user."""
+        result = await self.db.execute(
+            select(DomainOptimizationRun)
+            .join(DomainPrompt, DomainOptimizationRun.domain_id == DomainPrompt.id)
+            .where(DomainPrompt.user_id == user_id)
             .order_by(DomainOptimizationRun.created_at.desc())
             .limit(limit)
         )

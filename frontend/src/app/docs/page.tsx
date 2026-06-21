@@ -19,14 +19,17 @@ const sans    = 'var(--font-geist, ui-sans-serif)';
 const SECTIONS = [
   { id: 'getting-started',  label: 'Getting started' },
   { id: 'optimize',         label: 'Optimize' },
-  { id: 'domain',           label: 'Domain Optimization' },
+  { id: 'domain',           label: 'Domain · PDO' },
+  { id: 'gepa',             label: 'GEPA' },
+  { id: 'skillopt',         label: 'SkillOpt' },
+  { id: 'bridge',           label: 'PromptBridge' },
   { id: 'health-score',     label: 'Health Score' },
   { id: 'advisory',         label: 'Advisory Review' },
   { id: 'versions',         label: 'Versions' },
   { id: 'prompt-library',   label: 'Prompt Library' },
   { id: 'history',          label: 'History' },
   { id: 'dashboard',        label: 'Dashboard' },
-  { id: 'credits',          label: 'Credits' },
+  { id: 'tokens',           label: 'Token Budget' },
   { id: 'api-key',          label: 'API Key' },
 ];
 
@@ -563,6 +566,147 @@ export default function DocsPage() {
           <Divider />
 
           {/* ══════════════════════════════════════════════════════════
+              GEPA
+          ══════════════════════════════════════════════════════════ */}
+          <SectionAnchor id="gepa" />
+          <Eyebrow>Domain → GEPA · arXiv 2507.19457 · ICLR 2026 Oral</Eyebrow>
+          <H2>Reflective prompt evolution that outperforms reinforcement learning.</H2>
+          <Lead>
+            GEPA (Genetic-Pareto) is the highest-quality optimization engine on the platform.
+            It maintains a Pareto frontier of prompt candidates and uses a meta-LLM to reflect
+            on execution traces — learning <em>why</em> failures happen, not just that they do.
+            Accepted as an Oral at ICLR 2026, GEPA outperforms GRPO by 10% on average using
+            35× fewer rollouts, and beats MIPROv2 by 10%+ across two frontier LLMs.
+          </Lead>
+
+          <H3>When to use GEPA vs. PDO</H3>
+          <P>
+            PDO is faster and label-free — great when you have domain Q&A examples and want an
+            empirical winner without needing to write a score function. GEPA goes deeper: it
+            requires a scoreable dataset (your Q&A pairs with expected answers) but produces
+            higher-quality results because it learns from failure patterns, not just win/loss
+            signals. Use PDO first to establish a baseline; switch to GEPA when you want maximum
+            quality and are willing to spend more compute budget.
+          </P>
+
+          <H3>How the algorithm works</H3>
+          <P>
+            GEPA splits your dataset into three parts: 50% feedback, 30% Pareto evaluation, 20%
+            held-out test. It initialises a pool with your seed prompt, scores it on the Pareto
+            set, then enters an optimisation loop up to a budget of 678 rollouts:
+          </P>
+          <FieldTable rows={[
+            { field: 'Pareto sampling',      what: 'A candidate that excels on any single training example stays in the frontier. The next candidate to mutate is sampled proportionally to frontier coverage.' },
+            { field: 'Reflective mutation',  what: 'A meta-LLM reads execution traces (input, output, score, feedback) from the current candidate plus its ancestry to propose targeted edits to the prompt.' },
+            { field: 'Score gating',         what: 'The mutated candidate is evaluated on the same minibatch. It is accepted into the pool only if its score strictly exceeds the parent\'s score.' },
+            { field: 'Full Pareto eval',     what: 'Accepted candidates are scored on the full 50-example Pareto set. The Pareto frontier is updated.' },
+            { field: 'Winner',               what: 'Φ* = argmax mean score on the Pareto set across all accepted candidates.' },
+          ]} />
+
+          <H3>Live state</H3>
+          <P>
+            GEPA writes a progress event to Redis after every step. The frontend polls it every
+            2 seconds and visualises the running score matrix, Pareto frontier size, accepted vs.
+            rejected mutations, and budget consumed.
+          </P>
+
+          <CalloutBox icon="⚡" label="Token cost" tone="cost">
+            GEPA is the most token-intensive engine. Budget usage scales with dataset size and
+            the number of rollouts. Your token balance is deducted after the run completes.
+          </CalloutBox>
+
+          <Divider />
+
+          {/* ══════════════════════════════════════════════════════════
+              SKILLOPT
+          ══════════════════════════════════════════════════════════ */}
+          <SectionAnchor id="skillopt" />
+          <Eyebrow>SkillOpt · arXiv 2605.23904 · Microsoft Research</Eyebrow>
+          <H2>Train a reusable skill for a frozen LLM agent.</H2>
+          <Lead>
+            SkillOpt evolves a natural-language &quot;skill file&quot; — a structured system prompt — while
+            the target LLM stays completely frozen. A separate optimizer model reads scored
+            execution traces and proposes bounded ADD, REPLACE, and DELETE edits. Each edit is
+            validated and accepted only if it strictly improves a held-out score. The result is a
+            deployable <code>best_skill.md</code> artifact with zero inference-time overhead.
+          </Lead>
+
+          <H3>The three players</H3>
+          <FieldTable rows={[
+            { field: 'Target model (FROZEN)',     what: 'Executes tasks. Its weights are never touched. Can be any frontier model — GPT-5.5, Claude, Gemini, etc.' },
+            { field: 'Skill file (EVOLVES)',      what: 'A single Markdown document containing the agent\'s strategy, heuristics, and reasoning guidelines. This is the only thing that changes.' },
+            { field: 'SkillOpt (OPTIMIZER)',      what: 'Reads scored rollouts and ancestry to propose bounded edits. A textual learning-rate budget and rejected-edit buffer keep training stable.' },
+          ]} />
+
+          <H3>Edit types</H3>
+          <FieldTable rows={[
+            { field: 'ADD',     what: 'Insert a new instruction or heuristic into the skill file.' },
+            { field: 'REPLACE', what: 'Rewrite an existing instruction when a better formulation is found.' },
+            { field: 'DELETE',  what: 'Remove an instruction that consistently correlates with failures.' },
+          ]} />
+
+          <H3>Benchmark results</H3>
+          <P>
+            Across six benchmarks, seven target models, and three execution harnesses (direct chat,
+            Codex, Claude Code), SkillOpt is best or tied on all 52 evaluated (model, benchmark,
+            harness) cells. On GPT-5.5: <strong>+23.5 pts</strong> direct chat,{' '}
+            <strong>+24.8 pts</strong> Codex, <strong>+19.1 pts</strong> Claude Code — all vs.
+            no-skill baseline.
+          </P>
+
+          <H3>How to use SkillOpt on Promptly</H3>
+          <P>
+            Navigate to <strong>Skill Optimizer</strong> in the sidebar. Create a project with a
+            task description and optionally paste a seed system prompt. Add your task examples
+            (input / expected output pairs). Start the optimization run — the skill file evolves
+            in real time and you can watch accepted edits accumulate. When the run completes,
+            copy the <code>best_skill.md</code> as your new system prompt.
+          </P>
+
+          <CalloutBox icon="⚡" label="Token cost" tone="cost">
+            Token cost scales with the number of examples and epochs. Your token balance is
+            deducted on run completion.
+          </CalloutBox>
+
+          <Divider />
+
+          {/* ══════════════════════════════════════════════════════════
+              PROMPTBRIDGE
+          ══════════════════════════════════════════════════════════ */}
+          <SectionAnchor id="bridge" />
+          <Eyebrow>PromptBridge · arXiv 2512.01420</Eyebrow>
+          <H2>Adapt any prompt to a different model without rewriting it.</H2>
+          <Lead>
+            PromptBridge learns the structural transfer mapping between two model styles from a
+            set of calibrated (source, target) prompt pairs. Once the mapping is learned, it
+            adapts any new source prompt to the target model — zero-shot, instantly. Reuse the
+            same mapping for every subsequent transfer between the same model pair.
+          </Lead>
+
+          <H3>How it works</H3>
+          <FieldTable rows={[
+            { field: 'Mapping Extractor', what: 'Given N calibrated (source, target) prompt pairs, a meta-LLM distils a reusable structural transfer mapping describing HOW prompts must change from source to target style.' },
+            { field: 'Adapter',           what: 'Given an unseen source prompt and the learned mapping, the adapter produces an optimised target prompt zero-shot. No calibration needed for subsequent transfers.' },
+            { field: 'Mapping reuse',     what: 'Mappings are persisted in the DB. Repeated transfers between the same model pair skip calibration entirely — dramatically cheaper.' },
+          ]} />
+
+          <H3>When to use it</H3>
+          <P>
+            Bridge is ideal when you already have a high-quality prompt tuned for one model (say
+            GPT-4) and need to deploy on another (Claude 3.5, Mistral, Gemini). Instead of
+            re-optimizing from scratch, Bridge transfers the structural intent of your existing
+            prompt in seconds.
+          </P>
+
+          <CalloutBox icon="⚡" label="Token cost" tone="cost">
+            Full mapping extraction (first transfer for a model pair) costs more tokens.
+            Subsequent reuse of an existing mapping is much cheaper. Costs are deducted from
+            your token balance on completion.
+          </CalloutBox>
+
+          <Divider />
+
+          {/* ══════════════════════════════════════════════════════════
               HEALTH SCORE
           ══════════════════════════════════════════════════════════ */}
           <SectionAnchor id="health-score" />
@@ -847,44 +991,45 @@ export default function DocsPage() {
           <Divider />
 
           {/* ══════════════════════════════════════════════════════════
-              CREDITS
+              TOKEN BUDGET
           ══════════════════════════════════════════════════════════ */}
-          <SectionAnchor id="credits" />
-          <Eyebrow>Credits</Eyebrow>
-          <H2>What credits are and how they work.</H2>
+          <SectionAnchor id="tokens" />
+          <Eyebrow>Token Budget</Eyebrow>
+          <H2>How token usage works across all engines.</H2>
           <Lead>
-            Credits are the unit of usage in Promptly. Each action that runs
-            a model costs a fixed number of credits. You start with 100 for free —
-            no card required.
+            Every account starts with a 3,000,000-token budget. Tokens are deducted based on
+            actual LLM usage after each run completes — you are charged for what was consumed,
+            not a fixed credit amount. This means heavier engines (GEPA, SkillOpt) consume more
+            tokens than a single Optimize run.
           </Lead>
 
           <FieldTable rows={[
-            { field: 'Optimize',             what: '10 credits — one full council run: four proposals, four critiques, one synthesis.' },
-            { field: 'Domain Optimization',  what: '10 credits — one full tournament run against your domain\'s dataset. Dataset setup is free.' },
-            { field: 'Health Score',         what: '5 credits — a full ten-dimension quality evaluation with rationale.' },
-            { field: 'Advisory',             what: '5 credits — a full qualitative review with dimension scores, strengths, weaknesses, and improvements.' },
+            { field: 'Optimize',         what: 'Lowest cost — one council round (4 proposals + 4 critiques + synthesis). Typically 10–30K tokens depending on prompt length.' },
+            { field: 'PDO tournament',   what: 'Moderate — 30 duel rounds × 1 matchup per round. Each duel runs two prompts on a Q&A example plus a judge call. ~50–150K tokens.' },
+            { field: 'GEPA',             what: 'Highest cost — up to 678 rollouts with reflective mutation. Each accepted candidate triggers a full Pareto evaluation. ~200K–1M tokens.' },
+            { field: 'SkillOpt',         what: 'Scales with example count and epochs. Each edit cycle runs the target model on your examples plus the optimizer. ~50–300K tokens per run.' },
+            { field: 'PromptBridge',     what: 'First transfer (mapping extraction) is moderately expensive. Mapping reuse is cheap — only the adapter call runs.' },
+            { field: 'Health Score',     what: 'Cheap — single model call for ten-dimension evaluation. Typically 2–5K tokens.' },
+            { field: 'Advisory',         what: 'Cheap — single model call for qualitative review. Typically 2–5K tokens.' },
           ]} />
 
-          <H3>When credits are deducted</H3>
+          <H3>Soft overdraft</H3>
           <P>
-            Credits are deducted when you <em>submit</em> the request — not when the
-            result arrives. If a request fails due to a server error on our side,
-            credits are refunded automatically. If the optimized prompt&apos;s health
-            score doesn&apos;t beat the original, credits are also refunded — no
-            ticket required.
+            Runs that start with a positive balance will complete even if they consume slightly
+            more than the remaining budget. A small overdraft is allowed to avoid interrupting
+            long-running optimizations mid-flight.
           </P>
 
-          <H3>Topping up</H3>
+          <H3>Checking your balance</H3>
           <P>
-            Go to <strong>Billing</strong> in the sidebar. You can add credits in
-            fixed bundles — 100, 250, 500, or 1,000 credits. Credit top-ups
-            never expire. Unused subscription credits roll over for 90 days.
+            Your current token balance is shown in the sidebar and on the Dashboard. Go to{' '}
+            <strong>Settings → Account</strong> to see detailed usage history per feature.
           </P>
 
-          <CalloutBox icon="⚠️" label="Insufficient credits" tone="warn">
-            If you have fewer credits than the cost of an action, the request will
-            be rejected with a <InlineCode>402</InlineCode> error before anything
-            runs. Top up from the Billing page and retry.
+          <CalloutBox icon="⚠️" label="Insufficient tokens" tone="warn">
+            If your balance is at or below zero, new runs will be rejected with a{' '}
+            <InlineCode>402</InlineCode> error before anything starts. Contact support to
+            top up your balance.
           </CalloutBox>
 
           <Divider />

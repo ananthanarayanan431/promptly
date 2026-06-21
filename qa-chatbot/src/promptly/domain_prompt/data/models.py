@@ -83,5 +83,7 @@ class DomainOptimizationRun(Base, UUIDMixin, TimestampMixin):
     dataset_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="completed")
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    algorithm: Mapped[str] = mapped_column(String(10), nullable=False, default="pdo")
+    total_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     domain: Mapped[DomainPrompt] = relationship(back_populates="runs", lazy="raise")

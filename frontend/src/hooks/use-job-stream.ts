@@ -29,6 +29,8 @@ async function pollUntilDone(
   setError: ErrorSetter,
 ): Promise<void> {
   const maxAttempts = 180; // 3 min at 1s intervals
+  let consecutiveNotFound = 0;
+
   for (let i = 0; i < maxAttempts; i++) {
     if (signal.aborted) return;
     await new Promise((r) => setTimeout(r, 1000));
@@ -44,8 +46,21 @@ async function pollUntilDone(
           setStatus('failed');
           return;
         }
-        continue; // transient error — keep polling
+        if (res.status === 404) {
+          // Job missing from Redis — it may have been lost during a server restart.
+          // Give it 3 tries in case the server is still coming up, then give up.
+          consecutiveNotFound++;
+          if (consecutiveNotFound >= 3) {
+            setError('Session was lost (server restarted mid-run). Please start a new optimization.');
+            setStatus('failed');
+            return;
+          }
+        } else {
+          consecutiveNotFound = 0; // reset on other transient errors
+        }
+        continue;
       }
+      consecutiveNotFound = 0;
       const json = (await res.json()) as PollResponse;
       const { status, result, error } = json.data;
       if (status === 'completed' && result) {
@@ -62,7 +77,7 @@ async function pollUntilDone(
       if (signal.aborted) return;
     }
   }
-  setError('Optimization timed out');
+  setError('Optimization timed out — the server may be overloaded. Please try again.');
   setStatus('failed');
 }
 

@@ -16,6 +16,8 @@ class CreateDomainRequest(BaseModel):
 
 class OptimizeDomainRequest(BaseModel):
     prompt: str = Field(min_length=10, max_length=50000)
+    algorithm: str = Field(default="pdo", pattern="^(pdo|gepa)$")
+    budget_tier: str = Field(default="low", pattern="^(low|medium|high)$")
 
 
 class DatasetInfo(BaseModel):
@@ -115,9 +117,58 @@ class OptimizationRunResponse(BaseModel):
     dataset_size: int | None
     status: str
     error_message: str | None
+    algorithm: str = "pdo"
+    total_tokens: int | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class GepaTraceItem(BaseModel):
+    input: str
+    output: str
+    score: float
+    feedback: str
+
+
+class GepaCandidate(BaseModel):
+    id: str
+    score: float
+    desc: str
+    delta: str | None = None
+    star: bool = False
+    cells: list[float] = []
+
+
+class GepaPending(BaseModel):
+    parent: str
+    fail: bool = False
+
+
+class GepaCurrentIter(BaseModel):
+    parent: str
+    cur_prompt: str
+    ancestor: str
+    traces: list[GepaTraceItem] = []
+    reasoning: list[str] = []
+    new_prompt: str = ""
+    sigma: float = 0.0
+    sigma_p: float | None = None
+    accept: bool | None = None
+
+
+class GepaStateResponse(BaseModel):
+    phase: str
+    step: str | None
+    done_steps: list[str]
+    iter_idx: int
+    sub: str | None
+    pool: list[GepaCandidate]
+    pending: GepaPending | None
+    budget_used: int
+    full_pct: float
+    baseline: float | None
+    current_iter: GepaCurrentIter | None
 
 
 class RunListResponse(BaseModel):

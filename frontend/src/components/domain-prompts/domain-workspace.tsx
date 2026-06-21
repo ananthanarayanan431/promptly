@@ -5,6 +5,7 @@ import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import type { DomainPrompt, DomainListResponse, DatasetRowsResponse, QAPair, TournamentState, OptimizationRun, RunListResponse } from '@/types/domain-prompts';
 import { NewDomainModal } from '@/components/domain-prompts/new-domain-modal';
+import { GepaOptimizer } from '@/components/domain-prompts/gepa-optimizer';
 
 /* ── Icons ─────────────────────────────────────────────────────────── */
 function Icon({ name, size = 16, color }: { name: string; size?: number; color?: string }) {
@@ -513,28 +514,159 @@ function DatasetBuildingCard({ jobId }: { jobId: string | null }) {
   );
 }
 
+/* ── Engine toggle ───────────────────────────────────────────────── */
+type Engine = 'pdo' | 'gepa';
+
+const ENGINE_OPTS = [
+  { id: 'pdo'  as Engine, icon: <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round"><path d="m14.5 17.5 4 4"/><path d="m18.5 21.5 1.5-1.5"/><path d="M5 16l-2 2 3 3 2-2"/><path d="m20 4-7 7"/><path d="m4 20 7-7"/><path d="M14 7l3-3 4 4-3 3"/></svg>, short: 'PDO', name: 'Prompt Duel Optimizer', desc: 'D-TS tournament · head-to-head duels, fuse 5 rankers', blurb: 'Generates candidate prompt variants and runs them head-to-head on your dataset. A 5-ranker ensemble (Copeland, Borda, Win Rate, Elo, TrueSkill) crowns the empirically best one.' },
+  { id: 'gepa' as Engine, icon: <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round"><path d="m12 3-1.912 5.813a2 2 0 01-1.275 1.275L3 12l5.813 1.912a2 2 0 011.275 1.275L12 21l1.912-5.813a2 2 0 011.275-1.275L21 12l-5.813-1.912a2 2 0 01-1.275-1.275L12 3z"/></svg>, short: 'GEPA', name: 'GEPA', desc: 'Reflective evolution · meta-LLM rewrites across a pool', blurb: 'A meta-LLM reads execution traces — where answers went wrong and why — then reflectively rewrites the prompt, evolving an improving pool over successive generations.' },
+];
+
+function EngineInfoPopover({ onClose }: { onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) onClose(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('mousedown', onDoc); document.removeEventListener('keydown', onKey); };
+  }, [onClose]);
+  return (
+    <div ref={ref} className="ply-card anim-fade-fast" style={{
+      position: 'absolute', top: 28, left: 0, width: 320, padding: 6, zIndex: 30,
+      boxShadow: '0 8px 32px rgba(0,0,0,.16)',
+    }}>
+      <div style={{ padding: '6px 8px 4px', fontSize: 10, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '.07em', fontWeight: 600 }}>
+        Two ways to optimize
+      </div>
+      {ENGINE_OPTS.map((o, i) => (
+        <div key={o.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '9px 8px', borderTop: i ? '1px solid var(--border)' : 'none' }}>
+          <span style={{ width: 26, height: 26, borderRadius: 7, flexShrink: 0, display: 'grid', placeItems: 'center', background: 'linear-gradient(135deg, var(--primary), #06b6d4)', color: 'white' }}>
+            {o.icon}
+          </span>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', rowGap: 3 }}>
+              <span style={{ fontSize: 12.5, fontWeight: 600 }}>{o.name}</span>
+              <span className="ply-pill" style={{ fontSize: 9.5, padding: '0 6px' }}>{o.short}</span>
+            </div>
+            <div style={{ fontSize: 11.5, color: 'var(--text-muted)', lineHeight: 1.45, marginTop: 3 }}>{o.blurb}</div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function EngineToggle({ engine, onChange, disabled }: { engine: Engine; onChange: (e: Engine) => void; disabled?: boolean }) {
+  const [showInfo, setShowInfo] = useState(false);
+  return (
+    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, opacity: disabled ? 0.5 : 1 }}>
+      <span style={{ fontSize: 10, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '.07em', fontWeight: 600, whiteSpace: 'nowrap' }}>Engine</span>
+      <div role="radiogroup" aria-label="Optimization engine" style={{
+        display: 'inline-flex', alignItems: 'center', gap: 2, padding: 2,
+        borderRadius: 999, border: '1px solid var(--border)', background: 'var(--surface-2)',
+      }}>
+        {ENGINE_OPTS.map(o => {
+          const sel = engine === o.id;
+          return (
+            <button key={o.id} role="radio" aria-checked={sel}
+              onClick={() => !disabled && onChange(o.id)}
+              disabled={disabled}
+              title={`${o.name} — ${o.desc}`}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 5,
+                padding: '4px 10px', borderRadius: 999, border: 0, cursor: 'pointer',
+                background: sel ? 'var(--surface)' : 'transparent',
+                boxShadow: sel ? '0 1px 3px rgba(0,0,0,.08)' : 'none',
+                color: sel ? 'var(--primary)' : 'var(--text-muted)',
+                fontWeight: sel ? 600 : 500, fontSize: 11.5, lineHeight: 1,
+                transition: 'all .15s ease',
+              }}>
+              {o.icon}{o.short}
+            </button>
+          );
+        })}
+      </div>
+      <div style={{ position: 'relative', display: 'inline-flex' }}>
+        <button
+          aria-label="What do these engines mean?"
+          onClick={() => setShowInfo(s => !s)}
+          style={{
+            width: 20, height: 20, borderRadius: '50%', border: '1px solid var(--border)',
+            background: showInfo ? 'var(--primary-soft)' : 'var(--surface-2)',
+            color: showInfo ? 'var(--primary)' : 'var(--text-subtle)',
+            display: 'grid', placeItems: 'center', cursor: 'pointer', padding: 0,
+            transition: 'all .15s ease',
+          }}>
+          <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+        </button>
+        {showInfo && <EngineInfoPopover onClose={() => setShowInfo(false)} />}
+      </div>
+    </div>
+  );
+}
+
 /* ── Optimize tab ────────────────────────────────────────────────── */
 
-function OptimizeTab({ domain, onReoptimize, reoptimizing, sessionResult, onClearResult, pollingJobId }: {
+/* ── Effort tier selector ─────────────────────────────────────────── */
+type BudgetTier = 'low' | 'medium' | 'high';
+
+const BUDGET_TIERS: Record<BudgetTier, { label: string; budget: number; nPareto: number; tokensEst: string }> = {
+  low:    { label: 'Low',    budget: 100, nPareto: 10, tokensEst: '~100K' },
+  medium: { label: 'Medium', budget: 260, nPareto: 22, tokensEst: '~260K' },
+  high:   { label: 'High',   budget: 460, nPareto: 38, tokensEst: '~460K' },
+};
+
+const PDO_TIERS: Record<BudgetTier, { label: string; rounds: number; candidates: number; tokensEst: string }> = {
+  low:    { label: 'Low',    rounds: 15, candidates: 6,  tokensEst: '~50K'  },
+  medium: { label: 'Medium', rounds: 30, candidates: 10, tokensEst: '~100K' },
+  high:   { label: 'High',   rounds: 50, candidates: 15, tokensEst: '~200K' },
+};
+
+function EffortSelector({ tier, onChange }: { tier: BudgetTier; onChange: (t: BudgetTier) => void }) {
+  return (
+    <select
+      value={tier}
+      onChange={e => onChange(e.target.value as BudgetTier)}
+      style={{
+        fontSize: 11, fontWeight: 600, color: 'var(--primary)',
+        background: 'color-mix(in oklab, var(--primary) 10%, transparent)',
+        border: '1px solid color-mix(in oklab, var(--primary) 30%, transparent)',
+        borderRadius: 6, padding: '2px 6px', cursor: 'pointer', outline: 'none',
+      }}
+    >
+      {(Object.keys(BUDGET_TIERS) as BudgetTier[]).map(t => (
+        <option key={t} value={t}>{BUDGET_TIERS[t].label}</option>
+      ))}
+    </select>
+  );
+}
+
+/* ── Optimize tab ────────────────────────────────────────────────── */
+
+function OptimizeTab({ domain, onReoptimize, reoptimizing, sessionResult, onClearResult, pollingJobId, engine, onEngineChange }: {
   domain: DomainPrompt;
-  onReoptimize: (prompt: string) => void;
+  onReoptimize: (prompt: string, algorithm: Engine, budgetTier?: BudgetTier) => void;
   reoptimizing: boolean;
-  sessionResult: { optimized_prompt: string; prompt_input: string; win_rate: number | null; candidates_tried: number | null; } | null;
+  sessionResult: { optimized_prompt: string; prompt_input: string; win_rate: number | null; candidates_tried: number | null; score_before: number | null; score_after: number | null; rounds_run: number | null; } | null;
   onClearResult: () => void;
   pollingJobId: string | null;
+  engine: Engine;
+  onEngineChange: (e: Engine) => void;
 }) {
   const [draft, setDraft] = useState('');
   const [copied, setCopied] = useState(false);
   const [vizMode, setVizMode] = useState<VizMode>('matrix');
-  const [runAgainMode, setRunAgainMode] = useState(false);
+  const [runAgainMode, setRunAgainMode] = useState(true);
+  const [budgetTier, setBudgetTier] = useState<BudgetTier>('low');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Reset local state whenever the domain itself changes
+  // Reset local state whenever the domain or engine changes
   useEffect(() => {
-    setRunAgainMode(false);
+    setRunAgainMode(true);
     setDraft('');
     setCopied(false);
-  }, [domain.id]);
+  }, [domain.id, engine]);
 
   useEffect(() => {
     if (sessionResult) setRunAgainMode(false);
@@ -548,12 +680,19 @@ function OptimizeTab({ domain, onReoptimize, reoptimizing, sessionResult, onClea
     },
   });
 
-  const latestRun = runsData?.runs?.find(r => r.status === 'completed') ?? null;
+  const latestRun = runsData?.runs?.find(r =>
+    r.status === 'completed' &&
+    !!r.optimized_prompt &&
+    (r.algorithm ?? 'pdo') === engine
+  ) ?? null;
   const displayResult = sessionResult ?? (!runAgainMode && latestRun ? {
     optimized_prompt: latestRun.optimized_prompt,
     prompt_input: latestRun.prompt_input,
     win_rate: latestRun.win_rate,
     candidates_tried: latestRun.candidates_tried,
+    score_before: latestRun.score_before,
+    score_after: latestRun.score_after,
+    rounds_run: latestRun.rounds_run,
   } : null);
 
   const isRunning = ['pending', 'preparing_dataset', 'optimizing'].includes(domain.status);
@@ -582,12 +721,12 @@ function OptimizeTab({ domain, onReoptimize, reoptimizing, sessionResult, onClea
     setDraft('');
     setRunAgainMode(true);
     onClearResult();
-    onReoptimize(t);
+    onReoptimize(t, engine, budgetTier);
   }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, flex: 1, minHeight: 0 }}>
-      {hasResult && (
+      {hasResult && engine === 'pdo' && (
         <div className="ply-card" style={{ padding: '14px 18px', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 0 }}>
           <Stat label="Win rate" value={displayResult?.win_rate != null ? `${Math.round(displayResult.win_rate * 100)}%` : '—'} hint="winner head-to-head" color="var(--success)" />
           <Stat label="Candidates" value={String(displayResult?.candidates_tried ?? '—')} hint="tested in tournament" />
@@ -600,15 +739,32 @@ function OptimizeTab({ domain, onReoptimize, reoptimizing, sessionResult, onClea
         <DatasetBuildingCard jobId={pollingJobId} />
       )}
 
-      {busy && domain.status === 'optimizing' && (
+      {busy && domain.status === 'optimizing' && engine === 'pdo' && (
         <LiveStatsBar domainId={domain.id} datasetSize={domain.dataset?.row_count ?? 0} />
       )}
 
-      {busy && domain.status === 'optimizing' && (
+      {busy && domain.status === 'optimizing' && engine === 'pdo' && (
         <TournamentRunningViz domainId={domain.id} vizMode={vizMode} onVizChange={setVizMode} />
       )}
 
-      {hasResult && (
+      {busy && domain.status === 'optimizing' && engine === 'gepa' && (
+        <GepaOptimizer domainId={domain.id} optimizedPrompt={null} promptInput={draft || null} />
+      )}
+
+      {hasResult && engine === 'gepa' && (
+        <GepaOptimizer
+          domainId={domain.id}
+          optimizedPrompt={displayResult?.optimized_prompt ?? null}
+          promptInput={displayResult?.prompt_input ?? null}
+          onRunAgain={runAgain}
+          scoreBefore={displayResult?.score_before ?? null}
+          scoreAfter={displayResult?.score_after ?? null}
+          roundsRun={displayResult?.rounds_run ?? null}
+          poolSize={displayResult?.candidates_tried ?? null}
+        />
+      )}
+
+      {hasResult && engine === 'pdo' && (
         <div className="ply-card anim-fade" style={{ padding: 0, overflow: 'hidden' }}>
           <div style={{
             padding: '14px 18px', borderBottom: '1px solid var(--border)',
@@ -651,7 +807,13 @@ function OptimizeTab({ domain, onReoptimize, reoptimizing, sessionResult, onClea
         </div>
       )}
 
-      {!hasResult && !busy && (
+      {/* GEPA idle: rich intro card */}
+      {!hasResult && !busy && engine === 'gepa' && datasetReady && (
+        <GepaOptimizer domainId={domain.id} optimizedPrompt={null} promptInput={null} />
+      )}
+
+      {/* PDO idle: centered prompt */}
+      {!hasResult && !busy && engine === 'pdo' && (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 380 }}>
             <div style={{ width: 48, height: 48, borderRadius: 12, background: 'var(--primary-soft)', display: 'grid', placeItems: 'center', margin: '0 auto', color: 'var(--primary)' }}>
@@ -667,6 +829,15 @@ function OptimizeTab({ domain, onReoptimize, reoptimizing, sessionResult, onClea
         </div>
       )}
 
+      {/* GEPA / PDO — dataset not ready */}
+      {!hasResult && !busy && !datasetReady && (
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ textAlign: 'center', fontSize: 13, color: 'var(--text-muted)' }}>
+            Dataset is still being built from your PDF. Come back in a moment.
+          </div>
+        </div>
+      )}
+
       <div style={{ flex: 1 }} />
 
       {datasetReady && (
@@ -676,7 +847,9 @@ function OptimizeTab({ domain, onReoptimize, reoptimizing, sessionResult, onClea
             value={draft}
             onChange={e => setDraft(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(); } }}
-            placeholder={hasResult ? 'Paste a new prompt to run another tournament… (⌘↵ to run)' : 'Paste your system prompt here to optimize against this domain… (⌘↵ to run)'}
+            placeholder={engine === 'gepa'
+              ? 'Paste your system prompt — GEPA will reflect on failures and evolve it… (⌘↵ to run)'
+              : (hasResult ? 'Paste a new prompt to run another tournament… (⌘↵ to run)' : 'Paste your system prompt here to optimize against this domain… (⌘↵ to run)')}
             disabled={busy}
             rows={3}
             style={{
@@ -686,10 +859,19 @@ function OptimizeTab({ domain, onReoptimize, reoptimizing, sessionResult, onClea
               fontFamily: 'var(--mono)',
             }}
           />
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center', color: 'var(--text-subtle)', fontSize: 11.5 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', color: 'var(--text-subtle)', fontSize: 11.5, flexWrap: 'wrap' }}>
               <span className="ply-pill"><Icon name="layers" size={11} /> {domain.dataset?.row_count ?? 0} Q&A</span>
-              <span className="ply-pill"><Icon name="cpu" size={11} /> 40 rounds D-TS · 5 rankers</span>
+              {engine === 'pdo'
+                ? <span className="ply-pill"><Icon name="cpu" size={11} /> {PDO_TIERS[budgetTier].rounds} rounds · {PDO_TIERS[budgetTier].candidates} candidates</span>
+                : <span className="ply-pill">
+                    <Icon name="sparkle2" size={11} />
+                    {' '}B={BUDGET_TIERS[budgetTier].budget} · N={BUDGET_TIERS[budgetTier].nPareto} · mb=3
+                  </span>
+              }
+              {!busy && (
+                <EffortSelector tier={budgetTier} onChange={setBudgetTier} />
+              )}
             </div>
             <button
               className="ply-btn ply-btn-primary"
@@ -697,9 +879,11 @@ function OptimizeTab({ domain, onReoptimize, reoptimizing, sessionResult, onClea
               disabled={!canSubmit}
               style={{ opacity: !canSubmit ? 0.5 : 1, cursor: !canSubmit ? 'not-allowed' : 'pointer' }}
             >
-              <Icon name="trophy" size={14} />
-              {busy ? 'Running PDO…' : hasResult ? 'Run again' : 'Run PDO'}
-              <span className="mono" style={{ marginLeft: 6, fontSize: 11, opacity: .75, paddingLeft: 8, borderLeft: '1px solid rgba(255,255,255,.25)' }}>−10 cr</span>
+              <Icon name={engine === 'gepa' ? 'sparkle2' : 'trophy'} size={14} />
+              {busy ? (engine === 'gepa' ? 'Running GEPA…' : 'Running PDO…') : hasResult ? 'Run again' : (engine === 'gepa' ? 'Run GEPA' : 'Run PDO')}
+              <span className="mono" style={{ marginLeft: 6, fontSize: 11, opacity: .75, paddingLeft: 8, borderLeft: '1px solid rgba(255,255,255,.25)' }}>
+                {engine === 'gepa' ? BUDGET_TIERS[budgetTier].tokensEst : PDO_TIERS[budgetTier].tokensEst}
+              </span>
             </button>
           </div>
         </div>
@@ -1014,6 +1198,110 @@ function DatasetTab({ domain }: { domain: DomainPrompt }) {
 }
 
 /* ── History tab ───────────────────────────────────────────────────── */
+function RunRow({ run, expanded, onToggle }: { run: OptimizationRun; expanded: boolean; onToggle: () => void }) {
+  const isFailed = run.status === 'failed';
+  const isGepa = (run.algorithm ?? 'pdo') === 'gepa';
+  const date = new Date(run.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+  const metric1 = isGepa
+    ? (run.rounds_run != null ? `${run.rounds_run} iters` : '—')
+    : (run.win_rate != null ? `${Math.round(run.win_rate * 100)}% wr` : '—');
+
+  const metric2 = isGepa
+    ? (run.candidates_tried != null ? `${run.candidates_tried} pool` : '—')
+    : (run.rounds_run != null ? `${run.rounds_run} rounds` : '—');
+
+  return (
+    <div>
+      <button
+        onClick={onToggle}
+        style={{
+          display: 'grid', gridTemplateColumns: '160px 1fr 100px 100px 1fr',
+          gap: 10, alignItems: 'center', padding: '12px 16px', fontSize: 12.5,
+          borderBottom: '1px solid var(--border)', cursor: 'pointer', width: '100%',
+          background: expanded ? 'var(--surface-2)' : 'transparent',
+          border: 0, textAlign: 'left',
+          opacity: isFailed ? 0.8 : 1,
+        }}
+      >
+        <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--mono)', fontSize: 11.5 }}>{date}</span>
+        <span style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
+          {isFailed
+            ? <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: 'var(--danger-soft, rgba(239,68,68,0.12))', color: 'var(--danger)', letterSpacing: '.04em' }}>FAILED</span>
+            : <Icon name={isGepa ? 'sparkles' : 'trophy'} size={12} />
+          }
+          {run.domain_name}
+        </span>
+        <span className="mono" style={{ color: isFailed ? 'var(--text-subtle)' : undefined }}>{isFailed ? '—' : metric1}</span>
+        <span className="mono" style={{ color: 'var(--text-muted)' }}>{isFailed ? '—' : metric2}</span>
+        <span style={{ color: expanded ? 'var(--primary)' : 'var(--text-subtle)', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
+          {expanded ? '▲ hide' : (isFailed ? '▼ view error' : '▼ view prompt')}
+        </span>
+      </button>
+      {expanded && (
+        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', background: 'var(--surface-2)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 600, marginBottom: 6 }}>Input prompt</div>
+            <pre className="ply-prompt-block" style={{ margin: 0, fontSize: 12, maxHeight: 120, overflowY: 'auto' }}>{run.prompt_input}</pre>
+          </div>
+          {isFailed ? (
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--danger)', textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 600, marginBottom: 6 }}>Error</div>
+              <pre className="ply-prompt-block" style={{ margin: 0, fontSize: 12, color: 'var(--danger)', maxHeight: 120, overflowY: 'auto' }}>{run.error_message ?? 'Unknown error'}</pre>
+            </div>
+          ) : (
+            <>
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 600, marginBottom: 6 }}>
+                  {isGepa ? 'GEPA optimized' : 'PDO optimized'}
+                </div>
+                <pre className="ply-prompt-block" style={{ margin: 0, fontSize: 12, maxHeight: 180, overflowY: 'auto' }}>{run.optimized_prompt}</pre>
+              </div>
+              <div style={{ display: 'flex', gap: 16, fontSize: 12 }}>
+                {run.score_before != null && <span>Score before: <strong>{run.score_before.toFixed(3)}</strong></span>}
+                {run.score_after != null && <span>Score after: <strong>{run.score_after.toFixed(3)}</strong></span>}
+                {!isGepa && run.candidates_tried != null && <span>Candidates: <strong>{run.candidates_tried}</strong></span>}
+                {run.dataset_size != null && <span>Dataset: <strong>{run.dataset_size} Q&A</strong></span>}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RunSection({ title, icon, runs, expandedId, onToggle, emptyMsg }: {
+  title: string; icon: string; runs: OptimizationRun[];
+  expandedId: string | null; onToggle: (id: string) => void; emptyMsg: string;
+}) {
+  return (
+    <div className="ply-card" style={{ padding: 0, overflow: 'hidden' }}>
+      <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 7 }}>
+        <Icon name={icon} size={13} />
+        <span style={{ fontWeight: 600, fontSize: 13 }}>{title}</span>
+        <span style={{ marginLeft: 4, fontWeight: 400, fontSize: 11.5, color: 'var(--text-subtle)' }}>
+          {runs.length} run{runs.length !== 1 ? 's' : ''}
+        </span>
+      </div>
+      {runs.length === 0 ? (
+        <div style={{ padding: '20px 16px', fontSize: 12.5, color: 'var(--text-subtle)' }}>{emptyMsg}</div>
+      ) : (
+        <>
+          {runs.slice(0, 5).map(run => (
+            <RunRow key={run.id} run={run} expanded={expandedId === run.id} onToggle={() => onToggle(run.id)} />
+          ))}
+          {runs.length > 5 && (
+            <div style={{ padding: '10px 16px', fontSize: 12, color: 'var(--text-subtle)', textAlign: 'center' }}>
+              Showing 5 of {runs.length} runs
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 function HistoryTab({ domain }: { domain: DomainPrompt }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -1026,6 +1314,10 @@ function HistoryTab({ domain }: { domain: DomainPrompt }) {
   });
 
   const runs = data?.runs ?? [];
+  const pdoRuns = runs.filter(r => (r.algorithm ?? 'pdo') === 'pdo');
+  const gepaRuns = runs.filter(r => r.algorithm === 'gepa');
+
+  const toggle = (id: string) => setExpandedId(prev => prev === id ? null : id);
 
   if (isLoading) {
     return (
@@ -1038,91 +1330,29 @@ function HistoryTab({ domain }: { domain: DomainPrompt }) {
   if (runs.length === 0) {
     return (
       <div className="ply-card" style={{ padding: '32px', textAlign: 'center', color: 'var(--text-subtle)', fontSize: 13 }}>
-        No runs yet. Submit a prompt in the Optimize tab to start the first tournament.
+        No runs yet. Submit a prompt in the Optimize tab to run PDO or GEPA.
       </div>
     );
   }
 
   return (
-    <div className="ply-card" style={{ padding: 0, overflow: 'hidden' }}>
-      <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontWeight: 600, fontSize: 13 }}>
-        Tournament history · {domain.name}
-        <span style={{ marginLeft: 8, fontWeight: 400, fontSize: 11.5, color: 'var(--text-subtle)' }}>
-          {runs.length} run{runs.length !== 1 ? 's' : ''}
-        </span>
-      </div>
-      {runs.slice(0, 5).map((run: OptimizationRun) => {
-        const isFailed = run.status === 'failed';
-        return (
-          <div key={run.id}>
-            <div
-              onClick={() => setExpandedId(expandedId === run.id ? null : run.id)}
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '160px 1fr 100px 100px 1fr',
-                gap: 10, alignItems: 'center',
-                padding: '12px 16px', fontSize: 12.5,
-                borderBottom: '1px solid var(--border)',
-                cursor: 'pointer',
-                background: expandedId === run.id ? 'var(--surface-2)' : undefined,
-                opacity: isFailed ? 0.8 : 1,
-              }}
-            >
-              <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--mono)', fontSize: 11.5 }}>
-                {new Date(run.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-              </span>
-              <span style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
-                {isFailed
-                  ? <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: 'var(--danger-soft, rgba(239,68,68,0.12))', color: 'var(--danger)', letterSpacing: '.04em' }}>FAILED</span>
-                  : <Icon name="trophy" size={12} />
-                }
-                {run.domain_name}
-              </span>
-              <span className="mono" style={{ color: isFailed ? 'var(--text-subtle)' : undefined }}>
-                {isFailed ? '—' : (run.win_rate != null ? `${Math.round(run.win_rate * 100)}% wr` : '—')}
-              </span>
-              <span className="mono" style={{ color: 'var(--text-muted)' }}>
-                {isFailed ? '—' : `${run.rounds_run ?? 40} rounds`}
-              </span>
-              <span style={{ color: expandedId === run.id ? 'var(--primary)' : 'var(--text-subtle)', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
-                {expandedId === run.id ? '▲ hide' : (isFailed ? '▼ view error' : '▼ view prompt')}
-              </span>
-            </div>
-            {expandedId === run.id && (
-              <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', background: 'var(--surface-2)', display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div>
-                  <div style={{ fontSize: 11, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 600, marginBottom: 6 }}>Input prompt</div>
-                  <pre className="ply-prompt-block" style={{ margin: 0, fontSize: 12, maxHeight: 120, overflowY: 'auto' }}>{run.prompt_input}</pre>
-                </div>
-                {isFailed ? (
-                  <div>
-                    <div style={{ fontSize: 11, color: 'var(--danger)', textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 600, marginBottom: 6 }}>Error</div>
-                    <pre className="ply-prompt-block" style={{ margin: 0, fontSize: 12, color: 'var(--danger)', maxHeight: 120, overflowY: 'auto' }}>{run.error_message ?? 'Unknown error'}</pre>
-                  </div>
-                ) : (
-                  <>
-                    <div>
-                      <div style={{ fontSize: 11, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 600, marginBottom: 6 }}>PDO optimized</div>
-                      <pre className="ply-prompt-block" style={{ margin: 0, fontSize: 12, maxHeight: 180, overflowY: 'auto' }}>{run.optimized_prompt}</pre>
-                    </div>
-                    <div style={{ display: 'flex', gap: 16, fontSize: 12 }}>
-                      {run.score_before != null && <span>Score before: <strong>{run.score_before.toFixed(3)}</strong></span>}
-                      {run.score_after != null && <span>Score after: <strong>{run.score_after.toFixed(3)}</strong></span>}
-                      {run.candidates_tried != null && <span>Candidates: <strong>{run.candidates_tried}</strong></span>}
-                      {run.dataset_size != null && <span>Dataset: <strong>{run.dataset_size} Q&A</strong></span>}
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-        );
-      })}
-      {runs.length > 5 && (
-        <div style={{ padding: '10px 16px', fontSize: 12, color: 'var(--text-subtle)', textAlign: 'center' }}>
-          Showing 5 of {runs.length} runs
-        </div>
-      )}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <RunSection
+        title="PDO — Tournament history"
+        icon="trophy"
+        runs={pdoRuns}
+        expandedId={expandedId}
+        onToggle={toggle}
+        emptyMsg="No PDO runs yet."
+      />
+      <RunSection
+        title="GEPA — Evolution history"
+        icon="sparkles"
+        runs={gepaRuns}
+        expandedId={expandedId}
+        onToggle={toggle}
+        emptyMsg="No GEPA runs yet."
+      />
     </div>
   );
 }
@@ -1209,7 +1439,7 @@ function DomainSwitcher({ domains, selected, onSelect, onNewDomain }: {
           ))}
           <div style={{ padding: 6, borderTop: '1px solid var(--border)', marginTop: 4 }}>
             <button className="ply-btn ply-btn-sm" style={{ width: '100%', justifyContent: 'flex-start' }} onClick={() => { onNewDomain(); setOpen(false); }}>
-              <Icon name="upload" size={12} /> Upload new PDF · 10 credits
+              <Icon name="upload" size={12} /> Upload new PDF · token-metered
             </button>
           </div>
         </div>
@@ -1227,11 +1457,15 @@ export function DomainWorkspace() {
   const [pollingJobId, setPollingJobId] = useState<string | null>(null);
   const [pollingDomainId, setPollingDomainId] = useState<string | null>(null);
   const [reoptimizing, setReoptimizing] = useState(false);
+  const [engine, setEngine] = useState<Engine>('pdo');
   const [sessionResult, setSessionResult] = useState<{
     optimized_prompt: string;
     prompt_input: string;
     win_rate: number | null;
     candidates_tried: number | null;
+    score_before: number | null;
+    score_after: number | null;
+    rounds_run: number | null;
   } | null>(null);
   const pendingPromptRef = useRef('');
 
@@ -1263,7 +1497,7 @@ export function DomainWorkspace() {
 
   useEffect(() => {
     setSessionResult(null);
-  }, [selectedId]);
+  }, [selectedId, engine]);
 
   useEffect(() => {
     if (!pollingJobId) return;
@@ -1283,6 +1517,9 @@ export function DomainWorkspace() {
               prompt_input: pendingPromptRef.current,
               win_rate: result.win_rate != null ? Number(result.win_rate) : null,
               candidates_tried: result.candidates_tried != null ? Number(result.candidates_tried) : null,
+              score_before: result.score_before != null ? Number(result.score_before) : null,
+              score_after: result.score_after != null ? Number(result.score_after) : null,
+              rounds_run: result.rounds_run != null ? Number(result.rounds_run) : null,
             });
           }
         } else if (status === 'failed' || status === 'cancelled') {
@@ -1296,14 +1533,15 @@ export function DomainWorkspace() {
     return () => clearInterval(iv);
   }, [pollingJobId, pollingDomainId, qc]);
 
-  const handleReoptimize = useCallback(async (prompt: string) => {
+  const handleReoptimize = useCallback(async (prompt: string, algorithm: Engine = 'pdo', budgetTier?: string) => {
     if (!selected) return;
     pendingPromptRef.current = prompt;
     setReoptimizing(true);
     const capturedDomainId = selected.id;
     try {
       const res = await api.post<{ data: { job_id: string; domain_id: string } }>(
-        `/api/v1/domain-prompts/${capturedDomainId}/optimize`, { prompt }
+        `/api/v1/domain-prompts/${capturedDomainId}/optimize`,
+        { prompt, algorithm, ...(budgetTier ? { budget_tier: budgetTier } : {}) }
       );
       setPollingDomainId(capturedDomainId);
       setPollingJobId(res.data.data.job_id);
@@ -1383,6 +1621,9 @@ export function DomainWorkspace() {
                     last run {Math.round(selected.win_rate * 100)}% wr
                   </span>
                 )}
+                {tab === 'optimize' && (
+                  <EngineToggle engine={engine} onChange={setEngine} disabled={reoptimizing || ['pending', 'preparing_dataset', 'optimizing'].includes(selected?.status ?? '')} />
+                )}
               </>
             )}
           </div>
@@ -1435,7 +1676,7 @@ export function DomainWorkspace() {
           {[
             { id: 'optimize',  label: 'Optimize',                                    icon: 'sparkles'  },
             { id: 'dataset',   label: `Dataset (${selected?.dataset?.row_count ?? 0})`, icon: 'fileText'  },
-            { id: 'history',   label: 'Tournament history',                           icon: 'history'   },
+            { id: 'history',   label: 'Run history',                                   icon: 'history'   },
           ].map(t => (
             <button key={t.id} onClick={() => setTab(t.id as typeof tab)} style={{
               padding: '10px 16px', border: 0, background: 'transparent',
@@ -1479,7 +1720,7 @@ export function DomainWorkspace() {
 
         {selected && tab === 'optimize' && (
           <div style={{ padding: '18px 24px 24px', display: 'flex', flexDirection: 'column', gap: 14, minHeight: '100%' }}>
-            <OptimizeTab domain={selected} onReoptimize={handleReoptimize} reoptimizing={reoptimizing} sessionResult={sessionResult} onClearResult={() => setSessionResult(null)} pollingJobId={pollingJobId} />
+            <OptimizeTab domain={selected} onReoptimize={handleReoptimize} reoptimizing={reoptimizing} sessionResult={sessionResult} onClearResult={() => setSessionResult(null)} pollingJobId={pollingJobId} engine={engine} onEngineChange={setEngine} />
           </div>
         )}
         {selected && tab === 'dataset' && <DatasetTab domain={selected} />}

@@ -98,7 +98,13 @@ async def council_vote_node(state: GraphState) -> dict[str, Any]:
     # Quality gaps are only meaningful on refinement passes
     quality_gaps = _extract_quality_gaps(state) if iteration > 0 else []
 
-    models = _get_council_models()
+    override = state.get("council_models")
+    if override:
+        from promptly.llm._client import _build
+
+        models = [_build(m) for m in override]
+    else:
+        models = _get_council_models()
     total = len(models)
     done_count = [0]
     lock = asyncio.Lock()

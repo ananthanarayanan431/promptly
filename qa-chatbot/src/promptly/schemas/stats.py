@@ -69,7 +69,6 @@ class DashboardStats(BaseModel):
     estimated_cost_usd: float
     versions_saved: int  # distinct prompt families
     total_versions: int  # total individual version rows
-    credits_remaining: int
 
     # Per-action call/credit usage (all-time + current month)
     usage: UsageStats

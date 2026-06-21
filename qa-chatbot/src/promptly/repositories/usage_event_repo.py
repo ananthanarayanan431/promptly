@@ -12,7 +12,7 @@ from promptly.repositories.base import BaseRepository
 # Known actions — guards against typos/garbage being logged.
 # Credit costs are NOT enforced here: balance checks live at the API boundary.
 _VALID_ACTIONS: frozenset[str] = frozenset(
-    {"optimize", "health_score", "advisory", "domain_pdo", "bridge"}
+    {"optimize", "health_score", "advisory", "domain_pdo", "domain_gepa", "bridge"}
 )
 
 

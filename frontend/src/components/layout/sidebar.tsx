@@ -33,6 +33,7 @@ const NAV_GROUPS = [
     items: [
       { href: '/optimize',      label: 'Optimize',       icon: 'sparkles', primary: true },
       { href: '/domain-prompts', label: 'Domain',         icon: 'flask',    primary: true },
+      { href: '/skill-opt',     label: 'Skill',           icon: 'zap',      primary: true },
       { href: '/bridge',         label: 'Bridge',          icon: 'bridge',   primary: true },
       { href: '/analyze',       label: 'Analyze',         icon: 'activity' },
     ],
@@ -50,8 +51,7 @@ const NAV_GROUPS = [
   {
     group: 'Account',
     items: [
-      { href: '/dashboard',     label: 'Dashboard',        icon: 'dashboard' },
-      { href: '/settings',      label: 'API Keys',         icon: 'chip' },
+      { href: '/settings',      label: 'Settings',         icon: 'settings' },
       { href: '/billing',       label: 'Billing',          icon: 'creditCard' },
     ],
   },
@@ -71,6 +71,9 @@ function NavIcon({ name }: { name: string }) {
     image: 'M21 15l-5-5L5 21M21 3H3a2 2 0 00-2 2v14a2 2 0 002 2h18a2 2 0 002-2V5a2 2 0 00-2-2zM8.5 10a1.5 1.5 0 100-3 1.5 1.5 0 000 3z',
     bridge: 'M4 12h4M16 12h4M8 12a4 4 0 008 0M8 12V8M16 12V8M8 8h8M6 5h3M15 5h3',
     dashboard: 'M3 3h8v8H3zM13 3h8v8h-8zM3 13h8v8H3zM13 13h8v8h-8z',
+    zap: 'M13 2L3 14h9l-1 8 10-12h-9l1-8z',
+    settings: 'M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z',
+    shield: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z',
   };
   const d = paths[name] || '';
   return (
@@ -82,22 +85,37 @@ function NavIcon({ name }: { name: string }) {
   );
 }
 
-const CREDITS_START = 100;
+const TOKEN_START = 3_000_000;
 
-function CreditsCard({ credits }: { credits: number }) {
-  const optimizationsLeft = Math.floor(credits / 10);
-  const pct = Math.min(100, (credits / CREDITS_START) * 100);
+function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
+  return String(n);
+}
+
+function TokenCard({ tokenBalance }: { tokenBalance: number }) {
+  // Clamp display at 0 — never reveal the internal overdraft buffer to users.
+  const displayed = Math.max(0, tokenBalance);
+  const isDepleted = displayed === 0;
+  const isLow = !isDepleted && displayed < TOKEN_START * 0.1;
+  const pct = Math.min(100, (displayed / TOKEN_START) * 100);
+  const barColor = isDepleted ? 'var(--danger)' : isLow ? 'var(--warning)' : 'linear-gradient(90deg, var(--primary), var(--accent))';
+
   return (
-    <div className="ply-card" style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8, boxShadow: 'none' }}>
+    <div className="ply-card" style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8, boxShadow: 'none', border: isDepleted ? '1px solid var(--danger)' : undefined }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Credits</span>
-        <span className="mono" style={{ fontWeight: 600, color: 'var(--text)' }}>{credits}</span>
+        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Tokens</span>
+        <span className="mono" style={{ fontWeight: 600, color: isDepleted ? 'var(--danger)' : isLow ? 'var(--warning)' : 'var(--text)' }}>
+          {isDepleted ? '0' : formatTokens(displayed)}
+        </span>
       </div>
       <div className="ply-progress">
-        <i style={{ width: `${pct}%`, background: 'linear-gradient(90deg, var(--primary), var(--accent))' }} />
+        <i style={{ width: `${pct}%`, background: barColor }} />
       </div>
-      <div style={{ fontSize: 11, color: 'var(--text-subtle)' }}>
-        ≈ {optimizationsLeft} optimizations remaining
+      <div style={{ fontSize: 11, color: isDepleted ? 'var(--danger)' : 'var(--text-subtle)' }}>
+        {isDepleted
+          ? 'No tokens remaining — top up to continue'
+          : `≈ ${Math.floor((displayed / TOKEN_START) * 10)} optimizations remaining`}
       </div>
     </div>
   );
@@ -165,7 +183,7 @@ export function Sidebar() {
     staleTime: 1000 * 60 * 5,
   });
 
-  const credits = fetchedUser?.credits ?? 0;
+  const tokenBalance = fetchedUser?.token_balance ?? TOKEN_START;
 
   return (
     <aside style={{
@@ -216,6 +234,36 @@ export function Sidebar() {
 
       {/* Nav groups */}
       <nav style={{ padding: '8px 8px', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {/* Admin section — shown first, only for admins */}
+        {fetchedUser?.is_admin && (() => {
+          const active = pathname === '/admin' || pathname.startsWith('/admin/');
+          return (
+            <div>
+              <div style={{ padding: '4px 10px 6px', fontSize: 10.5, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--text-subtle)', fontWeight: 600 }}>
+                Admin
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                <Link href="/admin" style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  padding: '7px 10px', height: 32,
+                  borderRadius: 7, border: '1px solid transparent',
+                  background: active ? 'var(--surface)' : 'transparent',
+                  color: active ? 'var(--text)' : 'var(--text-muted)',
+                  fontWeight: active ? 500 : 400,
+                  boxShadow: active ? 'var(--shadow-sm)' : 'none',
+                  borderColor: active ? 'var(--border)' : 'transparent',
+                  fontSize: 13, textDecoration: 'none',
+                  transition: 'background .12s, color .12s',
+                  whiteSpace: 'nowrap',
+                }}>
+                  <NavIcon name="shield" />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>Admin Panel</span>
+                </Link>
+              </div>
+            </div>
+          );
+        })()}
+
         {NAV_GROUPS.map(group => (
           <div key={group.group}>
             <div style={{
@@ -252,11 +300,12 @@ export function Sidebar() {
 
         {/* Recent sessions */}
         <RecentSessions />
+
       </nav>
 
       {/* Bottom: credits + user */}
       <div style={{ padding: 12, borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <CreditsCard credits={credits} />
+        <TokenCard tokenBalance={tokenBalance} />
 
         <UserMenu />
       </div>

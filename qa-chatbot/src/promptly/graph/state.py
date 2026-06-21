@@ -20,6 +20,10 @@ def make_graph_state(
     version_history_diff: str | None = None,
     max_iterations: int = 1,
     force_optimize: bool = False,
+    skip_quality_gate: bool = False,
+    skip_subject_classifier: bool = False,
+    council_models: list[str] | None = None,
+    synthesizer_model: str | None = None,
 ) -> GraphState:
     """Return a fully-initialised GraphState with caller-supplied inputs and safe defaults.
 
@@ -39,6 +43,10 @@ def make_graph_state(
         "job_id": job_id,
         "intent": None,
         "force_optimize": force_optimize,
+        "skip_quality_gate": skip_quality_gate,
+        "skip_subject_classifier": skip_subject_classifier,
+        "council_models": council_models,
+        "synthesizer_model": synthesizer_model,
         "already_optimized": False,
         "gate_dimension_scores": None,
         "gate_rationale": None,
@@ -62,6 +70,8 @@ class GraphState(TypedDict):
     raw_prompt: str
     session_id: str
     user_id: str
+    council_models: list[str] | None  # per-request model override (LLM effort tier)
+    synthesizer_model: str | None  # per-request synthesizer override
 
     # Optional user guidance that shapes how the council optimizes the prompt.
     feedback: str | None
@@ -85,7 +95,9 @@ class GraphState(TypedDict):
 
     # Performance gate — set when the raw prompt is already production-grade.
     # When already_optimized=True, final_response == raw_prompt and no council ran.
-    force_optimize: bool  # bypass the gate entirely when True
+    force_optimize: bool  # bypass performance gate entirely when True
+    skip_quality_gate: bool  # skip quality-gate refinement loop for this run
+    skip_subject_classifier: bool  # skip subject classifier for this run
     already_optimized: bool  # True when gate short-circuits the pipeline
     gate_dimension_scores: dict[str, str] | None  # 8-dim scoring labels
     gate_rationale: str | None  # one-sentence explanation from the gate LLM

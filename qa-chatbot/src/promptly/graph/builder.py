@@ -62,11 +62,10 @@ def _route_quality_gate(state: GraphState) -> str:
     After quality_gate: loop back to council_vote if the synthesis still has weak
     dimensions and we haven't hit the iteration ceiling; otherwise exit.
 
-    The gate node already enforces the ceiling and convergence checks internally —
-    it only omits the 'weak_dimensions' payload when it decided to exit.
-    We route on whether quality_gate attached a new quality_gate sentinel entry
-    (loop decision) vs. not (exit decision).
+    Per-request `skip_quality_gate=True` forces immediate exit.
     """
+    if state.get("skip_quality_gate"):
+        return "exit"
     critic_responses = state.get("critic_responses") or []
     for cr in reversed(critic_responses):
         if cr.get("_quality_gate"):

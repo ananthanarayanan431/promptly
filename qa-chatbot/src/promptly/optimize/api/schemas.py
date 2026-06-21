@@ -54,6 +54,40 @@ class ChatRequest(BaseModel):
             "prompt might already be production-grade. Costs the full 10 credits."
         ),
     )
+    llm_effort: str | None = Field(
+        default=None,
+        pattern="^(low|medium|high)$",
+        description=(
+            "Model quality tier: 'low' (cheap open-source), "
+            "'medium' (balanced defaults), 'high' (frontier). "
+            "Omit to use the server COUNCIL_MODELS configuration."
+        ),
+    )
+    skip_quality_gate: bool = Field(
+        default=False,
+        description="Skip the quality-gate refinement loop for this run.",
+    )
+    skip_subject_classifier: bool = Field(
+        default=False,
+        description="Skip the subject classifier for this run (saves one LLM call).",
+    )
+    council_models: list[str] | None = Field(
+        default=None,
+        min_length=4,
+        max_length=4,
+        description=(
+            "Override the 4 council model slugs for this run "
+            "(e.g. ['openai/gpt-4o', 'anthropic/claude-3.5-sonnet', ...]). "
+            "Takes precedence over llm_effort when provided."
+        ),
+    )
+    synthesizer_model: str | None = Field(
+        default=None,
+        description=(
+            "Override the chairman/synthesizer model slug for this run. "
+            "Takes precedence over llm_effort when provided."
+        ),
+    )
 
     @model_validator(mode="after")
     def require_prompt_or_prompt_id(self) -> "ChatRequest":
@@ -145,6 +179,11 @@ class SessionSummary(BaseModel):
     title: str | None
     created_at: datetime
     updated_at: datetime
+    token_count: int | None = None
+    feedback_count: int = 0
+    prompt_input: str | None = None
+    optimized_prompt: str | None = None
+    reasoning: dict[str, Any] | None = None
 
     model_config = {"from_attributes": True}
 

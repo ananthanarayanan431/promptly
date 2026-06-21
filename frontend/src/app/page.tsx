@@ -10,51 +10,11 @@ const MARQUEE = ['Notion', 'Linear', 'Vercel', 'Anthropic', 'Mistral', 'Hugging 
 
 const STATS = [
   { n: '3.8×',  em: true, l: 'average quality uplift vs. original prompt' },
-  { n: '42s',            l: 'median end-to-end optimize time' },
-  { n: '12,400',         l: 'prompts optimized this month' },
+  { n: '35×',            l: 'fewer rollouts than RL with GEPA (ICLR 2026)' },
+  { n: '+23.5',          l: 'accuracy points gained by SkillOpt on GPT-5.5' },
   { n: '94%',            l: 'of users ship the result unchanged' },
 ];
 
-const PRODUCTS = [
-  {
-    tag: 'Optimize',
-    headline: 'Turn any rough prompt into a production-ready one.',
-    body: 'Paste what you have. Promptly runs a multi-model review — parallel proposals, blind peer critique, synthesis — and returns one result that\'s sharper than any single model could produce. Takes under a minute.',
-    pills: ['Any prompt', 'Any domain', 'One result'],
-    terminal: [
-      { c: '#5a5a60', t: '# your prompt' },
-      { c: '#b5b5ba', t: 'write a blog post about remote work' },
-      { c: '#7c5cff', t: '→ running multi-model review…', mt: 12 },
-      { c: '#5a5a60', t: '# result', mt: 12 },
-      { c: '#ededed', t: 'You are Maya, a distributed-work researcher…' },
-      { c: '#b5b5ba', t: 'Write 800 words (±5%). Open on a scene.' },
-      { c: '#b5b5ba', t: 'Weave in 3 cited stats. No "in conclusion."' },
-      { c: '#2fd589', t: '✓ done · 38s · quality +2.4 pts', mt: 10 },
-    ],
-    href: '/sign-up',
-    cta: 'Start optimizing',
-    accent: '#7c5cff',
-  },
-  {
-    tag: 'Domain',
-    headline: 'Empirically find the best prompt for your specific use case.',
-    body: 'Upload your domain knowledge as a PDF. Promptly builds a Q&A test suite from it, then runs head-to-head trials between prompt variants — returning the one that empirically wins against your real questions. Not guesswork. Evidence.',
-    pills: ['Your knowledge base', 'Head-to-head trials', 'Empirical winner'],
-    terminal: [
-      { c: '#5a5a60', t: '# knowledge base' },
-      { c: '#b5b5ba', t: 'finance-policy-v2.pdf  →  127 Q&A pairs' },
-      { c: '#f59e0b', t: '→ tournament running… round 18/40', mt: 12 },
-      { c: '#5a5a60', t: 'C0  wins: 6   C1  wins: 4' },
-      { c: '#5a5a60', t: 'C2  wins: 3   C3  wins: 5' },
-      { c: '#5a5a60', t: '# result', mt: 10 },
-      { c: '#ededed', t: 'winner: C0  win-rate: 78%' },
-      { c: '#2fd589', t: '✓ empirically tested · 40 rounds · 127 pairs', mt: 6 },
-    ],
-    href: '/sign-up',
-    cta: 'Try domain optimization',
-    accent: '#f59e0b',
-  },
-];
 
 const HOW_IT_WORKS = [
   {
@@ -108,6 +68,11 @@ const AUDIENCE = [
     h: 'Your knowledge. Your benchmark.',
     d: 'Upload a PDF of your domain. Promptly builds a test suite from it and finds the prompt that scores best against your real questions — not a generic benchmark.',
   },
+  {
+    r: 'for agent builders',
+    h: 'Ship skills, not fine-tunes.',
+    d: 'SkillOpt trains a reusable skill file for your frozen agent. Validated edits, deployable artifact, zero inference-time overhead. +23 points on GPT-5.5 with no model changes.',
+  },
 ];
 
 const TESTIMONIALS = [
@@ -132,45 +97,42 @@ const PRICING = [
   {
     plan: 'Free', price: '$0', per: '/ forever',
     desc: 'Kick the tires. Good for side projects and one-off runs.',
-    features: ['100 credits on signup', '10 credits / month refill', '3 saved prompt families', 'Community support'],
+    features: ['3M tokens on signup', 'Council Optimize · Health Score · Advisory', '3 saved prompt families', 'Community support'],
     cta: 'Start free', href: '/sign-up', featured: false,
   },
   {
     plan: 'Pro', price: '$29', per: '/ month',
     desc: 'For people shipping LLM features at work. Most teams start here.',
-    features: ['1,000 credits / month', 'Unlimited prompt families', 'Domain optimization', 'API access + CLI', 'Priority email support'],
+    features: ['3M tokens / month', 'All engines: PDO · GEPA · SkillOpt · Bridge', 'Unlimited prompt families · API access', 'Version history · Prompt Library', 'Priority email support'],
     cta: 'Go Pro', href: '/sign-up', featured: true,
   },
   {
     plan: 'Team', price: '$99', per: '/ month',
     desc: 'Shared workspaces, roles, and billing. Built for crews of 3–20.',
-    features: ['5,000 credits pooled', 'Up to 10 seats', 'Shared domain knowledge bases', 'SSO + audit log', 'Dedicated Slack channel'],
+    features: ['10M tokens pooled', 'Up to 10 seats', 'Shared domain knowledge bases', 'SSO + audit log', 'Dedicated Slack channel'],
     cta: 'Start team trial', href: '/sign-up', featured: false,
   },
 ];
 
 const FAQS = [
-  { q: 'What\'s the difference between Optimize and Domain?', a: 'Optimize rewrites any prompt using a general-purpose multi-model review — great for any chatbot, assistant, or content prompt. Domain is for when you have a specific knowledge base (a PDF) and want the prompt that performs best against real questions from that document. Domain runs an empirical tournament with your content as the benchmark.' },
+  { q: 'What\'s the difference between Optimize, PDO, and GEPA?', a: 'Optimize is the fastest path — a 4-model council rewrites any prompt in under a minute, no examples needed. PDO (Prompt Duel Optimizer) needs your domain Q&A and runs a 30-round duel tournament; it\'s label-free and ideal when you have examples but no scores. GEPA goes deepest — 678 rollouts of reflective evolution that outperforms RL (GRPO) by 10%+ and uses 35× fewer rollouts. Use Optimize for speed, PDO for empirical validation, GEPA for maximum quality.' },
+  { q: 'What is SkillOpt and how is it different?', a: 'SkillOpt (arXiv 2605.23904, Microsoft) trains a reusable "skill file" — a natural-language system prompt — for a frozen LLM agent. Unlike Optimize which rewrites a one-off prompt, SkillOpt evolves a structured skill document through validated ADD/REPLACE/DELETE edits, producing a deployable artifact that works at zero inference-time overhead. It lifted average accuracy by +23.5 pts on GPT-5.5 across six benchmarks.' },
+  { q: 'What is PromptBridge for?', a: 'PromptBridge adapts prompts across models. If you have prompts fine-tuned for GPT-4 and need them on Claude or Mistral, Bridge learns the structural transfer mapping from calibrated example pairs, then applies it to any new prompt instantly. Reuse the mapping across transfers to save tokens.' },
   { q: 'Does Promptly store my prompts?', a: 'Only the ones you explicitly save to a family. Ad-hoc runs are kept for 7 days for debugging then deleted. Your domain PDFs and Q&A datasets are stored securely and only used to run your optimization — never shared or used for training.' },
-  { q: 'What models does Promptly use?', a: 'A curated mix drawn from frontier providers, benchmarked weekly. We swap in whatever performs best on our eval set. You get the benefit of model diversity without managing multiple API keys.' },
+  { q: 'What models does Promptly use?', a: 'A curated mix drawn from frontier providers, benchmarked weekly. We swap in whatever performs best on our eval set. You get the benefit of model diversity without managing multiple API keys. Council model identities are not exposed to users.' },
   { q: 'Can I use the optimized prompts anywhere?', a: 'Yes. Every result is plain text — copy it into any SDK, API, or product. No lock-in, no runtime dependency on Promptly.' },
-  { q: 'What counts as one optimize run?', a: 'One full run — multi-model review, blind critique, synthesis. That\'s 10 credits. Domain optimization is also 10 credits per tournament run. Health score and advisory are 5 credits each.' },
-  { q: 'Is there a refund policy?', a: "If the optimized prompt doesn't beat your original on our health score, we refund the credits automatically. No ticket required." },
+  { q: 'Is there a refund policy?', a: "If the optimized prompt doesn't beat your original on our health score, we refund the tokens automatically. No ticket required." },
 ];
 
-const INTEGRATIONS = [
-  { g: 'A',  n: 'Anthropic' }, { g: 'O',  n: 'OpenAI' },   { g: 'G',  n: 'Google' },
-  { g: 'M',  n: 'Mistral' },   { g: 'H',  n: 'Hugging Face' }, { g: 'L', n: 'Ollama' },
-  { g: 'Ln', n: 'LangChain' }, { g: 'Ll', n: 'LlamaIndex' }, { g: 'Vc', n: 'Vercel AI' },
-  { g: 'Py', n: 'Python SDK' }, { g: 'Ts', n: 'TypeScript' }, { g: 'cli', n: 'CLI' },
-];
 
 // ─── Style tokens ─────────────────────────────────────────────────────────────
 
-const paper   = '#fafaf7';
 const line    = '#e5e5e1';
 const violet  = '#7c5cff';
 const amber   = '#f59e0b';
+const sky     = '#0ea5e9';
+const rose    = '#f43f5e';
+const emerald = '#10b981';
 const ink     = '#141414';
 const ink2    = '#1e1e22';
 const muted   = '#555';
@@ -196,8 +158,8 @@ export default function LandingPage() {
           {[
             { l: 'Optimize',  href: '#optimize' },
             { l: 'Domain',    href: '#domain' },
+            { l: 'SkillOpt',  href: '#skillopt' },
             { l: 'Pricing',   href: '#pricing' },
-            { l: 'Customers', href: '#customers' },
             { l: 'Docs',      href: '/docs' },
           ].map(({ l, href }) => (
             <a key={l} href={href} style={{ color: '#555', textDecoration: 'none' }}>{l}</a>
@@ -226,7 +188,7 @@ export default function LandingPage() {
               display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ width: 6, height: 6, borderRadius: '50%', background: violet,
                 display: 'inline-block', boxShadow: `0 0 8px ${violet}` }} />
-              Now in public beta · 100 credits free
+              Now in public beta · 3M tokens free
             </div>
 
             <h1 style={{ fontFamily: serif, fontWeight: 400,
@@ -239,9 +201,9 @@ export default function LandingPage() {
 
             <p style={{ fontSize: 17, lineHeight: 1.55, color: '#444',
               maxWidth: 480, margin: '0 0 36px' }}>
-              Two ways to improve prompts: rewrite any prompt with a multi-model review,
-              or run a head-to-head tournament against your own knowledge base to find
-              the empirical winner.
+              Five research-backed engines: council optimization, PDO tournament, GEPA
+              reflective evolution, SkillOpt agent skill training, and cross-model
+              PromptBridge — all in one platform.
             </p>
 
             <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 20 }}>
@@ -260,7 +222,7 @@ export default function LandingPage() {
               </a>
             </div>
             <div style={{ fontFamily: mono, fontSize: 11.5, color: '#999' }}>
-              100 credits free · no card · cancel with a button, not an email
+              3M tokens free · no card · cancel with a button, not an email
             </div>
           </div>
 
@@ -540,6 +502,187 @@ export default function LandingPage() {
           </div>
         </div>
 
+        {/* ══ PDO ══ */}
+        <div id="pdo" style={{ paddingTop: 96, marginTop: 40, borderTop: `1px solid ${line}` }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 60, alignItems: 'end', marginBottom: 56 }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                <div style={{ fontFamily: mono, fontSize: 11, color: '#888', textTransform: 'uppercase', letterSpacing: '0.14em' }}>
+                  PDO · arXiv 2510.13907
+                </div>
+                <span style={{ fontFamily: mono, fontSize: 10, background: `${sky}15`, color: sky, padding: '2px 8px', borderRadius: 999, border: `1px solid ${sky}30` }}>label-free</span>
+              </div>
+              <h2 style={{ fontFamily: serif, fontWeight: 400, fontSize: 'clamp(38px, 5vw, 60px)', letterSpacing: '-0.025em', lineHeight: 1.05, margin: 0, color: ink }}>
+                Ten prompts enter.<br />
+                One <em style={{ fontStyle: 'italic', color: sky }}>wins</em>.
+              </h2>
+            </div>
+            <p style={{ fontSize: 15.5, lineHeight: 1.65, color: muted, maxWidth: 380, margin: 0 }}>
+              Prompt Duel Optimizer runs a head-to-head tournament across 30 rounds of Double Thompson Sampling.
+              Prompts compete on your real Q&A examples, a dual LLM judge picks each winner, and top performers
+              mutate into stronger variants. No labeled scores needed — just your data.
+            </p>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', border: `1px solid ${sky}33`, borderRadius: 14, overflow: 'hidden', background: '#f0f9ff' }}>
+            {[
+              { n: '01', t: 'Upload your examples.', d: 'Provide Q&A pairs from your domain. PDO uses them as the benchmark — no manual labeling or score functions required.' },
+              { n: '02', t: 'The tournament runs.', d: '10 prompt candidates compete in 30 duel rounds. Double Thompson Sampling selects the most informative matchups. Weak prompts are pruned; top performers mutate.' },
+              { n: '03', t: 'The Copeland winner.', d: 'The prompt that won the most head-to-head duels is returned. Consistently beats label-free baselines on BBH and MS-MARCO benchmarks.' },
+            ].map((s, i) => (
+              <div key={i} style={{ padding: '28px 26px 32px', borderRight: i < 2 ? `1px solid ${sky}22` : 'none' }}>
+                <div style={{ fontFamily: mono, fontSize: 11, color: sky, letterSpacing: '0.14em', textTransform: 'uppercase' }}>{s.n}</div>
+                <div style={{ fontFamily: serif, fontSize: 25, letterSpacing: '-0.02em', lineHeight: 1.15, margin: '16px 0 10px', color: ink }}>{s.t}</div>
+                <div style={{ fontSize: 13.5, lineHeight: 1.65, color: muted }}>{s.d}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+            {[
+              { label: 'No labels needed',   desc: 'Tournament comparison replaces absolute scoring — works even when you can\'t write a score function.' },
+              { label: 'D-TS sampling',       desc: 'Double Thompson Sampling maximises informative duels under a fixed judge budget.' },
+              { label: 'Guided mutation',     desc: 'Every 10 rounds, the top 3 Copeland leaders seed new candidates. Weak prompts are pruned.' },
+              { label: 'Live win matrix',     desc: 'Watch duels and win rates update in real time as the tournament progresses.' },
+            ].map((item, i) => (
+              <div key={i} style={{ border: `1px solid ${sky}30`, borderRadius: 12, padding: '20px 20px', background: '#f0f9ff' }}>
+                <div style={{ fontFamily: mono, fontSize: 10.5, fontWeight: 600, color: sky, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>{item.label}</div>
+                <div style={{ fontSize: 12.5, color: muted, lineHeight: 1.55 }}>{item.desc}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 24, display: 'flex', gap: 12 }}>
+            <Link href="/sign-up" style={{ height: 44, padding: '0 20px', borderRadius: 8, background: sky, color: '#fff', textDecoration: 'none', fontWeight: 500, fontSize: 14, display: 'inline-flex', alignItems: 'center', gap: 8, boxShadow: `0 4px 20px ${sky}44` }}>
+              Run a PDO tournament
+            </Link>
+            <Link href="/docs#pdo" style={{ height: 44, padding: '0 20px', borderRadius: 8, border: `1px solid ${line}`, color: ink, textDecoration: 'none', fontSize: 14, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              Read the docs →
+            </Link>
+          </div>
+        </div>
+
+        {/* ══ GEPA ══ */}
+        <div id="gepa" style={{ paddingTop: 96, marginTop: 40, borderTop: `1px solid ${line}` }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 60, alignItems: 'end', marginBottom: 56 }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                <div style={{ fontFamily: mono, fontSize: 11, color: '#888', textTransform: 'uppercase', letterSpacing: '0.14em' }}>
+                  GEPA · arXiv 2507.19457 · ICLR 2026 Oral
+                </div>
+                <span style={{ fontFamily: mono, fontSize: 10, background: `${rose}12`, color: rose, padding: '2px 8px', borderRadius: 999, border: `1px solid ${rose}30` }}>beats RL</span>
+              </div>
+              <h2 style={{ fontFamily: serif, fontWeight: 400, fontSize: 'clamp(38px, 5vw, 60px)', letterSpacing: '-0.025em', lineHeight: 1.05, margin: 0, color: ink }}>
+                Reflective evolution.<br />
+                <em style={{ fontStyle: 'italic', color: rose }}>Maximum</em> quality.
+              </h2>
+            </div>
+            <p style={{ fontSize: 15.5, lineHeight: 1.65, color: muted, maxWidth: 380, margin: 0 }}>
+              GEPA (accepted ICLR 2026 as Oral) maintains a Pareto frontier of prompt candidates and
+              uses a meta-LLM to reflect on execution traces — learning <em>why</em> failures happen, not
+              just that they do. Outperforms GRPO by 10% on average using 35× fewer rollouts.
+            </p>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', border: `1px solid ${rose}22`, borderRadius: 14, overflow: 'hidden', background: '#fff1f2' }}>
+            {[
+              { n: '01', t: 'Split dataset.', d: 'Your examples are split: 50% feedback, 30% Pareto evaluation, 20% held-out test.' },
+              { n: '02', t: 'Pareto sampling.', d: 'Candidates that excel on any single example stay in the frontier. Diversity is preserved across the whole space.' },
+              { n: '03', t: 'Reflective mutation.', d: 'A meta-LLM reads execution traces and ancestry to propose targeted edits — learn from failures, not just scores.' },
+              { n: '04', t: 'Score-gated acceptance.', d: 'A new candidate is accepted only if it strictly beats the parent\'s score on the same minibatch. No regressions.' },
+            ].map((s, i) => (
+              <div key={i} style={{ padding: '24px 22px 28px', borderRight: i < 3 ? `1px solid ${rose}15` : 'none' }}>
+                <div style={{ fontFamily: mono, fontSize: 11, color: rose, letterSpacing: '0.14em', textTransform: 'uppercase' }}>{s.n}</div>
+                <div style={{ fontFamily: serif, fontSize: 21, letterSpacing: '-0.02em', lineHeight: 1.2, margin: '14px 0 8px', color: ink }}>{s.t}</div>
+                <div style={{ fontSize: 12.5, lineHeight: 1.6, color: muted }}>{s.d}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+            {[
+              { label: '+10% over GRPO',      desc: 'Outperforms reinforcement learning on average across four tasks, with up to +20% in the best case.' },
+              { label: '35× fewer rollouts',  desc: 'GEPA reaches the same quality as RL with dramatically less compute — making it practical for real workloads.' },
+              { label: '+10% over MIPROv2',   desc: 'Beats the leading discrete prompt optimizer by over 10% across two frontier LLMs.' },
+            ].map((item, i) => (
+              <div key={i} style={{ border: `1px solid ${rose}22`, borderRadius: 12, padding: '20px 20px', background: '#fff1f2' }}>
+                <div style={{ fontFamily: mono, fontSize: 10.5, fontWeight: 600, color: rose, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>{item.label}</div>
+                <div style={{ fontSize: 12.5, color: muted, lineHeight: 1.55 }}>{item.desc}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 24, display: 'flex', gap: 12 }}>
+            <Link href="/sign-up" style={{ height: 44, padding: '0 20px', borderRadius: 8, background: rose, color: '#fff', textDecoration: 'none', fontWeight: 500, fontSize: 14, display: 'inline-flex', alignItems: 'center', gap: 8, boxShadow: `0 4px 20px ${rose}44` }}>
+              Evolve with GEPA
+            </Link>
+            <Link href="/docs#gepa" style={{ height: 44, padding: '0 20px', borderRadius: 8, border: `1px solid ${line}`, color: ink, textDecoration: 'none', fontSize: 14, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              Read the docs →
+            </Link>
+          </div>
+        </div>
+
+        {/* ══ SKILLOPT ══ */}
+        <div id="skillopt" style={{ paddingTop: 96, marginTop: 40, borderTop: `1px solid ${line}` }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 60, alignItems: 'end', marginBottom: 56 }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                <div style={{ fontFamily: mono, fontSize: 11, color: '#888', textTransform: 'uppercase', letterSpacing: '0.14em' }}>
+                  SkillOpt · arXiv 2605.23904 · Microsoft Research
+                </div>
+                <span style={{ fontFamily: mono, fontSize: 10, background: `${emerald}12`, color: emerald, padding: '2px 8px', borderRadius: 999, border: `1px solid ${emerald}30` }}>agent skills</span>
+              </div>
+              <h2 style={{ fontFamily: serif, fontWeight: 400, fontSize: 'clamp(38px, 5vw, 60px)', letterSpacing: '-0.025em', lineHeight: 1.05, margin: 0, color: ink }}>
+                Train skills.<br />
+                Freeze the <em style={{ fontStyle: 'italic', color: emerald }}>model</em>.
+              </h2>
+            </div>
+            <p style={{ fontSize: 15.5, lineHeight: 1.65, color: muted, maxWidth: 380, margin: 0 }}>
+              SkillOpt evolves the system prompt — the &quot;skill file&quot; — while the target LLM stays frozen.
+              A separate optimizer model issues ADD, REPLACE, and DELETE edits on a single skill document,
+              accepting only changes that strictly improve a held-out validation score. Deploy the artifact.
+              No fine-tuning, no inference overhead.
+            </p>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+            {/* Three-player diagram */}
+            <div style={{ border: `1px solid ${emerald}25`, borderRadius: 14, padding: 26, background: '#f0fdf4' }}>
+              <div style={{ fontFamily: mono, fontSize: 10.5, color: '#888', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 16 }}>Three players</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {[
+                  { tag: 'FROZEN', name: 'Target model', desc: 'Executes tasks. Weights never touched.', color: muted, bg: '#f9f9f9' },
+                  { tag: 'EVOLVES', name: 'Skill file', desc: 'Single .md document — the only thing that changes.', color: emerald, bg: `${emerald}0a` },
+                  { tag: 'OPTIMIZER', name: 'SkillOpt', desc: 'Reads scored rollouts → proposes bounded edits.', color: violet, bg: `${violet}08` },
+                ].map(p => (
+                  <div key={p.tag} style={{ display: 'flex', gap: 12, padding: '10px 14px', borderRadius: 9, background: p.bg, border: `1px solid ${p.color}22` }}>
+                    <div style={{ fontFamily: mono, fontSize: 9, fontWeight: 700, color: p.color, letterSpacing: '.07em', minWidth: 64, paddingTop: 2 }}>{p.tag}</div>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: ink }}>{p.name}</div>
+                      <div style={{ fontSize: 11.5, color: muted, lineHeight: 1.4 }}>{p.desc}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            {/* Results */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {[
+                { metric: '+23.5 pts',   desc: 'accuracy gain on GPT-5.5 direct chat vs. no-skill baseline', color: emerald },
+                { metric: '+24.8 pts',   desc: 'accuracy gain inside the Codex agentic loop', color: emerald },
+                { metric: '+19.1 pts',   desc: 'accuracy gain running inside Claude Code harness', color: emerald },
+                { metric: '52 / 52',     desc: 'best or tied on every (model × benchmark × harness) cell evaluated', color: violet },
+              ].map((r, i) => (
+                <div key={i} style={{ border: `1px solid ${line}`, borderRadius: 12, padding: '16px 20px', display: 'flex', gap: 16, alignItems: 'center' }}>
+                  <div style={{ fontFamily: serif, fontSize: 30, letterSpacing: '-0.03em', color: r.color, flexShrink: 0, lineHeight: 1 }}>{r.metric}</div>
+                  <div style={{ fontSize: 12.5, color: muted, lineHeight: 1.4 }}>{r.desc}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 12 }}>
+            <Link href="/sign-up" style={{ height: 44, padding: '0 20px', borderRadius: 8, background: emerald, color: '#fff', textDecoration: 'none', fontWeight: 500, fontSize: 14, display: 'inline-flex', alignItems: 'center', gap: 8, boxShadow: `0 4px 20px ${emerald}44` }}>
+              Train your first skill
+            </Link>
+            <Link href="/docs#skillopt" style={{ height: 44, padding: '0 20px', borderRadius: 8, border: `1px solid ${line}`, color: ink, textDecoration: 'none', fontSize: 14, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              Read the docs →
+            </Link>
+          </div>
+        </div>
+
         {/* ── Who it's for ── */}
         <div id="product" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr',
           gap: 60, alignItems: 'end', marginBottom: 48, paddingTop: 96,
@@ -561,7 +704,7 @@ export default function LandingPage() {
             models, users, and versions — Promptly is for you.
           </p>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
           {AUDIENCE.map((a, i) => (
             <div key={i} style={{ border: `1px solid ${line}`,
               borderRadius: 14, padding: 26, background: '#fff' }}>
@@ -635,46 +778,6 @@ export default function LandingPage() {
           ))}
         </div>
 
-        {/* ── Integrations ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr',
-          gap: 60, alignItems: 'end', marginBottom: 48, paddingTop: 96,
-          marginTop: 40, borderTop: `1px solid ${line}` }}>
-          <div>
-            <div style={{ fontFamily: mono, fontSize: 11, color: '#888',
-              textTransform: 'uppercase', letterSpacing: '0.14em', marginBottom: 12 }}>
-              Works with
-            </div>
-            <h2 style={{ fontFamily: serif, fontWeight: 400,
-              fontSize: 'clamp(38px, 5vw, 60px)',
-              letterSpacing: '-0.025em', lineHeight: 1.05, margin: 0, color: ink }}>
-              Every model,<br />
-              every stack.
-            </h2>
-          </div>
-          <p style={{ fontSize: 15.5, lineHeight: 1.65, color: muted, maxWidth: 360, margin: 0 }}>
-            Optimized prompts are plain text — copy them into any SDK, API, or product.
-            No lock-in, no runtime dependency on Promptly.
-          </p>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)',
-          gap: 1, background: line, border: `1px solid ${line}`,
-          borderRadius: 14, overflow: 'hidden' }}>
-          {INTEGRATIONS.map((item, i) => (
-            <div key={i} style={{ background: '#fff', padding: '28px 18px',
-              display: 'flex', flexDirection: 'column', alignItems: 'center',
-              justifyContent: 'center', gap: 10, fontSize: 12.5,
-              color: muted, textAlign: 'center' }}>
-              <div style={{ width: 28, height: 28, borderRadius: 7,
-                background: 'linear-gradient(135deg, #1a1a1a, #444)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color: '#fff', fontFamily: mono, fontSize: 11, fontWeight: 600 }}>
-                {item.g}
-              </div>
-              <span>{item.n}</span>
-            </div>
-          ))}
-        </div>
-
         {/* ── Pricing ── */}
         <div id="pricing" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr',
           gap: 60, alignItems: 'end', marginBottom: 48, paddingTop: 96,
@@ -692,8 +795,8 @@ export default function LandingPage() {
             </h2>
           </div>
           <p style={{ fontSize: 15.5, lineHeight: 1.65, color: muted, maxWidth: 360, margin: 0 }}>
-            Credits, not seats. Optimize is 10 credits. Domain tournament is 10 credits.
-            Health score is 5. Unused credits roll over for 90 days.
+            Tokens, not seats. You&apos;re billed for actual LLM usage — a fast Optimize run
+            costs ~15K tokens; a full GEPA evolution up to 1M. Unused tokens roll over for 90 days.
           </p>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
@@ -832,7 +935,7 @@ export default function LandingPage() {
           </h2>
           <p style={{ color: '#8a8a90', fontSize: 16, lineHeight: 1.65,
             margin: '0 0 36px', maxWidth: 480, marginLeft: 'auto', marginRight: 'auto' }}>
-            100 credits free. No card required. Start with any prompt you already
+            3M tokens free. No card required. Start with any prompt you already
             have — or upload a PDF and let your own data decide which prompt wins.
           </p>
           <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>

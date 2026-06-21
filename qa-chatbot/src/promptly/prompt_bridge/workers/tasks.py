@@ -71,6 +71,7 @@ def run_prompt_transfer(
             set_pb_job_result,
             set_pb_job_status,
         )
+        from promptly.prompt_bridge.workers._token_tracker import TokenAccumulator
 
         setup_worker_logging(debug=get_app_settings().DEBUG)
         structlog.contextvars.clear_contextvars()
@@ -89,6 +90,8 @@ def run_prompt_transfer(
 
         llm_cfg = get_llm_settings()
         api_key = llm_cfg.OPENROUTER_API_KEY.get_secret_value()
+
+        tracker = TokenAccumulator()
 
         try:
             async with AsyncSessionLocal() as db:
@@ -128,6 +131,7 @@ def run_prompt_transfer(
                     n_pairs = mapping.pair_count
 
                 adapter_llm = build_pb_adapter_llm(api_key)
+                adapter_llm.callbacks = [tracker]
                 adapted = await adapt_prompt(
                     source_prompt=source_prompt,
                     source_model=source_model,
@@ -151,6 +155,16 @@ def run_prompt_transfer(
                 reflection_llm = build_pb_reflection_llm(api_key)
                 extractor_llm = build_pb_extractor_llm(api_key)
                 adapter_llm = build_pb_adapter_llm(api_key)
+                for _llm in (
+                    task_llm,
+                    source_target_llm,
+                    target_llm,
+                    eval_llm,
+                    reflection_llm,
+                    extractor_llm,
+                    adapter_llm,
+                ):
+                    _llm.callbacks = [tracker]
 
                 # Calibrate source model
                 async def _source_progress(step: int, total: int, score: float) -> None:
@@ -268,6 +282,7 @@ def run_prompt_transfer(
                     TransferJobStatus.completed,
                     adapted_prompt=adapted,
                     mapping_id=mapping_id,
+                    token_count=tracker.total_tokens or None,
                 )
                 # Update mapping_text if we accumulated new pairs on reuse path
                 if existing_mapping_id is not None and mapping_id is not None:
@@ -291,6 +306,15 @@ def run_prompt_transfer(
             await set_pb_job_result(job_id, result_data)
             await set_pb_job_status(job_id, "completed")
             await set_pb_job_progress(job_id, {"stage": "completed"})
+
+            # Deduct actual tokens consumed by this bridge run.
+            if tracker.total_tokens:
+                from promptly.db.session import AsyncSessionLocal
+                from promptly.repositories.user_repo import UserRepository as _TokRepo
+
+                async with AsyncSessionLocal() as tok_db:
+                    await _TokRepo(tok_db).deduct_tokens(UUID(user_id), tracker.total_tokens)
+                    await tok_db.commit()
 
         except Exception as exc:
             import re

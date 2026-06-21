@@ -15,7 +15,12 @@ from promptly.schemas.health import HealthResponse, ReadinessResponse
 router = APIRouter(tags=["health"])
 
 
-@router.get("/health", response_model=SuccessResponse[HealthResponse])
+@router.get(
+    "/health",
+    response_model=SuccessResponse[HealthResponse],
+    summary="Health check",
+    description="Return the application health status. Used by load-balancer liveness probes.",
+)
 async def health() -> SuccessResponse[HealthResponse]:
     return SuccessResponse(data=HealthResponse(status="ok", version=get_app_settings().APP_VERSION))
 
@@ -31,7 +36,12 @@ async def _check_supabase() -> str:
     return "ok" if resp.status_code == 200 else f"error: HTTP {resp.status_code}"
 
 
-@router.get("/ready", response_model=SuccessResponse[ReadinessResponse])
+@router.get(
+    "/ready",
+    response_model=SuccessResponse[ReadinessResponse],
+    summary="Readiness check",
+    description="Verify that the API is fully initialised and all critical dependencies (database, Redis) are reachable. Used by readiness probes before routing traffic.",  # noqa: E501
+)
 async def readiness(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> SuccessResponse[ReadinessResponse]:

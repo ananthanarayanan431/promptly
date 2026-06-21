@@ -171,3 +171,30 @@ async def get_dp_domain_active_job(domain_id: str) -> str | None:
 async def clear_dp_domain_active_job(domain_id: str) -> None:
     redis = await get_redis_client()
     await redis.delete(f"{_DOMAIN_ACTIVE_JOB_PREFIX}{domain_id}:active_job_id")
+
+
+# ── GEPA live state ───────────────────────────────────────────────────────────
+
+_GEPA_PREFIX = "domain_prompt:gepa:"
+
+
+async def set_dp_gepa_state(domain_id: str, state: dict[str, Any]) -> None:
+    redis = await get_redis_client()
+    await redis.set(
+        f"{_GEPA_PREFIX}{domain_id}",
+        json.dumps(state),
+        ex=3600,
+    )
+
+
+async def get_dp_gepa_state(domain_id: str) -> dict[str, Any] | None:
+    redis = await get_redis_client()
+    raw: str | None = await redis.get(f"{_GEPA_PREFIX}{domain_id}")
+    if raw is None:
+        return None
+    return dict(json.loads(raw))
+
+
+async def clear_dp_gepa_state(domain_id: str) -> None:
+    redis = await get_redis_client()
+    await redis.delete(f"{_GEPA_PREFIX}{domain_id}")

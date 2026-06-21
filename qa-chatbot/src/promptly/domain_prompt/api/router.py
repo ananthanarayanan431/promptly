@@ -7,7 +7,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from promptly.api.types.response import SuccessResponse
+from promptly.api.types.response import SuccessResponse, error_responses
 from promptly.config.env import get_minio_settings
 from promptly.core.rate_limit import RateLimiter
 from promptly.core.user_context import UserContext
@@ -90,6 +90,9 @@ def _to_response(domain: DomainPrompt) -> DomainPromptResponse:
     "/",
     response_model=SuccessResponse[DomainListResponse],
     dependencies=[Depends(_read_limiter)],
+    summary="List domain projects",
+    description="Return all domain-prompt projects owned by the current user.",
+    responses=error_responses(401, 429, 500),
 )
 async def list_domains(
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -106,6 +109,9 @@ async def list_domains(
     response_model=SuccessResponse[CreateDomainJobResponse],
     status_code=status.HTTP_202_ACCEPTED,
     dependencies=[Depends(_write_limiter)],
+    summary="Create domain project",
+    description="Upload a PDF to create a knowledge base. The PDF is parsed and a Q&A dataset is generated asynchronously. Costs tokens.",  # noqa: E501
+    responses=error_responses(401, 402, 422, 429, 500),
 )
 async def create_domain(
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -120,11 +126,11 @@ async def create_domain(
     The PDF is stored in MinIO and a Q&A dataset is generated from it.
     No prompt is needed here — submit prompts via POST /{domain_id}/optimize.
 
-    Cost: 10 credits, deducted immediately.
+    Cost: billed post-completion by actual token usage.
     Returns HTTP 202 with a job_id to poll for progress.
     """
-    if current_user.credits < 10:
-        log.warning("insufficient_credits", required=10, available=current_user.credits)
+    user_repo = UserRepository(db)
+    if not await user_repo.has_min_tokens(current_user.user_id):
         raise DomainInsufficientCreditsException()
 
     if not file.filename or not file.filename.lower().endswith(".pdf"):
@@ -136,11 +142,6 @@ async def create_domain(
         raise InvalidPDFException(detail="PDF file exceeds the 100 MB size limit.")
     if not pdf_bytes.startswith(b"%PDF"):
         raise InvalidPDFException(detail="Uploaded file does not appear to be a valid PDF.")
-
-    user_repo = UserRepository(db)
-    deducted = await user_repo.deduct_credits(current_user.user_id, 10)
-    if not deducted:
-        raise DomainInsufficientCreditsException()
 
     domain_repo = DomainPromptRepository(db)
     domain = await domain_repo.create(
@@ -190,6 +191,9 @@ async def create_domain(
     "/jobs/{job_id}",
     response_model=SuccessResponse[DomainJobPollResponse],
     dependencies=[Depends(_read_limiter)],
+    summary="Poll domain job",
+    description="Poll for the status of a dataset-building or optimization job.",
+    responses=error_responses(401, 404, 429, 500),
 )
 async def poll_domain_job(
     job_id: str,
@@ -233,6 +237,9 @@ async def poll_domain_job(
     "/{domain_id}",
     response_model=SuccessResponse[DomainPromptResponse],
     dependencies=[Depends(_read_limiter)],
+    summary="Get domain project",
+    description="Return metadata and dataset info for a single domain project.",
+    responses=error_responses(401, 404, 429, 500),
 )
 async def get_domain(
     domain_id: uuid.UUID,
@@ -251,6 +258,9 @@ async def get_domain(
     "/{domain_id}/dataset",
     response_model=SuccessResponse[DatasetRowsResponse],
     dependencies=[Depends(_read_limiter)],
+    summary="Get dataset",
+    description="Return the Q&A rows in this domain's knowledge base.",
+    responses=error_responses(401, 404, 429, 500),
 )
 async def get_dataset_rows(
     domain_id: uuid.UUID,
@@ -289,6 +299,9 @@ async def get_dataset_rows(
     "/{domain_id}/dataset",
     response_model=SuccessResponse[DatasetRowsResponse],
     dependencies=[Depends(_write_limiter)],
+    summary="Update dataset",
+    description="Replace the Q&A rows in this domain's knowledge base.",
+    responses=error_responses(401, 404, 422, 429, 500),
 )
 async def update_dataset_rows(
     domain_id: uuid.UUID,
@@ -326,6 +339,9 @@ async def update_dataset_rows(
     response_model=SuccessResponse[CreateDomainJobResponse],
     status_code=status.HTTP_202_ACCEPTED,
     dependencies=[Depends(_write_limiter)],
+    summary="Augment dataset",
+    description="Generate additional Q&A pairs for the domain's knowledge base using LLM.",
+    responses=error_responses(401, 404, 429, 500),
 )
 async def augment_dataset(
     domain_id: uuid.UUID,
@@ -362,6 +378,9 @@ async def augment_dataset(
     "/{domain_id}/tournament-state",
     response_model=SuccessResponse[TournamentStateResponse],
     dependencies=[Depends(_read_limiter)],
+    summary="Get tournament state",
+    description="Return the live PDO tournament state for a running optimization.",
+    responses=error_responses(401, 404, 429, 500),
 )
 async def get_tournament_state(
     domain_id: uuid.UUID,
@@ -386,6 +405,9 @@ async def get_tournament_state(
     response_model=SuccessResponse[CreateDomainJobResponse],
     status_code=status.HTTP_202_ACCEPTED,
     dependencies=[Depends(_write_limiter)],
+    summary="Start optimization",
+    description="Start a PDO or GEPA optimization run against this domain's knowledge base. Costs tokens based on effort tier.",  # noqa: E501
+    responses=error_responses(401, 402, 404, 409, 429, 500),
 )
 async def reoptimize_domain(
     domain_id: uuid.UUID,
@@ -411,18 +433,13 @@ async def reoptimize_domain(
     if domain.dataset is None or domain.dataset.dataset_key is None:
         raise DomainNotReadyException()
 
-    if current_user.credits < 10:
-        log.warning("insufficient_credits", required=10, available=current_user.credits)
-        raise DomainInsufficientCreditsException()
-
     user_repo = UserRepository(db)
-    deducted = await user_repo.deduct_credits(current_user.user_id, 10)
-    if not deducted:
+    if not await user_repo.has_min_tokens(current_user.user_id):
         raise DomainInsufficientCreditsException()
 
     await repo.set_status(domain, DomainPromptStatus.optimizing, last_prompt=body.prompt.strip())
     usage_repo = UsageEventRepository(db)
-    await usage_repo.log(user_id=current_user.user_id, action="domain_pdo", credits_spent=10)
+    await usage_repo.log(user_id=current_user.user_id, action="domain_pdo", credits_spent=0)
     await db.commit()
 
     job_id = str(uuid.uuid4())
@@ -446,6 +463,9 @@ async def reoptimize_domain(
     "/{domain_id}/runs",
     response_model=SuccessResponse[RunListResponse],
     dependencies=[Depends(_read_limiter)],
+    summary="List domain runs",
+    description="Return all past optimization runs for a specific domain project.",
+    responses=error_responses(401, 404, 429, 500),
 )
 async def list_domain_runs(
     domain_id: uuid.UUID,
@@ -469,6 +489,9 @@ async def list_domain_runs(
     "/{domain_id}/stop",
     response_model=SuccessResponse[DomainPromptResponse],
     dependencies=[Depends(_write_limiter)],
+    summary="Force-stop optimization",
+    description="Force-stop a stuck or running optimization job.",
+    responses=error_responses(401, 404, 429, 500),
 )
 async def stop_domain_tournament(
     domain_id: uuid.UUID,
@@ -517,11 +540,10 @@ async def _do_cancel(
     *,
     job_id: str,
     domain: DomainPrompt,
-    user_id: uuid.UUID,
     repo: DomainPromptRepository,
     db: AsyncSession,
 ) -> None:
-    """Shared cancel logic: revoke Celery task, signal worker, update DB, refund credits."""
+    """Shared cancel logic: revoke Celery task, signal worker, update DB."""
     from promptly.workers.celery_app import celery_app as _celery_app
 
     celery_task_id = await get_dp_celery_task_id(job_id)
@@ -537,13 +559,6 @@ async def _do_cancel(
     await clear_dp_domain_active_job(str(domain.id))
     await clear_dp_tournament_state(str(domain.id))
 
-    cancellable_statuses = (
-        DomainPromptStatus.pending,
-        DomainPromptStatus.preparing_dataset,
-        DomainPromptStatus.optimizing,
-    )
-    refund = 10 if domain.status in cancellable_statuses else 0
-
     # Cancelling a *run* must not kill the *domain*: if the Q&A dataset already exists the
     # domain stays usable (-> completed / "Ready") so the user can run PDO again. Only a
     # cancel during dataset preparation (no dataset yet) leaves the domain cancelled.
@@ -555,10 +570,6 @@ async def _do_cancel(
             domain, DomainPromptStatus.cancelled, error_message="Cancelled by user."
         )
 
-    if refund:
-        user_repo = UserRepository(db)
-        await user_repo.refund_credits(user_id, refund)
-
     await db.commit()
 
 
@@ -566,6 +577,9 @@ async def _do_cancel(
     "/jobs/{job_id}/cancel",
     response_model=SuccessResponse[CancelDomainJobResponse],
     dependencies=[Depends(_write_limiter)],
+    summary="Cancel job",
+    description="Cancel a queued or running domain job and refund the reserved tokens.",
+    responses=error_responses(401, 404, 409, 429, 500),
 )
 async def cancel_domain_job(
     job_id: str,
@@ -597,7 +611,7 @@ async def cancel_domain_job(
     if domain is None:
         raise DomainNotFoundException()
 
-    await _do_cancel(job_id=job_id, domain=domain, user_id=current_user.user_id, repo=repo, db=db)
+    await _do_cancel(job_id=job_id, domain=domain, repo=repo, db=db)
     log.info("domain_job_cancelled", job_id=job_id, domain_id=domain_id_str)
 
     return SuccessResponse(
@@ -609,6 +623,9 @@ async def cancel_domain_job(
     "/{domain_id}/cancel",
     response_model=SuccessResponse[CancelDomainJobResponse],
     dependencies=[Depends(_write_limiter)],
+    summary="Cancel active domain job",
+    description="Cancel the currently active job for a domain project.",
+    responses=error_responses(401, 404, 429, 500),
 )
 async def cancel_domain_by_id(
     domain_id: uuid.UUID,
@@ -642,7 +659,6 @@ async def cancel_domain_by_id(
         await _do_cancel(
             job_id=active_job_id,
             domain=domain,
-            user_id=current_user.user_id,
             repo=repo,
             db=db,
         )
@@ -656,11 +672,7 @@ async def cancel_domain_by_id(
     # Redis expired — worker either crashed or finished long ago; force-stop DB state.
     has_dataset = domain.dataset is not None and domain.dataset.dataset_key is not None
     fallback_status = DomainPromptStatus.completed if has_dataset else DomainPromptStatus.cancelled
-    refund = 10 if domain.status in cancellable_statuses else 0
     await repo.set_status(domain, fallback_status, error_message="Force-stopped by user.")
-    if refund:
-        user_repo = UserRepository(db)
-        await user_repo.refund_credits(current_user.user_id, refund)
     await db.commit()
     log.warning(
         "domain_force_stopped_no_redis", domain_id=str(domain_id), fallback=fallback_status.value
@@ -674,6 +686,9 @@ async def cancel_domain_by_id(
     "/{domain_id}",
     response_model=SuccessResponse[DeleteDomainResponse],
     dependencies=[Depends(_write_limiter)],
+    summary="Delete domain project",
+    description="Permanently delete a domain project, its dataset, and all optimization runs.",
+    responses=error_responses(401, 404, 429, 500),
 )
 async def delete_domain(
     domain_id: uuid.UUID,

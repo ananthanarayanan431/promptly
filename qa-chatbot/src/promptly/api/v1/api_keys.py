@@ -7,7 +7,7 @@ from fastapi import status as http_status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from promptly.api.types.response import SuccessResponse
+from promptly.api.types.response import SuccessResponse, error_responses
 from promptly.api.v1.exceptions.api_keys import (
     ApiKeyAlreadyRevokedException,
     ApiKeyNameConflictException,
@@ -43,6 +43,9 @@ _default_limiter = RateLimiter(requests=60, window_seconds=60)
     response_model=SuccessResponse[ApiKeyCreatedResponse],
     status_code=http_status.HTTP_201_CREATED,
     dependencies=[Depends(_default_limiter)],
+    summary="Create API key",
+    description="Generate a new `qac_`-prefixed API key. The raw key is returned exactly once and never stored — copy it immediately.",  # noqa: E501
+    responses=error_responses(401, 409, 429, 500),
 )
 async def create_api_key(
     request: ApiKeyCreateRequest,
@@ -89,6 +92,9 @@ async def create_api_key(
     "",
     response_model=SuccessResponse[PaginatedApiKeyListResponse],
     dependencies=[Depends(_default_limiter)],
+    summary="List API keys",
+    description="Return a paginated list of API keys for the current user, optionally filtered by status.",  # noqa: E501
+    responses=error_responses(401, 429, 500),
 )
 async def list_api_keys(
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -125,6 +131,9 @@ async def list_api_keys(
     "/{key_id}",
     response_model=SuccessResponse[ApiKeyResponse],
     dependencies=[Depends(_default_limiter)],
+    summary="Get API key",
+    description="Fetch details for a single API key by ID.",
+    responses=error_responses(401, 404, 429, 500),
 )
 async def get_api_key(
     key_id: uuid.UUID,
@@ -146,6 +155,9 @@ async def get_api_key(
     "/{key_id}",
     response_model=SuccessResponse[ApiKeyResponse],
     dependencies=[Depends(_default_limiter)],
+    summary="Revoke API key",
+    description="Permanently revoke an API key. Revoked keys are rejected on all subsequent requests.",  # noqa: E501
+    responses=error_responses(401, 404, 409, 429, 500),
 )
 async def revoke_api_key(
     key_id: uuid.UUID,

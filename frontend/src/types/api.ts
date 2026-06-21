@@ -2,6 +2,9 @@ export interface User {
   id: string;
   email: string;
   credits: number;
+  token_balance: number;
+  is_admin: boolean;
+  data_sharing_enabled: boolean;
   created_at: string;
 }
 
@@ -179,7 +182,7 @@ export interface HealthScoreResponse {
 
 // --- Dashboard Stats ---
 
-export interface DailyActivity {
+export interface ActivityPoint {
   date: string; // YYYY-MM-DD
   count: number;
 }
@@ -221,7 +224,6 @@ export interface DashboardStats {
   estimated_cost_usd: number;
   versions_saved: number;
   total_versions: number;
-  credits_remaining: number;
   // Per-action usage (all-time + current month)
   usage: UsageStats;
   // Engagement signals
@@ -229,7 +231,7 @@ export interface DashboardStats {
   last_optimized_at: string | null; // ISO datetime
   top_model: string | null;
   // Chart data
-  daily_activity: DailyActivity[];
+  daily_activity: ActivityPoint[];
   model_breakdown: ModelStats[];
   quality_trend: QualityTrendPoint[];
 }
@@ -254,6 +256,16 @@ export interface SessionSummary {
   title: string | null;
   created_at: string;
   updated_at: string;
+  token_count?: number | null;
+  feedback_count?: number;
+  prompt_input?: string | null;
+  optimized_prompt?: string | null;
+  reasoning?: {
+    summary: string;
+    changes: { kind: string; title: string; detail: string }[];
+    kept: string[];
+  } | null;
+  council_models?: string[];
 }
 
 export interface SessionsGrouped {
@@ -428,4 +440,306 @@ export interface ApiKeyResponse {
 
 export interface ApiKeyCreatedResponse extends ApiKeyResponse {
   key: string; // shown only once
+}
+
+export interface TransferJobSummary {
+  id: string;
+  source_model: string;
+  target_model: string;
+  status: string;
+  reused_mapping: boolean;
+  credits_charged: number;
+  source_prompt: string;
+  adapted_prompt: string | null;
+  error_message: string | null;
+  created_at: string;
+  redis_job_id: string | null;
+  token_count?: number | null;
+  mapping_text?: string | null;
+}
+
+export interface TransferJobListResponse {
+  jobs: TransferJobSummary[];
+}
+
+// ── Admin ─────────────────────────────────────────────────────────────────
+
+export interface UserActivitySession {
+  id: string;
+  title: string | null;
+  message_count: number;
+  token_count: number;
+  created_at: string;
+}
+
+export interface UserActivity {
+  email: string;
+  session_count: number;
+  total_tokens_consumed: number;
+  first_seen: string;
+  feature_counts: Record<string, number>;
+  sessions: UserActivitySession[];
+}
+
+export interface AdminUserItem {
+  id: string;
+  email: string;
+  full_name: string | null;
+  avatar_url: string | null;
+  credits: number;
+  token_balance: number;
+  is_active: boolean;
+  is_admin: boolean;
+  data_sharing_enabled: boolean;
+  session_count: number;
+  last_session_at: string | null;
+  api_key_count: number;
+  total_tokens_consumed: number;
+  last_login_at: string | null;
+  created_at: string;
+}
+
+export interface AdminUserList {
+  page: number;
+  per_page: number;
+  total: number;
+  users: AdminUserItem[];
+}
+
+export interface AdminUserPatch {
+  is_active?: boolean;
+  is_admin?: boolean;
+  credits_delta?: number;
+}
+
+export interface DailyActivity { date: string; calls: number; tokens: number; }
+export interface FeatureUsage { feature: string; calls: number; label: string; }
+export interface TopUser { email: string; tokens_consumed: number; token_balance: number; calls: number; }
+
+export interface AdminStats {
+  total_users: number;
+  new_users_7d: number;
+  new_users_30d: number;
+  active_users_7d: number;
+  total_optimizations: number;
+  total_tokens_consumed: number;
+  total_token_budget: number;
+  avg_tokens_per_user: number;
+  token_budget_used_pct: number;
+  feature_usage: FeatureUsage[];
+  daily_activity: DailyActivity[];
+  top_users: TopUser[];
+}
+
+export interface RateLimitEntry {
+  user_id: string;
+  route: string;
+  hit_count: number;
+}
+
+export interface RateLimitList {
+  entries: RateLimitEntry[];
+}
+
+export interface GlitchTipIssue {
+  id: string;
+  title: string;
+  occurrences: number;
+  status: string;
+  first_seen: string;
+  last_seen: string;
+}
+
+export interface GlitchTipIssueList {
+  issues: GlitchTipIssue[];
+}
+
+export interface AdminUserPrompt {
+  session_id: string;
+  original_prompt: string | null;
+  optimized_prompt: string | null;
+  tokens_used: number;
+  created_at: string;
+}
+
+export interface AdminUserPromptList {
+  user_id: string;
+  data_sharing_enabled: boolean;
+  page: number;
+  per_page: number;
+  total: number;
+  prompts: AdminUserPrompt[];
+}
+
+export interface OpenRouterKeyData {
+  label: string;
+  spend: { daily: number; weekly: number; monthly: number; all_time: number };
+  limit: number | null;
+  limit_remaining: number | null;
+  is_free_tier: boolean;
+}
+
+export interface OpenRouterModelSpend {
+  model: string;
+  total_tokens: number;
+  total_cost_usd: number;
+}
+
+export interface OpenRouterStats {
+  key: OpenRouterKeyData;
+  top_models: OpenRouterModelSpend[];
+}
+
+export interface DailySpend {
+  date: string;         // YYYY-MM-DD
+  sessions: number;
+  total_tokens: number;
+  total_cost_usd: number;
+}
+
+export interface ModelSpendItem {
+  model: string;
+  total_tokens: number;
+  total_cost_usd: number;
+}
+
+export interface AdminOpenRouterInfo {
+  label: string;
+  is_free_tier: boolean;
+  all_time_spend: number;
+  monthly_spend: number;
+  weekly_spend: number;
+  daily_spend_today: number;
+  limit: number | null;
+  limit_remaining: number | null;
+  daily_history: DailySpend[];  // 30 entries, oldest → newest
+  top_models: ModelSpendItem[];
+}
+
+// ── System Health ─────────────────────────────────────────────────────────────
+
+export interface RedisHealth {
+  status: string;
+  used_memory_human: string;
+  connected_clients: number;
+  total_keys: number;
+}
+
+export interface DatabaseHealth {
+  status: string;
+  response_time_ms: number;
+}
+
+export interface WorkerHealth {
+  status: string;
+  active_count: number;
+  worker_names: string[];
+}
+
+export interface QueueHealth {
+  pending_chat: number;
+  active_chat: number;
+  pending_domain: number;
+  active_domain: number;
+}
+
+export interface SystemHealth {
+  redis: RedisHealth;
+  database: DatabaseHealth;
+  workers: WorkerHealth;
+  queue: QueueHealth;
+  checked_at: string;
+}
+
+// ── User Activity ─────────────────────────────────────────────────────────────
+
+export interface UserActivitySession {
+  id: string;
+  title: string | null;
+  created_at: string;
+  token_count: number;
+  message_count: number;
+}
+
+export interface UserActivity {
+  user_id: string;
+  email: string;
+  sessions: UserActivitySession[];
+  feature_counts: Record<string, number>;
+  total_tokens_consumed: number;
+  session_count: number;
+  first_seen: string;
+  last_seen: string | null;
+}
+
+// ── Rate Limit Reset ──────────────────────────────────────────────────────────
+
+export interface RateLimitResetResult {
+  deleted: boolean;
+  key: string;
+}
+
+// ── Admin API Keys ────────────────────────────────────────────────────────────
+
+export interface AdminApiKeyItem {
+  id: string;
+  name: string;
+  user_id: string;
+  user_email: string;
+  is_active: boolean;
+  created_at: string;
+  revoked_at: string | null;
+}
+
+export interface AdminApiKeyList {
+  page: number;
+  per_page: number;
+  total: number;
+  keys: AdminApiKeyItem[];
+}
+
+// ── Audit Log ─────────────────────────────────────────────────────────────────
+
+export interface AuditLogEntry {
+  id: string;
+  admin_email: string;
+  action: string;
+  target_email: string | null;
+  details: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface AuditLogList {
+  page: number;
+  per_page: number;
+  total: number;
+  entries: AuditLogEntry[];
+}
+
+// ── Jobs Monitor ──────────────────────────────────────────────────────────────
+
+export interface JobEntry {
+  job_id: string;
+  type: string;
+  status: string;
+  user_id: string | null;
+}
+
+export interface JobsSummary {
+  queued: number;
+  running: number;
+  completed: number;
+  failed: number;
+}
+
+export interface JobsMonitor {
+  jobs: JobEntry[];
+  summary: JobsSummary;
+}
+
+// ── Bulk Token Grant ──────────────────────────────────────────────────────────
+
+export interface BulkTokenResult {
+  updated: number;
+  amount: number;
 }

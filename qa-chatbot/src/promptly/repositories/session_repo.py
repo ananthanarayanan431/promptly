@@ -17,15 +17,20 @@ class SessionRepository(BaseRepository[ChatSession]):
         return result.scalar_one_or_none()
 
     async def get_by_user_id(
-        self, user_id: UUID, *, limit: int = 20, offset: int = 0
+        self, user_id: UUID, *, limit: int = 20, offset: int = 0, with_messages: bool = False
     ) -> list[ChatSession]:
-        result = await self.db.execute(
+        q = (
             select(ChatSession)
             .where(ChatSession.user_id == user_id)
             .order_by(ChatSession.created_at.desc())
             .limit(limit)
             .offset(offset)
         )
+        if with_messages:
+            from sqlalchemy.orm import selectinload
+
+            q = q.options(selectinload(ChatSession.messages))
+        result = await self.db.execute(q)
         return list(result.scalars().all())
 
     async def get_with_messages(self, session_id: UUID) -> ChatSession | None:

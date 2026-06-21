@@ -59,6 +59,7 @@ class TransferJob(Base, UUIDMixin, TimestampMixin):
     )
     reused_mapping: Mapped[bool] = mapped_column(default=False, nullable=False)
     credits_charged: Mapped[int] = mapped_column(Integer, default=5, nullable=False)
+    token_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     redis_job_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
 

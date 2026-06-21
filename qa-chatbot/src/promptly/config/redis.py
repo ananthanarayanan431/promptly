@@ -12,7 +12,7 @@ class RedisSettings(BaseSettings):
         extra="ignore",
     )
     REDIS_URL: RedisDsn = "redis://localhost:6379/0"  # type: ignore
-    REDIS_TTL_SECONDS: int = 3600
+    REDIS_TTL_SECONDS: int = 86400  # 24 h — jobs survive a server restart within the same day
 
 
 @lru_cache

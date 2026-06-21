@@ -87,9 +87,63 @@ export interface OptimizationRun {
   dataset_size: number | null;
   status: string;
   error_message: string | null;
+  algorithm?: string;
+  total_tokens?: number | null;
   created_at: string;
 }
 
 export interface RunListResponse {
   runs: OptimizationRun[];
+}
+
+/* ── GEPA live state types ───────────────────────────────────────── */
+
+export interface GepaTraceItem {
+  input: string;
+  output: string;
+  score: number;
+  feedback: string;
+}
+
+export interface GepaCandidate {
+  id: string;
+  score: number;
+  desc: string;
+  delta: string | null;
+  star: boolean;
+  cells: number[];
+}
+
+export interface GepaPending {
+  parent: string;
+  fail: boolean;
+}
+
+export interface GepaCurrentIter {
+  parent: string;
+  cur_prompt: string;
+  ancestor: string;
+  traces: GepaTraceItem[];
+  minibatch_inputs?: string[];
+  reasoning: string[];
+  new_prompt: string;
+  sigma: number;
+  sigma_p: number | null;
+  accept: boolean | null;
+}
+
+export interface GepaState {
+  phase: string;
+  step: string | null;
+  done_steps: string[];
+  iter_idx: number;
+  sub: string | null;
+  pool: GepaCandidate[];
+  pending: GepaPending | null;
+  budget_used: number;
+  full_pct: number;
+  baseline: number | null;
+  current_iter: GepaCurrentIter | null;
+  budget_max?: number;
+  n_pareto_size?: number;
 }

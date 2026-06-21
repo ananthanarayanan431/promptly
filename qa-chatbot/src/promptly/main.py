@@ -2,7 +2,8 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 import sentry_sdk
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sentry_sdk.integrations.celery import CeleryIntegration
@@ -99,18 +100,69 @@ def create_app() -> FastAPI:
     # webhook handlers; user provisioning happens on first login in dependencies.py.
     app.include_router(webhooks_router)
 
+    # ── Exception handlers ─────────────────────────────────────────────────────
+    # All error responses use the same envelope so clients can handle them
+    # generically: { success: false, data: null, detail: "..." }
+
+    @app.exception_handler(HTTPException)
+    async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
+        """Convert FastAPI / Starlette HTTPException to the standard ErrorResponse shape."""
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"success": False, "data": None, "detail": exc.detail},
+            headers=getattr(exc, "headers", None) or {},
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(
+        request: Request, exc: RequestValidationError
+    ) -> JSONResponse:
+        """Convert Pydantic validation errors (422) to the standard ErrorResponse shape."""
+        errors = exc.errors()
+        if errors:
+            first = errors[0]
+            loc = " → ".join(str(p) for p in first.get("loc", []) if p != "body")
+            detail = f"Validation error on '{loc}': {first['msg']}" if loc else first["msg"]
+        else:
+            detail = "Invalid request payload."
+        return JSONResponse(
+            status_code=422,
+            content={"success": False, "data": None, "detail": detail},
+        )
+
     @app.exception_handler(ResponseError)
-    async def global_error_response_handler(request: Request, exc: ResponseError) -> JSONResponse:
+    async def legacy_response_error_handler(request: Request, exc: ResponseError) -> JSONResponse:
+        """Backward-compat handler for the ResponseError exception wrapper."""
         return JSONResponse(
             status_code=exc.error.code,
             content={
                 "success": False,
                 "data": None,
-                "error": {
-                    "code": exc.error.code,
-                    "description": exc.error.description,
-                    "message": exc.error.message,
-                },
+                "detail": exc.error.message or exc.error.description,
+            },
+        )
+
+    @app.exception_handler(Exception)
+    async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+        """Catch-all for any exception not handled by a more specific handler.
+
+        Logs the full traceback via structlog / Sentry and returns a safe 500 so
+        callers always receive the standard ErrorResponse envelope rather than an
+        HTML error page.
+        """
+        log = get_logger(__name__)
+        log.exception(
+            "unhandled_exception",
+            path=str(request.url.path),
+            method=request.method,
+            error=str(exc),
+        )
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "data": None,
+                "detail": "An unexpected error occurred. Please try again shortly.",
             },
         )
 

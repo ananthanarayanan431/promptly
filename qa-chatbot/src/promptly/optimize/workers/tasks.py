@@ -24,6 +24,11 @@ def process_chat_async(
     name: str | None = None,
     category_slug: str | None = None,
     force_optimize: bool = False,
+    skip_quality_gate: bool = False,
+    skip_subject_classifier: bool = False,
+    llm_effort: str | None = None,
+    council_models: list[str] | None = None,
+    synthesizer_model: str | None = None,
 ) -> dict[str, Any]:
     """
     Run the full LangGraph council pipeline as a background job.
@@ -186,15 +191,14 @@ def process_chat_async(
                         category_description=cat_description,
                         category_is_predefined=cat_is_predefined,
                         force_optimize=force_optimize,
+                        skip_quality_gate=skip_quality_gate,
+                        skip_subject_classifier=skip_subject_classifier,
+                        llm_effort=llm_effort,
+                        council_models=council_models,
+                        synthesizer_model=synthesizer_model,
                     )
 
-                # Performance gate short-circuited — refund 5 of the 10 credits.
-                # Net cost = 5 credits (matches health-score price).
-                if result.get("already_optimized"):
-                    from promptly.repositories.user_repo import UserRepository as _UserRepo
-
-                    _user_repo = _UserRepo(db)
-                    await _user_repo.refund_credits(UUID(user_id), 5)
+                # Performance gate short-circuited — fewer tokens used, deducted accurately below.
 
                 # Always commit session + message immediately so they're visible
                 # to the frontend (sidebar history, refresh) before the title
@@ -311,16 +315,25 @@ def process_chat_async(
                 result["prompt_version_id"] = saved_prompt_version_id
 
                 # Log a usage event for this completed optimization.
-                # Credits reflect the actual net charge: 5 for gate short-circuit, 10 otherwise.
-                # Keyed to job_id so a Celery retry cannot double-count.
-                credits_charged = 5 if result.get("already_optimized") else 10
+                # Keyed to job_id so a Celery retry cannot double-count the log entry.
+                # Deduct actual tokens used by the entire optimization pipeline.
+                # Log first (idempotent), then deduct — so a retry never deducts before the
+                # idempotency record exists.
                 usage_repo = UsageEventRepository(db)
                 await usage_repo.log(
                     user_id=UUID(user_id),
                     action="optimize",
-                    credits_spent=credits_charged,
+                    credits_spent=0,
                     job_id=job_id,
                 )
+
+                total_tokens = (result.get("token_usage") or {}).get("total_tokens", 0)
+                if total_tokens:
+                    from promptly.repositories.user_repo import UserRepository as _TokRepo
+
+                    _tok_repo = _TokRepo(db)
+                    await _tok_repo.deduct_tokens(UUID(user_id), total_tokens)
+
                 await db.commit()
 
             await set_job_result(job_id, result)
@@ -347,19 +360,7 @@ def process_chat_async(
             log.error("task_failed", error=str(exc), exc_info=True)
             await set_job_status(job_id, "failed")
             await set_job_result(job_id, {"error": str(exc)})
-            # Refund the 10 credits deducted at submission — the user got nothing.
-            # Best-effort: swallow refund errors so the original exception propagates.
-            try:
-                from uuid import UUID as _UUID
-
-                from promptly.repositories.user_repo import UserRepository
-
-                async with AsyncSessionLocal() as refund_db:
-                    repo = UserRepository(refund_db)
-                    await repo.refund_credits(_UUID(user_id), 10)
-                    await refund_db.commit()
-            except Exception:  # noqa: S110
-                pass
+            # No credits were pre-deducted — tokens are only deducted post-completion.
             raise self.retry(exc=exc) from exc
         finally:
             await dispose_async_engine()

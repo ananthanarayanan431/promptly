@@ -27,7 +27,12 @@ export function CategoryPicker({ selectedSlug, onChange }: CategoryPickerProps) 
   const containerRef = useRef<HTMLDivElement>(null);
 
   const selected = categories.find(c => c.slug === selectedSlug);
-  const selectedLabel = selected?.name ?? 'General';
+  // While loading, capitalise the slug as a readable fallback (e.g. "general" → "General").
+  const selectedLabel =
+    selected?.name ??
+    (selectedSlug
+      ? selectedSlug.charAt(0).toUpperCase() + selectedSlug.slice(1)
+      : 'General');
 
   // Close popover on outside click
   useEffect(() => {
@@ -126,7 +131,7 @@ export function CategoryPicker({ selectedSlug, onChange }: CategoryPickerProps) 
             whiteSpace: 'nowrap',
           }}
         >
-          {isLoading ? 'Loading…' : selectedLabel}
+          {selectedLabel}
         </span>
         <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
           <path d="M6 9l6 6 6-6" />

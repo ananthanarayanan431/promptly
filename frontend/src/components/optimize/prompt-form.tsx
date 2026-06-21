@@ -111,7 +111,7 @@ export function PromptForm({ onSubmit, isLoading }: PromptFormProps) {
       </CardContent>
 
       <CardFooter className="flex items-center justify-between border-t px-6 py-4">
-        <p className="text-xs text-muted-foreground">Costs 10 credits per run.</p>
+        <p className="text-xs text-muted-foreground">Tokens are deducted per run.</p>
         <Button form="optimize-form" type="submit" disabled={isLoading} className="gap-2">
           {isLoading ? (
             <><Loader2 className="h-4 w-4 animate-spin" /> Submitting…</>

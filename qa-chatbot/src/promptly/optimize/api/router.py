@@ -10,7 +10,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from promptly.api.types.response import SuccessResponse
+from promptly.api.types.response import SuccessResponse, error_responses
 from promptly.api.v1.exceptions.categories import InvalidCategoryException
 from promptly.core.cache import (
     get_job_owner,
@@ -77,6 +77,9 @@ router = APIRouter(prefix="/chat", tags=["chat"])
     response_model=SuccessResponse[ChatJobAcceptedResponse],
     status_code=status.HTTP_202_ACCEPTED,
     dependencies=[Depends(_chat_limiter)],
+    summary="Submit optimization job",
+    description="Queue a prompt-optimization job through the 4-model council pipeline (council vote → critic → synthesize). Returns HTTP 202 with a `job_id`; poll `GET /chat/jobs/{job_id}` for the result.",  # noqa: E501
+    responses=error_responses(400, 401, 402, 422, 429, 500),
 )
 async def create_chat(
     request: ChatRequest,
@@ -103,15 +106,10 @@ async def create_chat(
     Returns immediately with a `job_id` (HTTP 202 Accepted). Poll
     `GET /chat/jobs/{job_id}` until `status` is `completed` or `failed`.
 
-    Cost: 10 credits, deducted on submission.
+    Cost: billed post-completion by actual token usage.
     """
-    if current_user.credits < 10:
-        log.warning(
-            "insufficient_credits",
-            user_id=str(current_user.user_id),
-            available=current_user.credits,
-            required=10,
-        )
+    user_repo = UserRepository(db)
+    if not await user_repo.has_min_tokens(current_user.user_id):
         raise ChatInsufficientCreditsException()
 
     # Resolve category — defaults to "general" if omitted; 422 if slug unknown.
@@ -141,13 +139,6 @@ async def create_chat(
     job_id = str(uuid.uuid4())
     session_id = str(request.session_id) if request.session_id else str(uuid.uuid4())
 
-    user_repo = UserRepository(db)
-    deducted = await user_repo.deduct_credits(current_user.user_id, 10)
-    if not deducted:
-        log.warning("credit_deduction_failed", user_id=str(current_user.user_id), required=10)
-        raise ChatInsufficientCreditsException()
-    log.info("credits_deducted", user_id=str(current_user.user_id), amount=10)
-
     # Ensure session exists BEFORE worker
     session_repo = SessionRepository(db)
     await session_repo.get_or_create(
@@ -174,16 +165,10 @@ async def create_chat(
             },
         )
     except Exception as exc:
-        log.error(  # noqa: E501
+        log.error(
             "job_enqueue_failed", job_id=job_id, user_id=str(current_user.user_id), error=str(exc)
         )
-        await user_repo.refund_credits(current_user.user_id, 10)
-        log.info(
-            "credits_refunded",
-            user_id=str(current_user.user_id),
-            amount=10,
-            reason="enqueue_failed",  # noqa: E501
-        )
+        await set_job_status(job_id, "failed")
         raise LLMTimeoutException() from exc
 
     log.info(
@@ -209,6 +194,9 @@ async def create_chat(
     "/jobs/{job_id}",
     response_model=SuccessResponse[JobPollResponse],
     dependencies=[Depends(_read_limiter)],
+    summary="Poll job status",
+    description="Return the current status and result of a council optimization job. Poll at ~2 s intervals until `status` is `completed` or `failed`.",  # noqa: E501
+    responses=error_responses(401, 404, 429, 500),
 )
 async def poll_chat_job(
     job_id: str,
@@ -261,6 +249,9 @@ async def poll_chat_job(
     "/jobs/{job_id}/stream",
     response_class=StreamingResponse,
     dependencies=[Depends(_read_limiter)],
+    summary="Stream job progress",
+    description="SSE stream of job progress events. Each event carries a `step` field; the final event embeds the full result.",  # noqa: E501
+    responses=error_responses(401, 404, 500),
 )
 async def stream_job_progress(
     job_id: str,
@@ -326,8 +317,11 @@ async def stream_job_progress(
 
 @router.post(
     "/suggest-name",
+    summary="Suggest version name",
+    description="Generate a short ALL-CAPS version name (2–4 words) for a prompt using LLM. Used by the frontend versioning widget.",  # noqa: E501
     response_model=SuccessResponse[SuggestNameResponse],
     dependencies=[Depends(_llm_limiter)],
+    responses=error_responses(401, 429, 500, 504),
 )
 async def suggest_prompt_name(
     request: SuggestNameRequest,
@@ -364,8 +358,11 @@ async def suggest_prompt_name(
 
 @router.post(
     "/save-version",
+    summary="Save prompt as version family",
+    description="Save a prompt and its optimised output as v1 + v2 of a new version family. An ALL-CAPS name is auto-generated via LLM. Returns the `prompt_id` to use for subsequent runs.",  # noqa: E501
     response_model=SuccessResponse[SaveVersionResponse],
     dependencies=[Depends(_llm_limiter)],
+    responses=error_responses(401, 422, 429, 500, 504),
 )
 async def save_version_from_response(
     request: SaveVersionRequest,
@@ -427,6 +424,9 @@ async def save_version_from_response(
     "/sessions",
     response_model=SuccessResponse[SessionsGroupedResponse],
     dependencies=[Depends(_read_limiter)],
+    summary="List chat sessions",
+    description="Return grouped chat sessions (today / last 7 days / last 30 days / older) with per-session aggregated token counts and feedback.",  # noqa: E501
+    responses=error_responses(401, 429, 500),
 )
 async def list_sessions(
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -438,7 +438,10 @@ async def list_sessions(
     "Untitled" in the sidebar while the run is still in progress).
     """
     session_repo = SessionRepository(db)
-    sessions = await session_repo.get_by_user_id(current_user.user_id, limit=100)
+    # Load messages eagerly so we can aggregate token_count, feedback, and prompts
+    sessions = await session_repo.get_by_user_id(
+        current_user.user_id, limit=100, with_messages=True
+    )
 
     now = datetime.now(UTC)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -464,15 +467,43 @@ async def list_sessions(
         "older": [],
     }
     for s in sessions:
-        grouped[_bucket(s)].append(SessionSummary.model_validate(s))
+        # Aggregate from messages (token sum, feedback count, prompt/result text, reasoning)
+        token_total = sum(
+            (m.token_usage or {}).get("total_tokens", 0) for m in s.messages if m.token_usage
+        )
+        feedback_total = sum(1 for m in s.messages if m.feedback)
+        asst_msgs = sorted(
+            [m for m in s.messages if m.role == "assistant"], key=lambda m: m.created_at
+        )
+        prompt_input = asst_msgs[0].raw_prompt if asst_msgs else None
+        optimized_prompt = asst_msgs[-1].response if asst_msgs else None
+        last_tu = (asst_msgs[-1].token_usage or {}) if asst_msgs else {}
+        reasoning = last_tu.get("_reasoning") or None
+
+        grouped[_bucket(s)].append(
+            SessionSummary(
+                id=s.id,
+                title=s.title,
+                created_at=s.created_at,
+                updated_at=s.updated_at,
+                token_count=token_total or None,
+                feedback_count=feedback_total,
+                prompt_input=prompt_input,
+                optimized_prompt=optimized_prompt,
+                reasoning=reasoning,
+            )
+        )
 
     return SuccessResponse(data=SessionsGroupedResponse(**grouped))
 
 
 @router.get(
     "/sessions/recent",
+    summary="Recent sessions (dashboard widget)",
+    description="Return the N most-recently-updated sessions with a prompt snippet. Used by the 'Continue where you left off' dashboard widget.",  # noqa: E501
     response_model=SuccessResponse[RecentSessionsResponse],
     dependencies=[Depends(_read_limiter)],
+    responses=error_responses(401, 429, 500),
 )
 async def get_recent_sessions(
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -539,6 +570,9 @@ async def get_recent_sessions(
     "/sessions/{session_id}",
     response_model=SuccessResponse[SessionDetailResponse],
     dependencies=[Depends(_read_limiter)],
+    summary="Get session detail",
+    description="Return all messages in a chat session.",
+    responses=error_responses(401, 404, 429, 500),
 )
 async def get_session(
     session_id: str,
@@ -573,6 +607,9 @@ async def get_session(
     "/sessions/{session_id}",
     response_model=SuccessResponse[SessionSummary],
     dependencies=[Depends(_read_limiter)],
+    summary="Update session",
+    description="Rename a chat session.",
+    responses=error_responses(401, 404, 422, 429, 500),
 )
 async def rename_session(
     session_id: str,
@@ -599,6 +636,9 @@ async def rename_session(
     "/sessions/{session_id}",
     response_model=SuccessResponse[DeleteSessionResponse],
     dependencies=[Depends(_read_limiter)],
+    summary="Delete session",
+    description="Permanently delete a chat session and all its messages.",
+    responses=error_responses(401, 404, 429, 500),
 )
 async def delete_session(
     session_id: str,

@@ -78,10 +78,12 @@ export function PageHeader({ title, subtitle, badge, right }: PageHeaderProps) {
         {user && (
           <span className="ply-pill" style={{ padding: '4px 10px', gap: 5 }}>
             <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round">
-              <circle cx="12" cy="12" r="9" /><path d="M12 7v10M9 10h4.5a2 2 0 010 4H9" />
+              <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
             </svg>
-            <span className="mono" style={{ fontWeight: 600 }}>{user.credits}</span>
-            <span style={{ color: 'var(--text-subtle)', marginLeft: 2 }}>credits</span>
+            <span className="mono" style={{ fontWeight: 600, color: user.token_balance <= 0 ? 'var(--danger)' : user.token_balance < 300_000 ? 'var(--warning)' : 'var(--text)' }}>
+              {(() => { const d = Math.max(0, user.token_balance); return d === 0 ? '0' : d >= 1_000_000 ? `${(d / 1_000_000).toFixed(1)}M` : d >= 1_000 ? `${(d / 1_000).toFixed(0)}K` : String(d); })()}
+            </span>
+            <span style={{ color: 'var(--text-subtle)', marginLeft: 2 }}>tokens</span>
           </span>
         )}
       </div>
