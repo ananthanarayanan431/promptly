@@ -258,7 +258,7 @@ function RouteCard({ route, entries, maxHits, userMap }: {
 
 /* ── Main component ────────────────────────────────────────────── */
 export function RateLimitsTable() {
-  const { data, isLoading, refetch, dataUpdatedAt, isFetching } = useQuery<RateLimitList>({
+  const { data, isLoading, isError, refetch, dataUpdatedAt, isFetching } = useQuery<RateLimitList>({
     queryKey: ['admin', 'rate-limits'],
     queryFn: async () => {
       const res = await api.get<{ data: RateLimitList }>('/api/v1/admin/rate-limits');
@@ -273,7 +273,7 @@ export function RateLimitsTable() {
     queryKey: ['admin', 'users-lookup'],
     queryFn: async () => {
       const res = await api.get<{ data: { users: { id: string; email: string; full_name: string | null }[] } }>(
-        '/api/v1/admin/users?page=1&per_page=500',
+        '/api/v1/admin/users?page=1&per_page=200',
       );
       return res.data.data;
     },
@@ -376,6 +376,12 @@ export function RateLimitsTable() {
           </span>
         </div>
       </div>
+
+      {isError && (
+        <div style={{ padding: '32px', textAlign: 'center', color: 'var(--danger)', background: 'color-mix(in oklab, var(--danger) 6%, transparent)', border: '1px solid color-mix(in oklab, var(--danger) 20%, transparent)', borderRadius: 12, fontSize: 13 }}>
+          Failed to load rate-limit data. Redis may be unreachable — try refreshing.
+        </div>
+      )}
 
       {/* Loading skeletons */}
       {isLoading && (

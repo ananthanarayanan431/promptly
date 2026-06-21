@@ -168,6 +168,7 @@ async def create_chat(
         log.error(
             "job_enqueue_failed", job_id=job_id, user_id=str(current_user.user_id), error=str(exc)
         )
+        await set_job_status(job_id, "failed")
         raise LLMTimeoutException() from exc
 
     log.info(

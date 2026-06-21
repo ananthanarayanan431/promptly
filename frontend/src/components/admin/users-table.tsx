@@ -282,7 +282,7 @@ export function UsersTable() {
   const perPage = 50;
   const qc = useQueryClient();
 
-  const { data, isLoading } = useQuery<AdminUserList>({
+  const { data, isLoading, isError } = useQuery<AdminUserList>({
     queryKey: ['admin', 'users', page],
     queryFn: async () => {
       const res = await api.get<{ data: AdminUserList }>(`/api/v1/admin/users?page=${page}&per_page=${perPage}`);
@@ -332,6 +332,14 @@ export function UsersTable() {
         {Array(5).fill(0).map((_, i) => (
           <div key={i} style={{ height: 60, background: 'var(--surface-2)', borderRadius: 10, animation: 'pulse 1.5s ease-in-out infinite' }} />
         ))}
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div style={{ padding: '32px', textAlign: 'center', color: 'var(--danger)', background: 'color-mix(in oklab, var(--danger) 6%, transparent)', border: '1px solid color-mix(in oklab, var(--danger) 20%, transparent)', borderRadius: 12, fontSize: 13 }}>
+        Failed to load users. Check your connection or try refreshing.
       </div>
     );
   }
@@ -526,7 +534,7 @@ export function UsersTable() {
 
               {/* Token adjust */}
               <div>
-                <div style={{ fontSize: 10.5, color: 'var(--text-muted)', marginBottom: 5 }}>Adjust tokens</div>
+                <div style={{ fontSize: 10.5, color: 'var(--text-muted)', marginBottom: 5 }}>Adjust credits</div>
                 <TokenAdjust userId={u.id} />
               </div>
 

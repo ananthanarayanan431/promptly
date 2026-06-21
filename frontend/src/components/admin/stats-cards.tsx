@@ -196,7 +196,7 @@ function Section({ title, children, right }: { title: string; children: React.Re
 
 /* ── Main export ─────────────────────────────────────────────────── */
 export function StatsCards() {
-  const { data, isLoading, dataUpdatedAt, refetch } = useQuery<AdminStats>({
+  const { data, isLoading, isError, dataUpdatedAt, refetch } = useQuery<AdminStats>({
     queryKey: ['admin', 'stats'],
     queryFn: async () => {
       const res = await api.get<{ data: AdminStats }>('/api/v1/admin/stats');
@@ -206,7 +206,12 @@ export function StatsCards() {
     refetchInterval: 60_000,
   });
 
-  if (isLoading || !data) return <Skeleton />;
+  if (isLoading) return <Skeleton />;
+  if (isError || !data) return (
+    <div style={{ padding: '32px', textAlign: 'center', color: 'var(--danger)', background: 'color-mix(in oklab, var(--danger) 6%, transparent)', border: '1px solid color-mix(in oklab, var(--danger) 20%, transparent)', borderRadius: 12, fontSize: 13 }}>
+      Failed to load stats. Check your connection or try refreshing.
+    </div>
+  );
 
   const lastUpdated = dataUpdatedAt ? new Date(dataUpdatedAt).toLocaleTimeString() : '—';
   const totalCalls = data.feature_usage.reduce((s, f) => s + f.calls, 0);

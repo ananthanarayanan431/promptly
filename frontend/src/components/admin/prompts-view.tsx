@@ -276,9 +276,9 @@ export function PromptsView() {
   const [search, setSearch] = useState('');
 
   const { data: usersData, isLoading: usersLoading } = useQuery<AdminUserList>({
-    queryKey: ['admin', 'users', 1],
+    queryKey: ['admin', 'users-all'],
     queryFn: async () => {
-      const res = await api.get<{ data: AdminUserList }>('/api/v1/admin/users?page=1&per_page=100');
+      const res = await api.get<{ data: AdminUserList }>('/api/v1/admin/users?page=1&per_page=200');
       return res.data.data;
     },
     staleTime: 30_000,

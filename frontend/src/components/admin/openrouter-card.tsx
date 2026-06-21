@@ -20,7 +20,7 @@ function SparkBar({ pct, color }: { pct: number; color: string }) {
 export function OpenRouterCard() {
   const [historyView, setHistoryView] = useState<'chart' | 'table'>('table');
 
-  const { data, isLoading, refetch, isFetching } = useQuery<AdminOpenRouterInfo>({
+  const { data, isLoading, isError, refetch, isFetching } = useQuery<AdminOpenRouterInfo>({
     queryKey: ['admin', 'openrouter'],
     queryFn: async () => {
       const res = await api.get<{ data: AdminOpenRouterInfo }>('/api/v1/admin/openrouter');
@@ -39,6 +39,11 @@ export function OpenRouterCard() {
     );
   }
 
+  if (isError) return (
+    <div style={{ padding: '32px', textAlign: 'center', color: 'var(--danger)', background: 'color-mix(in oklab, var(--danger) 6%, transparent)', border: '1px solid color-mix(in oklab, var(--danger) 20%, transparent)', borderRadius: 12, fontSize: 13 }}>
+      Failed to load OpenRouter data. Check your API key or try refreshing.
+    </div>
+  );
   if (!data) return null;
 
   const maxDailyCost = Math.max(...data.daily_history.map(d => d.total_cost_usd), 0.0001);

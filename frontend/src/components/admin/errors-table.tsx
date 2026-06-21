@@ -133,7 +133,7 @@ function ErrorCard({ issue, maxOcc }: { issue: GlitchTipIssue; maxOcc: number })
 export function ErrorsTable() {
   const [statusFilter, setStatusFilter] = useState<'all' | 'unresolved' | 'resolved' | 'ignored'>('all');
 
-  const { data, isLoading, refetch, dataUpdatedAt } = useQuery<GlitchTipIssueList>({
+  const { data, isLoading, isError, refetch, dataUpdatedAt } = useQuery<GlitchTipIssueList>({
     queryKey: ['admin', 'errors'],
     queryFn: async () => {
       const res = await api.get<{ data: GlitchTipIssueList }>('/api/v1/admin/errors');
@@ -152,7 +152,7 @@ export function ErrorsTable() {
   const maxOcc = Math.max(1, ...((data?.issues ?? []).map(i => i.occurrences)));
   const lastUpdated = dataUpdatedAt ? new Date(dataUpdatedAt).toLocaleTimeString() : '—';
 
-  const noGlitchTip = !isLoading && data?.issues.length === 0;
+  const noGlitchTip = !isLoading && !isError && data?.issues.length === 0;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -204,6 +204,12 @@ export function ErrorsTable() {
       {isLoading && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {Array(4).fill(0).map((_, i) => <div key={i} style={{ height: 68, background: 'var(--surface-2)', borderRadius: 10 }} />)}
+        </div>
+      )}
+
+      {isError && (
+        <div style={{ padding: '32px', textAlign: 'center', color: 'var(--danger)', background: 'color-mix(in oklab, var(--danger) 6%, transparent)', border: '1px solid color-mix(in oklab, var(--danger) 20%, transparent)', borderRadius: 12, fontSize: 13 }}>
+          Failed to load error data. GlitchTip may be unreachable — check your configuration.
         </div>
       )}
 

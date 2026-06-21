@@ -315,16 +315,10 @@ def process_chat_async(
                 result["prompt_version_id"] = saved_prompt_version_id
 
                 # Log a usage event for this completed optimization.
-                # Credits reflect the actual net charge: 5 for gate short-circuit, 10 otherwise.
-                # Keyed to job_id so a Celery retry cannot double-count.
+                # Keyed to job_id so a Celery retry cannot double-count the log entry.
                 # Deduct actual tokens used by the entire optimization pipeline.
-                total_tokens = (result.get("token_usage") or {}).get("total_tokens", 0)
-                if total_tokens:
-                    from promptly.repositories.user_repo import UserRepository as _TokRepo
-
-                    _tok_repo = _TokRepo(db)
-                    await _tok_repo.deduct_tokens(UUID(user_id), total_tokens)
-
+                # Log first (idempotent), then deduct — so a retry never deducts before the
+                # idempotency record exists.
                 usage_repo = UsageEventRepository(db)
                 await usage_repo.log(
                     user_id=UUID(user_id),
@@ -332,6 +326,14 @@ def process_chat_async(
                     credits_spent=0,
                     job_id=job_id,
                 )
+
+                total_tokens = (result.get("token_usage") or {}).get("total_tokens", 0)
+                if total_tokens:
+                    from promptly.repositories.user_repo import UserRepository as _TokRepo
+
+                    _tok_repo = _TokRepo(db)
+                    await _tok_repo.deduct_tokens(UUID(user_id), total_tokens)
+
                 await db.commit()
 
             await set_job_result(job_id, result)
