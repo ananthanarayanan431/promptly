@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
-from typing import Annotated
+from typing import Annotated, Any
 
+import httpx
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,10 +14,13 @@ from promptly.admin.api.schemas import (
     AdminUserItem,
     AdminUserList,
     AdminUserPatch,
+    GlitchTipIssue,
+    GlitchTipIssueList,
     RateLimitEntry,
     RateLimitList,
 )
 from promptly.api.types.response import SuccessResponse
+from promptly.config.app import get_app_settings
 from promptly.core.exceptions import NotFoundException
 from promptly.core.user_context import UserContext
 from promptly.db.redis import get_redis_client
@@ -132,3 +136,35 @@ async def get_rate_limits(
 
     entries.sort(key=lambda e: e.hit_count, reverse=True)
     return SuccessResponse(data=RateLimitList(entries=entries))
+
+
+@router.get("/errors", response_model=SuccessResponse[GlitchTipIssueList])
+async def get_errors(
+    _: Annotated[UserContext, Depends(require_admin)],
+) -> SuccessResponse[GlitchTipIssueList]:
+    """Proxy recent issues from GlitchTip API."""
+    settings = get_app_settings()
+
+    if not settings.GLITCHTIP_API_URL or not settings.GLITCHTIP_API_TOKEN:
+        return SuccessResponse(data=GlitchTipIssueList(issues=[]))
+
+    headers = {"Authorization": f"Bearer {settings.GLITCHTIP_API_TOKEN.get_secret_value()}"}
+    url = f"{settings.GLITCHTIP_API_URL.rstrip('/')}/issues/?limit=50"
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.get(url, headers=headers)
+        resp.raise_for_status()
+        raw: list[dict[str, Any]] = resp.json()
+
+    issues = [
+        GlitchTipIssue(
+            id=str(item.get("id", "")),
+            title=str(item.get("title", "")),
+            occurrences=int(item.get("count", 0)),
+            status=str(item.get("status", "unresolved")),
+            first_seen=str(item.get("firstSeen", "")),
+            last_seen=str(item.get("lastSeen", "")),
+        )
+        for item in raw
+    ]
+    return SuccessResponse(data=GlitchTipIssueList(issues=issues))
