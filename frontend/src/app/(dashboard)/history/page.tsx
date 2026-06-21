@@ -397,7 +397,7 @@ function SessionCard({ item }: { item: HistoryItem }) {
             <MetricCell k="Feedback" v={item.feedbackCount != null ? String(item.feedbackCount) : '—'} />
           </div>
         )}
-        {item.credits > 0 && <MetricCell k="Tokens" v={item.credits >= 1000 ? `~${(item.credits/1000).toFixed(0)}K` : `~${item.credits}`} />}
+        {/* credits field intentionally omitted — actual token usage shown above */}
       </div>
 
       {/* Footer */}

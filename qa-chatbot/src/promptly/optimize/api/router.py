@@ -456,7 +456,10 @@ async def list_sessions(
     "Untitled" in the sidebar while the run is still in progress).
     """
     session_repo = SessionRepository(db)
-    sessions = await session_repo.get_by_user_id(current_user.user_id, limit=100)
+    # Load messages eagerly so we can aggregate token_count, feedback, and prompts
+    sessions = await session_repo.get_by_user_id(
+        current_user.user_id, limit=100, with_messages=True
+    )
 
     now = datetime.now(UTC)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -482,7 +485,32 @@ async def list_sessions(
         "older": [],
     }
     for s in sessions:
-        grouped[_bucket(s)].append(SessionSummary.model_validate(s))
+        # Aggregate from messages (token sum, feedback count, prompt/result text, reasoning)
+        token_total = sum(
+            (m.token_usage or {}).get("total_tokens", 0) for m in s.messages if m.token_usage
+        )
+        feedback_total = sum(1 for m in s.messages if m.feedback)
+        asst_msgs = sorted(
+            [m for m in s.messages if m.role == "assistant"], key=lambda m: m.created_at
+        )
+        prompt_input = asst_msgs[0].raw_prompt if asst_msgs else None
+        optimized_prompt = asst_msgs[-1].response if asst_msgs else None
+        last_tu = (asst_msgs[-1].token_usage or {}) if asst_msgs else {}
+        reasoning = last_tu.get("_reasoning") or None
+
+        grouped[_bucket(s)].append(
+            SessionSummary(
+                id=s.id,
+                title=s.title,
+                created_at=s.created_at,
+                updated_at=s.updated_at,
+                token_count=token_total or None,
+                feedback_count=feedback_total,
+                prompt_input=prompt_input,
+                optimized_prompt=optimized_prompt,
+                reasoning=reasoning,
+            )
+        )
 
     return SuccessResponse(data=SessionsGroupedResponse(**grouped))
 
