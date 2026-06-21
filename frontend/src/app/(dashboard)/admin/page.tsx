@@ -5,14 +5,36 @@ import { StatsCards } from '@/components/admin/stats-cards';
 import { UsersTable } from '@/components/admin/users-table';
 import { RateLimitsTable } from '@/components/admin/rate-limits-table';
 import { ErrorsTable } from '@/components/admin/errors-table';
+import { PromptsView } from '@/components/admin/prompts-view';
+import { OpenRouterCard } from '@/components/admin/openrouter-card';
+import { HealthTab } from '@/components/admin/health-tab';
+import { ApiKeysTable } from '@/components/admin/api-keys-table';
+import { AuditLogTable } from '@/components/admin/audit-log-table';
+import { JobsMonitorTab } from '@/components/admin/jobs-monitor';
 
-type Tab = 'overview' | 'users' | 'rate-limits' | 'errors';
+type Tab =
+  | 'overview'
+  | 'users'
+  | 'rate-limits'
+  | 'errors'
+  | 'prompts'
+  | 'openrouter'
+  | 'health'
+  | 'api-keys'
+  | 'audit-log'
+  | 'jobs';
 
 const TABS: { id: Tab; label: string; icon: string; desc: string }[] = [
-  { id: 'overview',    label: 'Overview',    icon: '📊', desc: 'Platform KPIs, usage trends, top consumers' },
-  { id: 'users',       label: 'Users',       icon: '👥', desc: 'All accounts, token balances, admin controls' },
-  { id: 'rate-limits', label: 'Rate Limits', icon: '⚡', desc: 'Live Redis counters, endpoint pressure' },
-  { id: 'errors',      label: 'Errors',      icon: '🐛', desc: 'GlitchTip issues, occurrences, status' },
+  { id: 'overview',    label: 'Overview',      icon: '📊', desc: 'Platform KPIs, usage trends, top consumers' },
+  { id: 'users',       label: 'Users',         icon: '👥', desc: 'All accounts, token balances, bulk actions, activity drill-down' },
+  { id: 'rate-limits', label: 'Rate Limits',   icon: '⚡', desc: 'Live Redis counters, endpoint pressure, per-user reset' },
+  { id: 'errors',      label: 'Errors',        icon: '🐛', desc: 'GlitchTip issues, occurrences, status' },
+  { id: 'health',      label: 'Health',        icon: '🩺', desc: 'Redis, database, Celery worker and queue status' },
+  { id: 'jobs',        label: 'Jobs',          icon: '⚙️',  desc: 'Active and recent chat and domain-prompt jobs' },
+  { id: 'api-keys',    label: 'API Keys',      icon: '🔑', desc: 'All user API keys with revocation controls' },
+  { id: 'audit-log',   label: 'Audit Log',     icon: '📋', desc: 'Admin action history with details and timestamps' },
+  { id: 'prompts',     label: 'User Activity', icon: '👤', desc: 'Per-user session history, prompt detail, and usage breakdown' },
+  { id: 'openrouter',  label: 'OpenRouter',    icon: '🤖', desc: 'API credits, spend, and model usage' },
 ];
 
 export default function AdminPage() {
@@ -36,16 +58,16 @@ export default function AdminPage() {
           </span>
         </div>
 
-        {/* Tab bar */}
-        <div style={{ display: 'flex', gap: 0 }}>
+        {/* Tab bar — scrollable on smaller screens */}
+        <div style={{ display: 'flex', gap: 0, overflowX: 'auto' }}>
           {TABS.map(tab => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               title={tab.desc}
               style={{
-                padding: '10px 18px',
-                fontSize: 13.5,
+                padding: '10px 16px',
+                fontSize: 13,
                 fontWeight: activeTab === tab.id ? 600 : 400,
                 color: activeTab === tab.id ? 'var(--text)' : 'var(--text-muted)',
                 background: 'transparent',
@@ -54,11 +76,12 @@ export default function AdminPage() {
                 cursor: 'pointer',
                 marginBottom: -1,
                 transition: 'color .12s',
-                display: 'flex', alignItems: 'center', gap: 7,
+                display: 'flex', alignItems: 'center', gap: 6,
                 whiteSpace: 'nowrap',
+                flexShrink: 0,
               }}
             >
-              <span style={{ fontSize: 15 }}>{tab.icon}</span>
+              <span style={{ fontSize: 14 }}>{tab.icon}</span>
               {tab.label}
             </button>
           ))}
@@ -78,6 +101,12 @@ export default function AdminPage() {
         {activeTab === 'users'       && <UsersTable />}
         {activeTab === 'rate-limits' && <RateLimitsTable />}
         {activeTab === 'errors'      && <ErrorsTable />}
+        {activeTab === 'health'      && <HealthTab />}
+        {activeTab === 'jobs'        && <JobsMonitorTab />}
+        {activeTab === 'api-keys'    && <ApiKeysTable />}
+        {activeTab === 'audit-log'   && <AuditLogTable />}
+        {activeTab === 'prompts'     && <PromptsView />}
+        {activeTab === 'openrouter'  && <OpenRouterCard />}
       </div>
     </div>
   );

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import type { RateLimitList, RateLimitEntry } from '@/types/api';
 
@@ -22,6 +22,18 @@ function RouteCard({ route, entries, maxHits }: { route: string; entries: RateLi
   const sev = severityOf(Math.max(...entries.map(e => e.hit_count)));
   const pct = Math.min(100, (total / Math.max(1, maxHits)) * 100);
   const [expanded, setExpanded] = useState(false);
+  const [resettingId, setResettingId] = useState<string | null>(null);
+  const qc = useQueryClient();
+
+  const resetMutation = useMutation({
+    mutationFn: ({ userId, route: r }: { userId: string; route: string }) =>
+      api.delete(`/api/v1/admin/rate-limits/${userId}/${r}`),
+    onMutate: ({ userId }) => setResettingId(userId),
+    onSettled: () => {
+      setResettingId(null);
+      qc.invalidateQueries({ queryKey: ['admin', 'rate-limits'] });
+    },
+  });
 
   return (
     <div style={{ background: 'var(--surface)', border: `1px solid ${sev.color}33`, borderRadius: 10, overflow: 'hidden' }}>
@@ -71,7 +83,7 @@ function RouteCard({ route, entries, maxHits }: { route: string; entries: RateLi
               const uSev = severityOf(e.hit_count);
               return (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--text-muted)', minWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--text-muted)', minWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {e.user_id}
                   </span>
                   <div style={{ flex: 1, height: 5, background: 'var(--surface-2)', borderRadius: 99, overflow: 'hidden' }}>
@@ -80,6 +92,21 @@ function RouteCard({ route, entries, maxHits }: { route: string; entries: RateLi
                   <span style={{ fontFamily: 'var(--mono)', fontSize: 12, fontWeight: 700, color: uSev.color, minWidth: 32, textAlign: 'right' }}>
                     {e.hit_count}
                   </span>
+                  <button
+                    onClick={() => resetMutation.mutate({ userId: e.user_id, route })}
+                    disabled={resettingId === e.user_id}
+                    title="Reset this rate-limit counter"
+                    style={{
+                      fontSize: 10.5, padding: '2px 8px', borderRadius: 5,
+                      background: 'color-mix(in oklab, var(--warning) 10%, transparent)',
+                      color: 'var(--warning)', border: '1px solid color-mix(in oklab, var(--warning) 25%, transparent)',
+                      cursor: resettingId === e.user_id ? 'default' : 'pointer',
+                      opacity: resettingId === e.user_id ? 0.5 : 1,
+                      flexShrink: 0,
+                    }}
+                  >
+                    {resettingId === e.user_id ? '…' : 'Reset'}
+                  </button>
                 </div>
               );
             })}

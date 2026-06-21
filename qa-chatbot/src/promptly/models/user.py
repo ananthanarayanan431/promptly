@@ -33,6 +33,9 @@ class User(Base, UUIDMixin, TimestampMixin):
         Boolean, default=False, server_default="false", nullable=False
     )
     avatar_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    data_sharing_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
 
     sessions: Mapped[list[ChatSession]] = relationship(
         back_populates="user", cascade="all, delete-orphan"

@@ -3,6 +3,7 @@
 #
 # Ordering matters: Base classes (no FKs pointing to others) first,
 # then dependent tables.
+from promptly.models.admin_audit_log import AdminAuditLog
 from promptly.models.api_key import ApiKey
 from promptly.models.favorite_prompt import FavoritePrompt
 from promptly.models.health_score import HealthScore
@@ -15,6 +16,7 @@ from promptly.models.usage_event import UsageEvent
 from promptly.models.user import User
 
 __all__ = [
+    "AdminAuditLog",
     "ApiKey",
     "User",
     "ChatSession",

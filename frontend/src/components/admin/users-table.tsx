@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import type { AdminUserList, AdminUserItem, AdminUserPatch } from '@/types/api';
+import type { AdminUserList, AdminUserItem, AdminUserPatch, UserActivity } from '@/types/api';
 
 const TOKEN_START = 3_000_000;
 
@@ -60,7 +60,8 @@ function TokenAdjust({ userId }: { userId: string }) {
 
   const { mutate, isPending } = useMutation({
     mutationFn: async (d: number) => {
-      await api.patch(`/api/v1/admin/users/${userId}`, { credits_delta: d } satisfies AdminUserPatch);
+      const body: AdminUserPatch = { credits_delta: d };
+      await api.patch(`/api/v1/admin/users/${userId}`, body);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['admin', 'users'] });
@@ -125,11 +126,159 @@ function StatusChip({ user }: { user: AdminUserItem }) {
   );
 }
 
+/* ── User drill-down side panel ────────────────────────────────── */
+function DrilldownPanel({ userId, onClose }: { userId: string; onClose: () => void }) {
+  const { data, isLoading } = useQuery<{ data: UserActivity }>({
+    queryKey: ['admin', 'user-activity', userId],
+    queryFn: () => api.get(`/api/v1/admin/users/${userId}/activity`).then(r => r.data),
+    staleTime: 60_000,
+  });
+  const activity = data?.data;
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 200, display: 'flex',
+    }}>
+      {/* Backdrop */}
+      <div onClick={onClose} style={{ flex: 1, background: 'rgba(0,0,0,.35)' }} />
+      {/* Panel */}
+      <div style={{
+        width: 420, background: 'var(--bg)', borderLeft: '1px solid var(--border)',
+        overflowY: 'auto', display: 'flex', flexDirection: 'column',
+        boxShadow: '-4px 0 24px rgba(0,0,0,.15)',
+      }}>
+        {/* Header */}
+        <div style={{ padding: '20px 22px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>User Activity</div>
+            {activity && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{activity.email}</div>}
+          </div>
+          <button onClick={onClose} style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 13 }}>✕</button>
+        </div>
+
+        {isLoading && (
+          <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>Loading…</div>
+        )}
+
+        {activity && (
+          <div style={{ padding: '18px 22px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+            {/* Stats row */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+              {[
+                { label: 'Sessions', value: activity.session_count },
+                { label: 'Tokens used', value: activity.total_tokens_consumed >= 1_000_000 ? `${(activity.total_tokens_consumed / 1_000_000).toFixed(1)}M` : activity.total_tokens_consumed >= 1_000 ? `${(activity.total_tokens_consumed / 1_000).toFixed(0)}K` : String(activity.total_tokens_consumed) },
+                { label: 'Since', value: new Date(activity.first_seen).toLocaleDateString() },
+              ].map(s => (
+                <div key={s.label} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px' }}>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 700 }}>{s.label}</div>
+                  <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--text)', fontFamily: 'var(--mono)', marginTop: 3 }}>{s.value}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Feature usage */}
+            {Object.keys(activity.feature_counts).length > 0 && (
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>Feature usage</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {Object.entries(activity.feature_counts).map(([feature, count]) => (
+                    <div key={feature} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 10px', background: 'var(--surface)', borderRadius: 6 }}>
+                      <span style={{ fontSize: 12.5, color: 'var(--text)' }}>{feature.replace(/_/g, ' ')}</span>
+                      <span style={{ fontSize: 12.5, fontFamily: 'var(--mono)', fontWeight: 600, color: 'var(--primary)' }}>{count}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Recent sessions */}
+            {activity.sessions.length > 0 && (
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>
+                  Recent sessions ({activity.sessions.length} shown)
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {activity.sessions.map(sess => (
+                    <div key={sess.id} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px' }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)', marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {sess.title ?? 'Untitled session'}
+                      </div>
+                      <div style={{ display: 'flex', gap: 12, fontSize: 11, color: 'var(--text-muted)' }}>
+                        <span>{sess.message_count} msgs</span>
+                        <span>{sess.token_count >= 1_000 ? `${(sess.token_count / 1_000).toFixed(0)}K` : sess.token_count} tokens</span>
+                        <span>{new Date(sess.created_at).toLocaleDateString()}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ── Bulk action bar ───────────────────────────────────────────── */
+function BulkActionsBar({ selectedIds, onClear }: { selectedIds: string[]; onClear: () => void }) {
+  const [amount, setAmount] = useState('');
+  const [done, setDone] = useState(false);
+  const qc = useQueryClient();
+
+  const { mutate, isPending } = useMutation({
+    mutationFn: () => api.post('/api/v1/admin/users/bulk-tokens', { user_ids: selectedIds, amount: Number(amount) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'users'] });
+      setDone(true);
+      setTimeout(() => { setDone(false); onClear(); }, 1500);
+    },
+  });
+
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px',
+      background: 'color-mix(in oklab, var(--primary) 8%, transparent)',
+      border: '1px solid color-mix(in oklab, var(--primary) 25%, transparent)',
+      borderRadius: 10, flexWrap: 'wrap',
+    }}>
+      <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
+        {selectedIds.length} user{selectedIds.length !== 1 ? 's' : ''} selected
+      </span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>Grant tokens:</span>
+        <input
+          type="number" value={amount} onChange={e => setAmount(e.target.value)}
+          placeholder="e.g. 500000" min="1"
+          style={{ width: 110, height: 28, padding: '0 8px', fontSize: 12, border: '1px solid var(--border)', borderRadius: 6, background: 'var(--surface)', color: 'var(--text)', outline: 'none' }}
+        />
+        <button
+          onClick={() => mutate()}
+          disabled={!amount || isPending || done || Number(amount) <= 0}
+          style={{
+            height: 28, padding: '0 12px', fontSize: 12, borderRadius: 6,
+            background: done ? 'var(--success)' : 'var(--primary)', color: 'white', border: 'none',
+            cursor: !amount || isPending ? 'default' : 'pointer',
+            opacity: !amount || Number(amount) <= 0 ? 0.5 : 1,
+          }}
+        >
+          {done ? '✓ Done' : isPending ? '…' : 'Grant'}
+        </button>
+      </div>
+      <button onClick={onClear} style={{ marginLeft: 'auto', fontSize: 12, padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}>
+        Clear selection
+      </button>
+    </div>
+  );
+}
+
 /* ── Main component ────────────────────────────────────────────── */
 export function UsersTable() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive' | 'admin' | 'dormant'>('all');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [drilldownId, setDrilldownId] = useState<string | null>(null);
   const perPage = 50;
   const qc = useQueryClient();
 
@@ -187,7 +336,20 @@ export function UsersTable() {
     );
   }
 
+  const allFilteredIds = filtered.map(u => u.id);
+  const allSelected = allFilteredIds.length > 0 && allFilteredIds.every(id => selectedIds.has(id));
+
+  function toggleSelectAll() {
+    if (allSelected) {
+      setSelectedIds(prev => { const next = new Set(prev); allFilteredIds.forEach(id => next.delete(id)); return next; });
+    } else {
+      setSelectedIds(prev => { const next = new Set(prev); allFilteredIds.forEach(id => next.add(id)); return next; });
+    }
+  }
+
   return (
+    <>
+      {drilldownId && <DrilldownPanel userId={drilldownId} onClose={() => setDrilldownId(null)} />}
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
       {/* Summary chips */}
@@ -216,6 +378,26 @@ export function UsersTable() {
         </div>
       </div>
 
+      {/* Bulk action bar */}
+      {selectedIds.size > 0 && (
+        <BulkActionsBar selectedIds={Array.from(selectedIds)} onClear={() => setSelectedIds(new Set())} />
+      )}
+
+      {/* Select all + count */}
+      {filtered.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12.5, color: 'var(--text-muted)' }}>
+            <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} />
+            Select all on page
+          </label>
+          {selectedIds.size > 0 && (
+            <span style={{ fontSize: 12, color: 'var(--primary)', fontWeight: 600 }}>
+              {selectedIds.size} selected
+            </span>
+          )}
+        </div>
+      )}
+
       {/* User rows */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {filtered.length === 0 && (
@@ -227,14 +409,28 @@ export function UsersTable() {
           const tokenPct = Math.min(100, Math.max(0, ((TOKEN_START - Math.max(0, u.token_balance)) / TOKEN_START) * 100));
           const lastLoginWarning = isInactive(u.last_login_at);
 
+          const isSelected = selectedIds.has(u.id);
           return (
             <div key={u.id} style={{
-              background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12,
+              background: isSelected ? 'color-mix(in oklab, var(--primary) 5%, var(--surface))' : 'var(--surface)',
+              border: `1px solid ${isSelected ? 'color-mix(in oklab, var(--primary) 30%, transparent)' : 'var(--border)'}`,
+              borderRadius: 12,
               padding: '14px 18px', display: 'grid',
-              gridTemplateColumns: '1fr 180px 140px 130px 100px 110px',
+              gridTemplateColumns: '32px 1fr 100px 80px 180px 140px 130px 100px 110px',
               gap: 16, alignItems: 'center',
               opacity: u.is_active ? 1 : 0.65,
             }}>
+              {/* Checkbox */}
+              <input
+                type="checkbox"
+                checked={isSelected}
+                onChange={() => setSelectedIds(prev => {
+                  const next = new Set(prev);
+                  if (next.has(u.id)) next.delete(u.id); else next.add(u.id);
+                  return next;
+                })}
+                style={{ cursor: 'pointer' }}
+              />
               {/* Identity */}
               <div style={{ minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
@@ -261,15 +457,39 @@ export function UsersTable() {
                     </div>
                   </div>
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <button
+                      onClick={() => setDrilldownId(u.id)}
+                      title="View activity drill-down"
+                      style={{ fontSize: 13, fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: 'var(--text)', textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}
+                    >
                       {u.full_name ?? '—'}
-                    </div>
+                    </button>
                     <div style={{ fontSize: 11.5, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {u.email}
                     </div>
                   </div>
                   <StatusChip user={u} />
+                  {u.data_sharing_enabled && (
+                    <span title="Data sharing enabled" style={{ fontSize: 10, color: 'var(--success)', marginLeft: 4 }}>◉</span>
+                  )}
                 </div>
+              </div>
+
+              {/* Sessions */}
+              <div style={{ fontSize: 12 }}>
+                <div style={{ fontWeight: 600, color: 'var(--text)', fontSize: 14 }}>{u.session_count}</div>
+                <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>sessions</div>
+                {u.last_session_at && (
+                  <div style={{ fontSize: 10.5, color: 'var(--text-subtle)', marginTop: 2 }}>
+                    {relativeTime(u.last_session_at)}
+                  </div>
+                )}
+              </div>
+
+              {/* API Keys */}
+              <div style={{ fontSize: 12 }}>
+                <div style={{ fontWeight: 600, color: u.api_key_count > 0 ? 'var(--text)' : 'var(--text-subtle)', fontSize: 14 }}>{u.api_key_count}</div>
+                <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>api keys</div>
               </div>
 
               {/* Token balance */}
@@ -338,8 +558,9 @@ export function UsersTable() {
       )}
 
       <div style={{ fontSize: 11.5, color: 'var(--text-subtle)', textAlign: 'center' }}>
-        Showing {filtered.length} of {data?.total ?? 0} users · Auto-refreshes every 30s
+        Showing {filtered.length} of {data?.total ?? 0} users · Auto-refreshes every 30s · Click a name to drill down
       </div>
     </div>
+    </>
   );
 }
