@@ -74,6 +74,49 @@ services:
       timeout: 5s
       retries: 3
 
+  glitchtip-migrate:
+    image: glitchtip/glitchtip:latest
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: "./manage.py migrate"
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/glitchtip
+      SECRET_KEY: ${GLITCHTIP_SECRET_KEY:?GLITCHTIP_SECRET_KEY is required}
+      PORT: "8080"
+    restart: "no"
+
+  glitchtip-web:
+    image: glitchtip/glitchtip:latest
+    depends_on:
+      glitchtip-migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/glitchtip
+      SECRET_KEY: ${GLITCHTIP_SECRET_KEY}
+      REDIS_URL: redis://redis:6379/1
+      PORT: "8080"
+      EMAIL_URL: "consolemail://"
+    restart: unless-stopped
+
+  glitchtip-worker:
+    image: glitchtip/glitchtip:latest
+    depends_on:
+      glitchtip-migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    command: "./manage.py run_huey"
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/glitchtip
+      SECRET_KEY: ${GLITCHTIP_SECRET_KEY}
+      REDIS_URL: redis://redis:6379/1
+    restart: unless-stopped
+
 volumes:
   pgdata:
   redisdata:
