@@ -27,16 +27,15 @@ _default_limiter = RateLimiter(requests=60, window_seconds=60)
     responses=error_responses(401, 500),
 )
 async def get_me(
+    db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[UserContext, Depends(get_current_user)],
 ) -> SuccessResponse[UserResponse]:
     """Get the currently logged in user information."""
-    return SuccessResponse(
-        data=UserResponse(
-            id=current_user.user_id,
-            email=current_user.email,
-            credits=current_user.credits,
-        )
-    )
+    repo = UserRepository(db)
+    user = await repo.get_by_id(current_user.user_id)
+    if user is None:
+        raise NotFoundException(detail="User not found")
+    return SuccessResponse(data=UserResponse.model_validate(user))
 
 
 @router.get(
