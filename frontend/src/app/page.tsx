@@ -137,19 +137,19 @@ const PRICING = [
   {
     plan: 'Free', price: '$0', per: '/ forever',
     desc: 'Kick the tires. Good for side projects and one-off runs.',
-    features: ['100 credits on signup', '10 credits / month refill', '3 saved prompt families', 'Community support'],
+    features: ['3M tokens on signup', 'Council Optimize · Health Score · Advisory', '3 saved prompt families', 'Community support'],
     cta: 'Start free', href: '/sign-up', featured: false,
   },
   {
     plan: 'Pro', price: '$29', per: '/ month',
     desc: 'For people shipping LLM features at work. Most teams start here.',
-    features: ['1,000 credits / month', 'Unlimited prompt families', 'Domain optimization', 'API access + CLI', 'Priority email support'],
+    features: ['30M tokens / month', 'All engines: PDO · GEPA · SkillOpt · Bridge', 'Unlimited prompt families · API access', 'Version history · Prompt Library', 'Priority email support'],
     cta: 'Go Pro', href: '/sign-up', featured: true,
   },
   {
     plan: 'Team', price: '$99', per: '/ month',
     desc: 'Shared workspaces, roles, and billing. Built for crews of 3–20.',
-    features: ['5,000 credits pooled', 'Up to 10 seats', 'Shared domain knowledge bases', 'SSO + audit log', 'Dedicated Slack channel'],
+    features: ['150M tokens pooled', 'Up to 10 seats', 'Shared domain knowledge bases', 'SSO + audit log', 'Dedicated Slack channel'],
     cta: 'Start team trial', href: '/sign-up', featured: false,
   },
 ];
@@ -229,7 +229,7 @@ export default function LandingPage() {
               display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ width: 6, height: 6, borderRadius: '50%', background: violet,
                 display: 'inline-block', boxShadow: `0 0 8px ${violet}` }} />
-              Now in public beta · 100 credits free
+              Now in public beta · 3M tokens free
             </div>
 
             <h1 style={{ fontFamily: serif, fontWeight: 400,
@@ -263,7 +263,7 @@ export default function LandingPage() {
               </a>
             </div>
             <div style={{ fontFamily: mono, fontSize: 11.5, color: '#999' }}>
-              100 credits free · no card · cancel with a button, not an email
+              3M tokens free · no card · cancel with a button, not an email
             </div>
           </div>
 
@@ -836,8 +836,8 @@ export default function LandingPage() {
             </h2>
           </div>
           <p style={{ fontSize: 15.5, lineHeight: 1.65, color: muted, maxWidth: 360, margin: 0 }}>
-            Credits, not seats. Optimize is 10 credits. Domain tournament is 10 credits.
-            Health score is 5. Unused credits roll over for 90 days.
+            Tokens, not seats. You&apos;re billed for actual LLM usage — a fast Optimize run
+            costs ~15K tokens; a full GEPA evolution up to 1M. Unused tokens roll over for 90 days.
           </p>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
@@ -976,7 +976,7 @@ export default function LandingPage() {
           </h2>
           <p style={{ color: '#8a8a90', fontSize: 16, lineHeight: 1.65,
             margin: '0 0 36px', maxWidth: 480, marginLeft: 'auto', marginRight: 'auto' }}>
-            100 credits free. No card required. Start with any prompt you already
+            3M tokens free. No card required. Start with any prompt you already
             have — or upload a PDF and let your own data decide which prompt wins.
           </p>
           <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
