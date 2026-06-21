@@ -130,7 +130,8 @@ class PromptService:
                 "llm_json_parse_failed", operation="health_score", error=str(exc), raw_len=len(raw)
             )  # noqa: E501
             raise LLMException(detail=f"LLM response was not valid JSON: {exc}") from exc
-        return {"prompt": prompt, **scores}
+        usage = getattr(response, "usage_metadata", {}) or {}
+        return {"prompt": prompt, "_token_usage": usage.get("total_tokens", 0), **scores}
 
     async def advisory(self, prompt: str, user_id: str) -> dict[str, Any]:
         await self._run_guardrails(prompt, user_id)
@@ -161,7 +162,8 @@ class PromptService:
             advice = json.loads(_extract_json(raw))
         except json.JSONDecodeError as exc:
             raise LLMException(detail=f"LLM response was not valid JSON: {exc}") from exc
-        return {"prompt": prompt, **advice}
+        usage = getattr(response, "usage_metadata", {}) or {}
+        return {"prompt": prompt, "_token_usage": usage.get("total_tokens", 0), **advice}
 
 
 class PromptVersioningService:

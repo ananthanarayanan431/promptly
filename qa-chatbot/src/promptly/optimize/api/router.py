@@ -106,15 +106,10 @@ async def create_chat(
     Returns immediately with a `job_id` (HTTP 202 Accepted). Poll
     `GET /chat/jobs/{job_id}` until `status` is `completed` or `failed`.
 
-    Cost: 10 credits, deducted on submission.
+    Cost: billed post-completion by actual token usage.
     """
-    if current_user.credits < 10:
-        log.warning(
-            "insufficient_credits",
-            user_id=str(current_user.user_id),
-            available=current_user.credits,
-            required=10,
-        )
+    user_repo = UserRepository(db)
+    if not await user_repo.has_min_tokens(current_user.user_id):
         raise ChatInsufficientCreditsException()
 
     # Resolve category — defaults to "general" if omitted; 422 if slug unknown.
@@ -144,13 +139,6 @@ async def create_chat(
     job_id = str(uuid.uuid4())
     session_id = str(request.session_id) if request.session_id else str(uuid.uuid4())
 
-    user_repo = UserRepository(db)
-    deducted = await user_repo.deduct_credits(current_user.user_id, 10)
-    if not deducted:
-        log.warning("credit_deduction_failed", user_id=str(current_user.user_id), required=10)
-        raise ChatInsufficientCreditsException()
-    log.info("credits_deducted", user_id=str(current_user.user_id), amount=10)
-
     # Ensure session exists BEFORE worker
     session_repo = SessionRepository(db)
     await session_repo.get_or_create(
@@ -177,15 +165,8 @@ async def create_chat(
             },
         )
     except Exception as exc:
-        log.error(  # noqa: E501
+        log.error(
             "job_enqueue_failed", job_id=job_id, user_id=str(current_user.user_id), error=str(exc)
-        )
-        await user_repo.refund_credits(current_user.user_id, 10)
-        log.info(
-            "credits_refunded",
-            user_id=str(current_user.user_id),
-            amount=10,
-            reason="enqueue_failed",  # noqa: E501
         )
         raise LLMTimeoutException() from exc
 

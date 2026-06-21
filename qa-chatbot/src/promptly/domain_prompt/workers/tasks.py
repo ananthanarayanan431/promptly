@@ -189,18 +189,6 @@ def prepare_domain_dataset(
             await set_dp_job_result(job_id, {"error": "Internal server error"})
 
             if is_terminal:
-                try:
-                    from uuid import UUID as _UUID
-
-                    from promptly.repositories.user_repo import UserRepository as _UserRepo
-
-                    async with AsyncSessionLocal() as refund_db:
-                        _repo = _UserRepo(refund_db)
-                        await _repo.refund_credits(_UUID(user_id), 10)
-                        await refund_db.commit()
-                except Exception:  # noqa: BLE001
-                    _log.exception("credit_refund_failed", user_id=user_id)
-
                 raise exc
 
             raise self.retry(exc=exc) from exc
@@ -395,18 +383,6 @@ def run_domain_optimization(
             await set_dp_job_result(job_id, {"error": "Internal server error"})
 
             if is_terminal:
-                try:
-                    from uuid import UUID as _UUID
-
-                    from promptly.repositories.user_repo import UserRepository as _UserRepo
-
-                    async with AsyncSessionLocal() as refund_db:
-                        _repo = _UserRepo(refund_db)
-                        await _repo.refund_credits(_UUID(user_id), 10)
-                        await refund_db.commit()
-                except Exception:  # noqa: BLE001
-                    _log.exception("credit_refund_failed", user_id=user_id)
-
                 raise exc
 
             raise self.retry(exc=exc) from exc
@@ -599,18 +575,6 @@ def run_gepa_optimization(
             await set_dp_job_result(job_id, {"error": "Internal server error"})
 
             if is_terminal:
-                try:
-                    from uuid import UUID as _UUID
-
-                    from promptly.repositories.user_repo import UserRepository as _UserRepo
-
-                    async with AsyncSessionLocal() as refund_db:
-                        _repo = _UserRepo(refund_db)
-                        await _repo.refund_credits(_UUID(user_id), gepa_credits)
-                        await refund_db.commit()
-                except Exception:  # noqa: BLE001
-                    _log.exception("credit_refund_failed", user_id=user_id)
-
                 raise exc
 
             raise self.retry(exc=exc) from exc

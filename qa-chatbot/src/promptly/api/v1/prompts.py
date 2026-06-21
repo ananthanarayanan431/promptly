@@ -14,6 +14,7 @@ from promptly.core.user_context import UserContext
 from promptly.dependencies import get_current_user, get_db
 from promptly.repositories.prompt_version_repo import PromptVersionRepository
 from promptly.repositories.usage_event_repo import UsageEventRepository
+from promptly.repositories.user_repo import UserRepository
 from promptly.schemas.prompt import (
     PaginatedPromptFamilyListResponse,
     PromptAdvisoryRequest,
@@ -60,11 +61,9 @@ async def prompt_health_score(
     conciseness, tone, actionability, context richness, and goal alignment.
     Returns a 1–10 score with a rationale for each dimension plus an overall score.
     """
-    if current_user.credits < 5:
-        log.warning("insufficient_credits", required=5, available=current_user.credits)
+    user_repo = UserRepository(db)
+    if not await user_repo.has_min_tokens(current_user.user_id):
         raise PromptInsufficientCreditsException()
-    current_user.credits -= 5
-    await db.flush()
 
     log.info("health_score_requested")
     service = PromptService(db=db)
@@ -73,8 +72,12 @@ async def prompt_health_score(
         user_id=str(current_user.user_id),
     )
 
+    token_count = result.pop("_token_usage", 0)
+    if token_count:
+        await user_repo.deduct_tokens(current_user.user_id, token_count)
+
     usage_repo = UsageEventRepository(db)
-    await usage_repo.log(user_id=current_user.user_id, action="health_score", credits_spent=5)
+    await usage_repo.log(user_id=current_user.user_id, action="health_score", credits_spent=0)
     await db.commit()
 
     return SuccessResponse(data=PromptHealthScoreResponse(**result))
@@ -98,11 +101,9 @@ async def prompt_advisory(
     Returns specific strengths, weaknesses, actionable improvements,
     and an overall assessment of the prompt's effectiveness.
     """
-    if current_user.credits < 5:
-        log.warning("insufficient_credits", required=5, available=current_user.credits)
+    user_repo = UserRepository(db)
+    if not await user_repo.has_min_tokens(current_user.user_id):
         raise PromptInsufficientCreditsException()
-    current_user.credits -= 5
-    await db.flush()
 
     log.info("advisory_requested")
     service = PromptService(db=db)
@@ -111,8 +112,12 @@ async def prompt_advisory(
         user_id=str(current_user.user_id),
     )
 
+    token_count = result.pop("_token_usage", 0)
+    if token_count:
+        await user_repo.deduct_tokens(current_user.user_id, token_count)
+
     usage_repo = UsageEventRepository(db)
-    await usage_repo.log(user_id=current_user.user_id, action="advisory", credits_spent=5)
+    await usage_repo.log(user_id=current_user.user_id, action="advisory", credits_spent=0)
     await db.commit()
 
     return SuccessResponse(data=PromptAdvisoryResponse(**result))
