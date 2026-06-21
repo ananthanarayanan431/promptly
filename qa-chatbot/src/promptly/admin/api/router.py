@@ -358,6 +358,7 @@ async def patch_user(
     user_id: uuid.UUID,
     body: AdminUserPatch,
     db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[UserContext, Depends(require_admin)],
 ) -> SuccessResponse[AdminUserItem]:
     """Update is_active, is_admin, or credits for any user."""
     repo = UserRepository(db)
@@ -369,6 +370,21 @@ async def patch_user(
     )
     if updated is None:
         raise NotFoundException(detail="User not found")
+    log_audit(
+        db,
+        admin_id=admin.user_id,
+        action="patch_user",
+        target_id=user_id,
+        details={
+            k: v
+            for k, v in {
+                "is_active": body.is_active,
+                "is_admin": body.is_admin,
+                "credits_delta": body.credits_delta,
+            }.items()
+            if v is not None
+        },
+    )
     await db.commit()
     return SuccessResponse(data=AdminUserItem.model_validate(updated))
 
@@ -846,11 +862,21 @@ async def get_user_activity(
 async def reset_rate_limit(
     user_id: str,
     route: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[UserContext, Depends(require_admin)],
 ) -> SuccessResponse[RateLimitResetResult]:
     """Delete a single rate-limit key from Redis."""
     redis = await get_redis_client()
     key = f"rl:user:{user_id}:{route}"
     deleted_count: int = await redis.delete(key)
+    log_audit(
+        db,
+        admin_id=admin.user_id,
+        action="reset_rate_limit",
+        target_id=None,
+        details={"user_id": user_id, "route": route, "key": key, "deleted": deleted_count > 0},
+    )
+    await db.commit()
     return SuccessResponse(data=RateLimitResetResult(deleted=deleted_count > 0, key=key))
 
 

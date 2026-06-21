@@ -1,6 +1,6 @@
 import uuid
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 TOKEN_START: int = 3_000_000
 
@@ -10,7 +10,7 @@ class TokenResponse(BaseModel):
 
 
 class AddTokenRequest(BaseModel):
-    amount: int
+    amount: int = Field(gt=0, le=10_000_000)
 
 
 class UserResponse(BaseModel):

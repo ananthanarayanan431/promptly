@@ -7,7 +7,7 @@ from promptly.api.types.response import SuccessResponse, error_responses
 from promptly.core.exceptions import NotFoundException
 from promptly.core.rate_limit import RateLimiter
 from promptly.core.user_context import UserContext
-from promptly.dependencies import get_current_user, get_db
+from promptly.dependencies import get_current_user, get_db, require_admin
 from promptly.repositories.user_repo import UserRepository
 from promptly.schemas.user import AddTokenRequest, TokenResponse, UserResponse, UserSettingsPatch
 from promptly.utils.log import get_logger
@@ -84,10 +84,10 @@ async def get_tokens(
 @router.post(
     "/tokens/add",
     response_model=SuccessResponse[TokenResponse],
-    dependencies=[Depends(_default_limiter)],
-    summary="Add tokens",
-    description="Add tokens to the authenticated user's balance (admin / top-up use).",
-    responses=error_responses(401, 404, 500),
+    dependencies=[Depends(_default_limiter), Depends(require_admin)],
+    summary="Add tokens (admin only)",
+    description="Add tokens to a user's balance. Restricted to admins.",
+    responses=error_responses(401, 403, 404, 500),
 )
 async def add_tokens(
     request: AddTokenRequest,
