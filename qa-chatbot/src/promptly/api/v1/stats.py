@@ -237,7 +237,6 @@ async def get_dashboard_stats(
             estimated_cost_usd=round(estimated_cost, 4),
             versions_saved=versions_saved,
             total_versions=total_versions,
-            credits_remaining=current_user.credits,
             usage=usage,
             streak_days=streak_days,
             last_optimized_at=last_optimized_at,

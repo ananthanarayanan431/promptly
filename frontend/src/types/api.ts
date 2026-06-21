@@ -223,7 +223,6 @@ export interface DashboardStats {
   estimated_cost_usd: number;
   versions_saved: number;
   total_versions: number;
-  credits_remaining: number;
   // Per-action usage (all-time + current month)
   usage: UsageStats;
   // Engagement signals
