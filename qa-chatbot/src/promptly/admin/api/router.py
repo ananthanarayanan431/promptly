@@ -175,17 +175,14 @@ async def _platform_engagement(db: AsyncSession, days: int) -> AnalyticsResponse
         )
     ).scalar_one()
 
-    total_tokens: int = max(
-        0,
-        int(
-            (
-                await db.execute(
-                    select(func.coalesce(func.sum(3_000_000 - User.token_balance), 0)).select_from(
-                        User
-                    )
-                )
-            ).scalar_one()
-        ),
+    total_tokens: int = int(
+        (
+            await db.execute(
+                select(
+                    func.coalesce(func.sum(func.greatest(0, 3_000_000 - User.token_balance)), 0)
+                ).select_from(User)
+            )
+        ).scalar_one()
     )
 
     total_budget = total_users * 3_000_000

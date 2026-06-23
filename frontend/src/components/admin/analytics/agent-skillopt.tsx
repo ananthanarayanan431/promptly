@@ -44,7 +44,7 @@ export function AgentSkillOpt() {
         <StaticCard title="Total Examples Processed"
           value={Number(st.total_examples).toLocaleString()} subtitle="all time" />
         <StaticCard title="Overall Avg Score Improvement"
-          value={`+${(Number(st.overall_avg_improvement) * 100).toFixed(1)}%`}
+          value={(() => { const imp = Number(st.overall_avg_improvement) * 100; return `${imp >= 0 ? '+' : ''}${imp.toFixed(1)}%`; })()}
           subtitle="score_after − score_before"
           accent="var(--success)" />
       </div>

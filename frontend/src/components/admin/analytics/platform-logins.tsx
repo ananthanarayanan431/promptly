@@ -46,7 +46,7 @@ export function PlatformLogins() {
       {/* Top KPI row */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
         <StaticCard title="Daily Active Users" value={Number(st.dau_7d)} subtitle="Last 7 Days" />
-        <StaticCard title="Weekly Active Users" value={Number(st.wau_7d)} subtitle="Last 7 Days" />
+        <StaticCard title="Weekly Active Users" value={Number(st.wau_7d)} subtitle="Last 7 Weeks" />
         <StaticCard title="Monthly Active Users" value={Number(st.mau_30d)} subtitle="Last 30 Days" />
       </div>
 
