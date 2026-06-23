@@ -289,3 +289,28 @@ class BulkTokenRequest(BaseModel):
 class BulkTokenResult(BaseModel):
     updated: int
     amount: int
+
+
+# ── Analytics ─────────────────────────────────────────────────────────────────
+
+
+class AnalyticsPoint(BaseModel):
+    date: str  # "YYYY-MM-DD" or "YYYY-MM" or "YYYY-Qn"
+    value: float
+
+
+class AnalyticsSeries(BaseModel):
+    key: str
+    label: str
+    total: float
+    time_range: str
+    data: list[AnalyticsPoint]
+    chart_type: str = "line"  # "line" | "bar"
+    color: str | None = None
+
+
+class AnalyticsResponse(BaseModel):
+    view: str
+    generated_at: str
+    statics: dict[str, float | int | str]
+    series: list[AnalyticsSeries]
