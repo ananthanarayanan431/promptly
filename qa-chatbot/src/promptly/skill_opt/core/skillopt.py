@@ -20,6 +20,7 @@ Algorithm (per epoch):
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import math
 import random
@@ -108,6 +109,27 @@ def _cosine_lr(base: int, epoch: int, total: int) -> int:
 
 def _chunked(lst: list[Any], size: int) -> list[list[Any]]:
     return [lst[i : i + size] for i in range(0, len(lst), size)]
+
+
+def _score_cache_key(skill: str) -> str:
+    return hashlib.sha256(skill.encode()).hexdigest()[:16]
+
+
+async def _score_on_selection_cached(
+    skill: str,
+    d_sel: list[Example],
+    cache: dict[str, float],
+    api_key: str,
+    token_counter: list[int] | None = None,
+    executor_model: str = _EXECUTOR_MODEL,
+) -> float:
+    key = _score_cache_key(skill)
+    if key in cache:
+        _log.debug("score_cache_hit", key=key)
+        return cache[key]
+    score = await _score_on_selection(skill, d_sel, api_key, token_counter, executor_model)
+    cache[key] = score
+    return score
 
 
 def _format_traces(traces: list[Trace], max_per: int = 3) -> str:
