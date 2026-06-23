@@ -1,4 +1,20 @@
+from datetime import UTC, datetime, timedelta
+
+from promptly.admin.api.router import _fill_days
 from promptly.admin.api.schemas import AnalyticsPoint, AnalyticsResponse, AnalyticsSeries
+
+
+def test_fill_days_pads_missing_dates() -> None:
+    now = datetime(2026, 6, 23, tzinfo=UTC)
+    cutoff = now - timedelta(days=3)
+    data_map = {"2026-06-21": 5, "2026-06-23": 2}
+    result = _fill_days(cutoff, 3, data_map)
+    assert len(result) == 3
+    assert result[0].date == "2026-06-21"
+    assert result[0].value == 5.0
+    assert result[1].value == 0.0  # gap filled
+    assert result[2].date == "2026-06-23"
+    assert result[2].value == 2.0
 
 
 def test_analytics_point_schema() -> None:
