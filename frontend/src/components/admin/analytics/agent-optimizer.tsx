@@ -62,7 +62,7 @@ export function AgentOptimizer() {
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
                   data={modelSeries.data.map(p => ({
-                    model: (p.date as string).split('/').pop() ?? p.date,
+                    model: p.date.split('/').pop() ?? p.date,
                     votes: p.value,
                   }))}
                   layout="vertical"

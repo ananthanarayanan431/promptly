@@ -56,7 +56,7 @@ export function PlatformEngagement() {
     date,
     ...Object.fromEntries(adoptionSeries.map(s => [s.label, s.data[i]?.value ?? 0])),
   }));
-  const adoptionColors = ['var(--primary)', '#06b6d4', '#f59e0b', '#f43f5e'];
+  const adoptionColors = ['#6366f1', '#06b6d4', '#f59e0b', '#f43f5e'];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
