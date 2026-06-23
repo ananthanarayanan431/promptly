@@ -97,7 +97,7 @@ epoch-wise consolidation that fast (patch-mode) edits cannot touch.
 **Markers**: `<!-- META:START -->` / `<!-- META:END -->`
 
 **Seed generator** appends this block at the end of every generated skill:
-```
+```markdown
 ---
 ## Consolidated Lessons
 <!-- META:START -->

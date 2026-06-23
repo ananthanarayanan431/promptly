@@ -88,8 +88,8 @@ def run_skillopt(
                 except Exception:  # noqa: BLE001, S112
                     continue
 
-            if len(examples) < 6:
-                raise ValueError(f"SkillOpt needs at least 6 examples; found {len(examples)}.")
+            if len(examples) < 10:
+                raise ValueError(f"SkillOpt needs at least 10 examples; found {len(examples)}.")
 
             if await is_so_job_cancelled(job_id):
                 raise InterruptedError("Cancelled before optimization.")

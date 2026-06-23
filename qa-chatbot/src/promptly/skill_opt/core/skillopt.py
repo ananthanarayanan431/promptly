@@ -127,8 +127,9 @@ def _chunked(lst: list[Any], size: int) -> list[list[Any]]:
     return [lst[i : i + size] for i in range(0, len(lst), size)]
 
 
-def _score_cache_key(skill: str) -> str:
-    return hashlib.sha256(skill.encode()).hexdigest()[:16]
+def _score_cache_key(skill: str, d_sel: list[Example]) -> str:
+    sel_repr = "|".join(f"{e.input}:{e.expected}" for e in d_sel)
+    return hashlib.sha256((skill + "\x00" + sel_repr).encode()).hexdigest()[:16]
 
 
 async def _score_on_selection_cached(
@@ -139,7 +140,7 @@ async def _score_on_selection_cached(
     token_counter: list[int] | None = None,
     executor_model: str = _EXECUTOR_MODEL,
 ) -> float:
-    key = _score_cache_key(skill)
+    key = _score_cache_key(skill, d_sel)
     if key in cache:
         _log.debug("score_cache_hit", key=key)
         return cache[key]
@@ -238,7 +239,8 @@ async def _generate_seed_skill(
             ]
         )
         content = str(resp.content).strip()
-        if _META_START not in content:
+        if _META_START not in content or _META_END not in content:
+            content = content.split(_META_START)[0].rstrip()
             content += f"\n\n---\n## Consolidated Lessons\n{_META_START}\n{_META_END}"
         return content
     except Exception as exc:
@@ -504,7 +506,7 @@ async def _meta_update(
                 if text:
                     notes.append(str(text)[:200])
         updated_protected: str = str(obj.get("updated_protected") or protected)
-        if _META_START not in updated_protected:
+        if _META_START not in updated_protected or _META_END not in updated_protected:
             updated_protected = protected
         return notes, updated_protected
     except Exception as exc:
@@ -545,7 +547,8 @@ async def _rewrite_skill(
             if meta:
                 token_counter[0] += meta.get("total_tokens", 0) or 0
         content = str(resp.content).strip()
-        if _META_START not in content:
+        if _META_START not in content or _META_END not in content:
+            content = content.split(_META_START)[0].rstrip()
             content += f"\n\n---\n## Consolidated Lessons\n{_META_START}\n{_META_END}"
         return content
     except Exception as exc:
@@ -701,6 +704,7 @@ async def _merge_proposals(
         system_tpl: str,
         user_tpl: str,
     ) -> list[Edit]:
+        batches = [b for b in batches if b]
         if not batches:
             return []
         if len(batches) == 1:
@@ -738,6 +742,7 @@ async def _merge_proposals(
                 )
                 for e in obj.get("edits", [])[:lr_budget]
                 if isinstance(e, dict)
+                and str(e.get("op", "")).upper() in ("ADD", "DELETE", "REPLACE")
             ]
         except Exception as exc:
             _log.warning("merge_set_failed", source=source, error=str(exc))
@@ -1025,56 +1030,62 @@ async def optimize_skill(
                 }
             )
 
-        candidate_score = await _score_on_selection_cached(
-            candidate_skill, d_sel, _score_cache, api_key, token_counter, executor_model
-        )
+        if ranked:
+            candidate_score = await _score_on_selection_cached(
+                candidate_skill, d_sel, _score_cache, api_key, token_counter, executor_model
+            )
 
-        if candidate_score > current_score:  # hard gate — strictly improving
-            _log.info(
-                "skillopt_edit_accepted",
-                epoch=epoch + 1,
-                score=round(candidate_score, 3),
-                delta=round(candidate_score - current_score, 3),
-            )
-            current_skill = candidate_skill
-            current_score = candidate_score
-            epoch_accepted_edits = ranked
-            total_accepted += len(ranked)
-            consecutive_rejections = 0
-            if candidate_score > best_score:
-                best_skill = candidate_skill
-                best_score = candidate_score
-        else:
-            _log.info(
-                "skillopt_edit_rejected",
-                epoch=epoch + 1,
-                candidate=round(candidate_score, 3),
-                current=round(current_score, 3),
-            )
-            rejected_edit_buffer.extend(ranked)
-            total_rejected += len(ranked)
-            rejected_edit_buffer = rejected_edit_buffer[-20:]
-            consecutive_rejections += 1
-            if consecutive_rejections >= 2:
-                _log.info("skillopt_rewrite_triggered", epoch=epoch + 1)
-                rewrite_candidate = await _rewrite_skill(
-                    current_skill, all_epoch_traces, meta_notes, api_key, token_counter
+            if candidate_score > current_score:  # hard gate — strictly improving
+                _log.info(
+                    "skillopt_edit_accepted",
+                    epoch=epoch + 1,
+                    score=round(candidate_score, 3),
+                    delta=round(candidate_score - current_score, 3),
                 )
-                rewrite_score = await _score_on_selection_cached(
-                    rewrite_candidate, d_sel, _score_cache, api_key, token_counter, executor_model
-                )
-                if rewrite_score > current_score:
-                    _log.info(
-                        "skillopt_rewrite_accepted",
-                        epoch=epoch + 1,
-                        score=round(rewrite_score, 3),
-                    )
-                    current_skill = rewrite_candidate
-                    current_score = rewrite_score
-                    if rewrite_score > best_score:
-                        best_skill = rewrite_candidate
-                        best_score = rewrite_score
+                current_skill = candidate_skill
+                current_score = candidate_score
+                epoch_accepted_edits = ranked
+                total_accepted += len(ranked)
                 consecutive_rejections = 0
+                if candidate_score > best_score:
+                    best_skill = candidate_skill
+                    best_score = candidate_score
+            else:
+                _log.info(
+                    "skillopt_edit_rejected",
+                    epoch=epoch + 1,
+                    candidate=round(candidate_score, 3),
+                    current=round(current_score, 3),
+                )
+                rejected_edit_buffer.extend(ranked)
+                total_rejected += len(ranked)
+                rejected_edit_buffer = rejected_edit_buffer[-20:]
+                consecutive_rejections += 1
+                if consecutive_rejections >= 2:
+                    _log.info("skillopt_rewrite_triggered", epoch=epoch + 1)
+                    rewrite_candidate = await _rewrite_skill(
+                        current_skill, all_epoch_traces, meta_notes, api_key, token_counter
+                    )
+                    rewrite_score = await _score_on_selection_cached(
+                        rewrite_candidate,
+                        d_sel,
+                        _score_cache,
+                        api_key,
+                        token_counter,
+                        executor_model,
+                    )
+                    if rewrite_score > current_score:
+                        _log.info(
+                            "skillopt_rewrite_accepted",
+                            epoch=epoch + 1,
+                            score=round(rewrite_score, 3),
+                        )
+                        current_skill = rewrite_candidate
+                        current_score = rewrite_score
+                        if rewrite_score > best_score:
+                            best_skill = rewrite_candidate
+                            best_score = rewrite_score
+                    consecutive_rejections = 0
 
         # ── Slow/meta update at epoch boundary ───────────────────────────────
         if emit_state:

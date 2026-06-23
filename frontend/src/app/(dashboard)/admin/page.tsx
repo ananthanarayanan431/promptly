@@ -11,8 +11,6 @@ import { HealthTab } from '@/components/admin/health-tab';
 import { ApiKeysTable } from '@/components/admin/api-keys-table';
 import { AuditLogTable } from '@/components/admin/audit-log-table';
 import { JobsMonitorTab } from '@/components/admin/jobs-monitor';
-import { ViewTab } from '@/components/admin/view-tab';
-
 type Tab =
   | 'overview'
   | 'users'
@@ -23,8 +21,7 @@ type Tab =
   | 'health'
   | 'api-keys'
   | 'audit-log'
-  | 'jobs'
-  | 'view';
+  | 'jobs';
 
 const TABS: { id: Tab; label: string; icon: string; desc: string }[] = [
   { id: 'overview',    label: 'Overview',      icon: '📊', desc: 'Platform KPIs, usage trends, top consumers' },
@@ -37,7 +34,6 @@ const TABS: { id: Tab; label: string; icon: string; desc: string }[] = [
   { id: 'audit-log',   label: 'Audit Log',     icon: '📋', desc: 'Admin action history with details and timestamps' },
   { id: 'prompts',     label: 'User Activity', icon: '👤', desc: 'Per-user session history, prompt detail, and usage breakdown' },
   { id: 'openrouter',  label: 'OpenRouter',    icon: '🤖', desc: 'API credits, spend, and model usage' },
-  { id: 'view',        label: 'View',          icon: '📈', desc: 'Analytics dashboard — DAU/WAU/MAU, feature engagement, per-agent metrics' },
 ];
 
 export default function AdminPage() {
@@ -101,9 +97,9 @@ export default function AdminPage() {
       {/* Tab content */}
       <div style={{
         flex: 1,
-        overflowY: activeTab === 'view' ? 'hidden' : 'auto',
-        padding: activeTab === 'view' ? 0 : '24px 32px 60px',
-        display: activeTab === 'view' ? 'flex' : 'block',
+        overflowY: 'auto',
+        padding: '24px 32px 60px',
+        display: 'block',
         flexDirection: 'column' as const,
         minHeight: 0,
       }}>
@@ -117,7 +113,6 @@ export default function AdminPage() {
         {activeTab === 'audit-log'   && <AuditLogTable />}
         {activeTab === 'prompts'     && <PromptsView />}
         {activeTab === 'openrouter'  && <OpenRouterCard />}
-        {activeTab === 'view'        && <ViewTab />}
       </div>
     </div>
   );

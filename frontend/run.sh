@@ -95,7 +95,7 @@ if [[ -f "$ENV_FILE" ]]; then
 fi
 
 info "Checking backend reachability at $API_URL ..."
-if curl -sf --max-time 3 "$API_URL/health" &>/dev/null || curl -sf --max-time 3 "$API_URL/docs" &>/dev/null; then
+if curl -sf --max-time 3 "$API_URL/api/v1/health" &>/dev/null || curl -sf --max-time 3 "$API_URL/docs" &>/dev/null; then
   ok "Backend is reachable at $API_URL"
 else
   warn "Backend at $API_URL is not reachable"
