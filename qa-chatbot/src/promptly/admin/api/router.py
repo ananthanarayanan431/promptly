@@ -223,12 +223,12 @@ async def _platform_engagement(db: AsyncSession, days: int) -> AnalyticsResponse
     wau_rows = (
         await db.execute(
             select(
-                func.date_trunc("week", UsageEvent.created_at).label("week"),
+                func.date_trunc(text("'week'"), UsageEvent.created_at).label("week"),
                 func.count(UsageEvent.user_id.distinct()).label("cnt"),
             )
             .where(UsageEvent.created_at >= cutoff_90d)
-            .group_by(func.date_trunc("week", UsageEvent.created_at))
-            .order_by(func.date_trunc("week", UsageEvent.created_at))
+            .group_by(func.date_trunc(text("'week'"), UsageEvent.created_at))
+            .order_by(func.date_trunc(text("'week'"), UsageEvent.created_at))
         )
     ).fetchall()
     wau_data = [AnalyticsPoint(date=str(r.week)[:10], value=float(r.cnt)) for r in wau_rows]
@@ -515,12 +515,12 @@ async def _platform_logins(db: AsyncSession, days: int) -> AnalyticsResponse:
     wau_rows = (
         await db.execute(
             select(
-                func.date_trunc("week", UsageEvent.created_at).label("week"),
+                func.date_trunc(text("'week'"), UsageEvent.created_at).label("week"),
                 func.count(UsageEvent.user_id.distinct()).label("cnt"),
             )
             .where(UsageEvent.created_at >= cutoff_90d)
-            .group_by(func.date_trunc("week", UsageEvent.created_at))
-            .order_by(func.date_trunc("week", UsageEvent.created_at))
+            .group_by(func.date_trunc(text("'week'"), UsageEvent.created_at))
+            .order_by(func.date_trunc(text("'week'"), UsageEvent.created_at))
         )
     ).fetchall()
     wau_trend = [AnalyticsPoint(date=str(r.week)[:10], value=float(r.cnt)) for r in wau_rows]
@@ -529,12 +529,12 @@ async def _platform_logins(db: AsyncSession, days: int) -> AnalyticsResponse:
     mau_rows = (
         await db.execute(
             select(
-                func.date_trunc("month", UsageEvent.created_at).label("month"),
+                func.date_trunc(text("'month'"), UsageEvent.created_at).label("month"),
                 func.count(UsageEvent.user_id.distinct()).label("cnt"),
             )
             .where(UsageEvent.created_at >= cutoff_90d)
-            .group_by(func.date_trunc("month", UsageEvent.created_at))
-            .order_by(func.date_trunc("month", UsageEvent.created_at))
+            .group_by(func.date_trunc(text("'month'"), UsageEvent.created_at))
+            .order_by(func.date_trunc(text("'month'"), UsageEvent.created_at))
         )
     ).fetchall()
     mau_trend = [AnalyticsPoint(date=str(r.month)[:7], value=float(r.cnt)) for r in mau_rows]
@@ -543,12 +543,12 @@ async def _platform_logins(db: AsyncSession, days: int) -> AnalyticsResponse:
     qau_rows = (
         await db.execute(
             select(
-                func.date_trunc("quarter", UsageEvent.created_at).label("quarter"),
+                func.date_trunc(text("'quarter'"), UsageEvent.created_at).label("quarter"),
                 func.count(UsageEvent.user_id.distinct()).label("cnt"),
             )
             .where(UsageEvent.created_at >= cutoff_365d)
-            .group_by(func.date_trunc("quarter", UsageEvent.created_at))
-            .order_by(func.date_trunc("quarter", UsageEvent.created_at))
+            .group_by(func.date_trunc(text("'quarter'"), UsageEvent.created_at))
+            .order_by(func.date_trunc(text("'quarter'"), UsageEvent.created_at))
         )
     ).fetchall()
     qau_trend = [AnalyticsPoint(date=str(r.quarter)[:7], value=float(r.cnt)) for r in qau_rows]
@@ -1646,7 +1646,7 @@ async def _agent_optimizer(db: AsyncSession, days: int) -> AnalyticsResponse:
             select(
                 cast(Message.created_at, SqlDate).label("day"),
                 func.coalesce(func.sum(Message.token_usage["total_tokens"].as_integer()), 0).label(
-                    "t"
+                    "tokens"
                 ),
             )
             .where(Message.created_at >= cutoff, Message.token_usage.isnot(None))
@@ -1654,7 +1654,7 @@ async def _agent_optimizer(db: AsyncSession, days: int) -> AnalyticsResponse:
             .order_by(cast(Message.created_at, SqlDate))
         )
     ).fetchall()
-    tok_map: dict[str, int | float] = {str(r.day): r.t for r in tok_rows}
+    tok_map: dict[str, int | float] = {str(r.day): r.tokens for r in tok_rows}
     total_tokens = sum(tok_map.values())
 
     # Unique users per day
@@ -2086,7 +2086,7 @@ async def _agent_domain(db: AsyncSession, days: int) -> AnalyticsResponse:
             select(
                 cast(Message.created_at, SqlDate).label("day"),
                 func.coalesce(func.sum(Message.token_usage["total_tokens"].as_integer()), 0).label(
-                    "t"
+                    "tokens"
                 ),
             )
             .where(Message.created_at >= cutoff, Message.token_usage.isnot(None))
@@ -2094,7 +2094,7 @@ async def _agent_domain(db: AsyncSession, days: int) -> AnalyticsResponse:
             .order_by(cast(Message.created_at, SqlDate))
         )
     ).fetchall()
-    tok_map: dict[str, int | float] = {str(r.day): r.t for r in tok_rows}
+    tok_map: dict[str, int | float] = {str(r.day): r.tokens for r in tok_rows}
 
     total_runs = sum(runs_map.values())
 
@@ -2189,7 +2189,7 @@ async def _agent_bridge(db: AsyncSession, days: int) -> AnalyticsResponse:
             select(
                 cast(Message.created_at, SqlDate).label("day"),
                 func.coalesce(func.sum(Message.token_usage["total_tokens"].as_integer()), 0).label(
-                    "t"
+                    "tokens"
                 ),
             )
             .where(Message.created_at >= cutoff, Message.token_usage.isnot(None))
@@ -2197,7 +2197,7 @@ async def _agent_bridge(db: AsyncSession, days: int) -> AnalyticsResponse:
             .order_by(cast(Message.created_at, SqlDate))
         )
     ).fetchall()
-    tok_map: dict[str, int | float] = {str(r.day): r.t for r in tok_rows}
+    tok_map: dict[str, int | float] = {str(r.day): r.tokens for r in tok_rows}
 
     total_bridge = int(
         (

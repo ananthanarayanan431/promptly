@@ -150,13 +150,24 @@ def create_app() -> FastAPI:
         callers always receive the standard ErrorResponse envelope rather than an
         HTML error page.
         """
+        import traceback as _tb
+
         log = get_logger(__name__)
-        log.exception(
-            "unhandled_exception",
-            path=str(request.url.path),
-            method=request.method,
-            error=str(exc),
-        )
+        try:
+            log.exception(
+                "unhandled_exception",
+                path=str(request.url.path),
+                method=request.method,
+                error=str(exc),
+            )
+        except Exception:
+            log.error(
+                "unhandled_exception",
+                path=str(request.url.path),
+                method=request.method,
+                error=str(exc),
+                traceback=_tb.format_exc(),
+            )
         return JSONResponse(
             status_code=500,
             content={
