@@ -30,13 +30,25 @@ from typing import Any
 
 from promptly.llm._client import _build
 from promptly.skill_opt.prompts.system import (
+    ANALYST_FAILURE_SYSTEM,
+    ANALYST_FAILURE_USER,
+    ANALYST_SUCCESS_SYSTEM,
+    ANALYST_SUCCESS_USER,
     EXECUTOR_SYSTEM,
     EXECUTOR_USER,
+    MERGE_FAILURE_SYSTEM,
+    MERGE_FAILURE_USER,
+    MERGE_FINAL_SYSTEM,
+    MERGE_FINAL_USER,
+    MERGE_SUCCESS_SYSTEM,
+    MERGE_SUCCESS_USER,
     META_SYSTEM,
     META_USER,
     OPTIMIZER_SYSTEM,
     OPTIMIZER_USER,
     REJECTED_EDITS_BLOCK,
+    REWRITE_SYSTEM,
+    REWRITE_USER,
     SCORER_SYSTEM,
     SCORER_USER,
     SEED_SYSTEM,
@@ -52,6 +64,9 @@ _EXECUTOR_MODEL = "anthropic/claude-3.5-haiku"
 _OPTIMIZER_MODEL = "openai/gpt-4o-mini"
 _SCORER_MODEL = "openai/gpt-4o-mini"
 _SEED_MODEL = "openai/gpt-4o-mini"
+_REWRITE_MODEL = "google/gemini-2.0-flash"
+_ANALYST_MODEL = "google/gemini-2.0-flash"
+_MERGE_MODEL = "google/gemini-2.0-flash"
 
 # Per-effort model overrides.
 # The EXECUTOR runs every example → its quality directly affects optimization signal.
@@ -94,6 +109,7 @@ class Edit:
     content: str | None
     rationale: str
     frequency: int = 1  # how many minibatches proposed this edit
+    source: str = "failure"  # "failure" | "success"
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -130,6 +146,28 @@ async def _score_on_selection_cached(
     score = await _score_on_selection(skill, d_sel, api_key, token_counter, executor_model)
     cache[key] = score
     return score
+
+
+_META_START = "<!-- META:START -->"
+_META_END = "<!-- META:END -->"
+
+
+def _extract_protected(skill: str) -> tuple[str, str]:
+    """Return (editable_part, protected_block). Protected block starts at the --- separator
+    before META:START, or at META:START itself if no separator is found."""
+    idx = skill.find(_META_START)
+    if idx == -1:
+        return skill, ""
+    pre = skill[:idx]
+    sep_idx = pre.rfind("\n---\n")
+    cut = (sep_idx + 1) if sep_idx != -1 else idx
+    return skill[:cut].rstrip(), skill[cut:]
+
+
+def _restore_protected(editable: str, protected: str) -> str:
+    if not protected:
+        return editable
+    return editable.rstrip() + "\n\n" + protected.lstrip()
 
 
 def _split_examples(
@@ -199,14 +237,18 @@ async def _generate_seed_skill(
                 },
             ]
         )
-        return str(resp.content).strip()
+        content = str(resp.content).strip()
+        if _META_START not in content:
+            content += f"\n\n---\n## Consolidated Lessons\n{_META_START}\n{_META_END}"
+        return content
     except Exception as exc:
         _log.warning("seed_generation_failed", error=str(exc))
         return (
             f"# Skill Guide: {task_description[:60]}\n\n"
             "Follow the task instructions carefully.\n"
             "Think step by step before answering.\n"
-            "Be concise and accurate."
+            "Be concise and accurate.\n\n"
+            f"---\n## Consolidated Lessons\n{_META_START}\n{_META_END}"
         )
 
 
@@ -380,8 +422,9 @@ async def _reflect_and_propose(
 
 
 def _apply_edits(skill: str, edits: list[Edit]) -> str:
-    """Apply ranked edits to the skill document."""
-    result = skill
+    """Apply ranked edits to the editable portion of the skill document only."""
+    editable, protected = _extract_protected(skill)
+    result = editable
     for edit in edits:
         if edit.op == "ADD" and edit.content:
             result = result.rstrip() + "\n\n" + edit.content.strip()
@@ -392,11 +435,11 @@ def _apply_edits(skill: str, edits: list[Edit]) -> str:
                 result = result.replace(edit.target, edit.content, 1)
             else:
                 result = result.rstrip() + "\n\n" + edit.content.strip()
-    return result.strip()
+    return _restore_protected(result.strip(), protected)
 
 
 def _rank_edits(all_edits: list[Edit], budget: int) -> list[Edit]:
-    """Deduplicate and rank by frequency; return top-budget edits."""
+    """Deduplicate and rank: failure-source first, then by frequency descending."""
     seen: dict[str, Edit] = {}
     for e in all_edits:
         key = f"{e.op}::{(e.target or '')[:80]}::{(e.content or '')[:80]}"
@@ -404,7 +447,10 @@ def _rank_edits(all_edits: list[Edit], budget: int) -> list[Edit]:
             seen[key].frequency += 1
         else:
             seen[key] = e
-    ranked = sorted(seen.values(), key=lambda x: -x.frequency)
+    ranked = sorted(
+        seen.values(),
+        key=lambda x: (0 if x.source == "failure" else 1, -x.frequency),
+    )
     return ranked[:budget]
 
 
@@ -416,8 +462,10 @@ async def _meta_update(
     rejected_edits: list[Edit],
     api_key: str,
     token_counter: list[int] | None = None,
-) -> list[str]:
-    llm = _build(_OPTIMIZER_MODEL, temperature=0.3, max_tokens=400, api_key=api_key)
+) -> tuple[list[str], str]:
+    """Returns (lessons, updated_protected_block)."""
+    llm = _build(_OPTIMIZER_MODEL, temperature=0.3, max_tokens=500, api_key=api_key)
+    _, protected = _extract_protected(current_skill)
 
     def fmt_edits(edits: list[Edit]) -> str:
         return (
@@ -433,6 +481,7 @@ async def _meta_update(
                     "role": "user",
                     "content": META_USER.format(
                         current_skill=current_skill[:1500],
+                        protected_block=protected or "(none)",
                         score_before=score_before,
                         score_after=score_after,
                         edits_accepted=len(accepted_edits),
@@ -448,16 +497,308 @@ async def _meta_update(
             if meta:
                 token_counter[0] += meta.get("total_tokens", 0) or 0
         obj = _json_safe(str(resp.content))
-        notes = []
+        notes: list[str] = []
         for lesson in obj.get("lessons", [])[:5]:
             if isinstance(lesson, dict):
                 text = lesson.get("keep") or lesson.get("avoid") or ""
                 if text:
                     notes.append(str(text)[:200])
-        return notes
+        updated_protected: str = str(obj.get("updated_protected") or protected)
+        if _META_START not in updated_protected:
+            updated_protected = protected
+        return notes, updated_protected
     except Exception as exc:
         _log.warning("meta_update_failed", error=str(exc))
+        return [], protected
+
+
+async def _rewrite_skill(
+    current_skill: str,
+    all_traces: list[Trace],
+    meta_notes: list[str],
+    api_key: str,
+    token_counter: list[int] | None = None,
+) -> str:
+    """Full skill document rewrite for when patch-mode stalls (2+ consecutive rejections)."""
+    llm = _build(_REWRITE_MODEL, temperature=0.7, max_tokens=800, api_key=api_key)
+    successes = [t for t in all_traces if t.score >= 0.5]
+    failures = [t for t in all_traces if t.score < 0.5]
+    try:
+        resp = await llm.ainvoke(
+            [
+                {"role": "system", "content": REWRITE_SYSTEM},
+                {
+                    "role": "user",
+                    "content": REWRITE_USER.format(
+                        current_skill=current_skill[:1500],
+                        n_success=len(successes),
+                        success_traces=_format_traces(successes, max_per=3),
+                        n_failure=len(failures),
+                        failure_traces=_format_traces(failures, max_per=3),
+                        meta_notes="\n".join(f"- {n}" for n in meta_notes[-5:]) or "(none)",
+                    ),
+                },
+            ]
+        )
+        if token_counter is not None:
+            meta = getattr(resp, "usage_metadata", None)
+            if meta:
+                token_counter[0] += meta.get("total_tokens", 0) or 0
+        content = str(resp.content).strip()
+        if _META_START not in content:
+            content += f"\n\n---\n## Consolidated Lessons\n{_META_START}\n{_META_END}"
+        return content
+    except Exception as exc:
+        _log.warning("rewrite_skill_failed", error=str(exc))
+        return current_skill
+
+
+def _format_edit_batch(edits: list[Edit]) -> str:
+    if not edits:
+        return "(none)"
+    return "\n".join(
+        f"[{e.op}] target={e.target!r} content={(e.content or '')[:120]!r}" for e in edits
+    )
+
+
+async def _analyze_failures(
+    current_skill: str,
+    failures: list[Trace],
+    rejected_edits: list[Edit],
+    meta_notes: list[str],
+    lr_budget: int,
+    api_key: str,
+    token_counter: list[int] | None = None,
+) -> list[Edit]:
+    """Analyze failure traces and propose fix patches (source='failure')."""
+    if not failures:
         return []
+    llm = _build(_ANALYST_MODEL, temperature=0.5, max_tokens=600, api_key=api_key)
+
+    rejected_block = ""
+    if rejected_edits:
+        lines = "\n".join(
+            f"- [{e.op}] {e.content or e.target or '(no text)'}: {e.rationale}"
+            for e in rejected_edits[-8:]
+        )
+        rejected_block = REJECTED_EDITS_BLOCK.format(rejected_list=lines)
+
+    meta_block = ""
+    if meta_notes:
+        meta_block = "\nMETA LESSONS:\n" + "\n".join(f"- {n}" for n in meta_notes[-5:])
+
+    try:
+        resp = await llm.ainvoke(
+            [
+                {
+                    "role": "system",
+                    "content": ANALYST_FAILURE_SYSTEM.format(
+                        lr_budget=lr_budget,
+                        rejected_edits_block=rejected_block + meta_block,
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": ANALYST_FAILURE_USER.format(
+                        current_skill=current_skill[:2000],
+                        n_failure=len(failures),
+                        failure_traces=_format_traces(failures),
+                        lr_budget=lr_budget,
+                    ),
+                },
+            ]
+        )
+        if token_counter is not None:
+            meta = getattr(resp, "usage_metadata", None)
+            if meta:
+                token_counter[0] += meta.get("total_tokens", 0) or 0
+        obj = _json_safe(str(resp.content))
+        return [
+            Edit(
+                op=str(e.get("op", "ADD")).upper(),
+                target=e.get("target") or None,
+                content=e.get("content") or None,
+                rationale=str(e.get("rationale", ""))[:200],
+                source="failure",
+            )
+            for e in obj.get("edits", [])[:lr_budget]
+            if isinstance(e, dict) and str(e.get("op", "")).upper() in ("ADD", "DELETE", "REPLACE")
+        ]
+    except Exception as exc:
+        _log.warning("analyze_failures_failed", error=str(exc))
+        return []
+
+
+async def _analyze_successes(
+    current_skill: str,
+    successes: list[Trace],
+    meta_notes: list[str],
+    lr_budget: int,
+    api_key: str,
+    token_counter: list[int] | None = None,
+) -> list[Edit]:
+    """Analyze success traces and propose reinforcement patches (source='success')."""
+    if not successes:
+        return []
+    llm = _build(_ANALYST_MODEL, temperature=0.5, max_tokens=600, api_key=api_key)
+
+    meta_block = (
+        "\nMETA LESSONS:\n" + "\n".join(f"- {n}" for n in meta_notes[-5:]) if meta_notes else ""
+    )
+
+    try:
+        resp = await llm.ainvoke(
+            [
+                {
+                    "role": "system",
+                    "content": ANALYST_SUCCESS_SYSTEM.format(lr_budget=lr_budget) + meta_block,
+                },
+                {
+                    "role": "user",
+                    "content": ANALYST_SUCCESS_USER.format(
+                        current_skill=current_skill[:2000],
+                        n_success=len(successes),
+                        success_traces=_format_traces(successes),
+                        lr_budget=lr_budget,
+                    ),
+                },
+            ]
+        )
+        if token_counter is not None:
+            meta = getattr(resp, "usage_metadata", None)
+            if meta:
+                token_counter[0] += meta.get("total_tokens", 0) or 0
+        obj = _json_safe(str(resp.content))
+        return [
+            Edit(
+                op=str(e.get("op", "ADD")).upper(),
+                target=e.get("target") or None,
+                content=e.get("content") or None,
+                rationale=str(e.get("rationale", ""))[:200],
+                source="success",
+            )
+            for e in obj.get("edits", [])[:lr_budget]
+            if isinstance(e, dict) and str(e.get("op", "")).upper() in ("ADD", "REPLACE")
+        ]
+    except Exception as exc:
+        _log.warning("analyze_successes_failed", error=str(exc))
+        return []
+
+
+async def _merge_proposals(
+    failure_batches: list[list[Edit]],
+    success_batches: list[list[Edit]],
+    current_skill: str,
+    lr_budget: int,
+    api_key: str,
+    token_counter: list[int] | None = None,
+) -> list[Edit]:
+    """Hierarchical merge: failure sets → success sets → combine failure-prioritized."""
+
+    async def _merge_set(
+        batches: list[list[Edit]],
+        source: str,
+        system_tpl: str,
+        user_tpl: str,
+    ) -> list[Edit]:
+        if not batches:
+            return []
+        if len(batches) == 1:
+            return batches[0]
+        llm = _build(_MERGE_MODEL, temperature=0.3, max_tokens=600, api_key=api_key)
+        batch_text = "\n\n".join(
+            f"Batch {i + 1}:\n{_format_edit_batch(b)}" for i, b in enumerate(batches)
+        )
+        try:
+            resp = await llm.ainvoke(
+                [
+                    {"role": "system", "content": system_tpl.format(lr_budget=lr_budget)},
+                    {
+                        "role": "user",
+                        "content": user_tpl.format(
+                            n_batches=len(batches),
+                            edit_batches=batch_text,
+                            lr_budget=lr_budget,
+                        ),
+                    },
+                ]
+            )
+            if token_counter is not None:
+                usage = getattr(resp, "usage_metadata", None)
+                if usage:
+                    token_counter[0] += usage.get("total_tokens", 0) or 0
+            obj = _json_safe(str(resp.content))
+            return [
+                Edit(
+                    op=str(e.get("op", "ADD")).upper(),
+                    target=e.get("target") or None,
+                    content=e.get("content") or None,
+                    rationale=str(e.get("rationale", ""))[:200],
+                    source=source,
+                )
+                for e in obj.get("edits", [])[:lr_budget]
+                if isinstance(e, dict)
+            ]
+        except Exception as exc:
+            _log.warning("merge_set_failed", source=source, error=str(exc))
+            return [e for batch in batches for e in batch]
+
+    merged_failure = await _merge_set(
+        failure_batches, "failure", MERGE_FAILURE_SYSTEM, MERGE_FAILURE_USER
+    )
+    merged_success = await _merge_set(
+        success_batches, "success", MERGE_SUCCESS_SYSTEM, MERGE_SUCCESS_USER
+    )
+
+    if not merged_failure:
+        return _rank_edits(merged_success, lr_budget)
+    if not merged_success:
+        return _rank_edits(merged_failure, lr_budget)
+
+    llm = _build(_MERGE_MODEL, temperature=0.3, max_tokens=600, api_key=api_key)
+    try:
+        resp = await llm.ainvoke(
+            [
+                {"role": "system", "content": MERGE_FINAL_SYSTEM.format(lr_budget=lr_budget)},
+                {
+                    "role": "user",
+                    "content": MERGE_FINAL_USER.format(
+                        failure_edits=_format_edit_batch(merged_failure),
+                        success_edits=_format_edit_batch(merged_success),
+                        current_skill=current_skill[:1000],
+                        lr_budget=lr_budget,
+                    ),
+                },
+            ]
+        )
+        if token_counter is not None:
+            usage = getattr(resp, "usage_metadata", None)
+            if usage:
+                token_counter[0] += usage.get("total_tokens", 0) or 0
+        obj = _json_safe(str(resp.content))
+        final: list[Edit] = []
+        for e in obj.get("edits", [])[:lr_budget]:
+            if not isinstance(e, dict):
+                continue
+            op = str(e.get("op", "ADD")).upper()
+            if op not in ("ADD", "DELETE", "REPLACE"):
+                continue
+            src = str(e.get("source", "failure"))
+            if src not in ("failure", "success"):
+                src = "failure"
+            final.append(
+                Edit(
+                    op=op,
+                    target=e.get("target") or None,
+                    content=e.get("content") or None,
+                    rationale=str(e.get("rationale", ""))[:200],
+                    source=src,
+                )
+            )
+        return final if final else _rank_edits(merged_failure + merged_success, lr_budget)
+    except Exception as exc:
+        _log.warning("merge_final_failed", error=str(exc))
+        return _rank_edits(merged_failure + merged_success, lr_budget)
 
 
 # ── Main entry point ──────────────────────────────────────────────────────────
@@ -542,6 +883,8 @@ async def optimize_skill(
     epoch_results: list[dict[str, Any]] = []
     total_accepted = 0
     total_rejected = 0
+    consecutive_rejections: int = 0
+    all_epoch_traces: list[Trace] = []
 
     for epoch in range(n_epochs):
         lr = _cosine_lr(lr_base, epoch, n_epochs)
@@ -611,7 +954,10 @@ async def optimize_skill(
                 }
             )
 
-        all_proposed: list[Edit] = []
+        all_epoch_traces.extend(traces)
+
+        failure_edit_batches: list[list[Edit]] = []
+        success_edit_batches: list[list[Edit]] = []
         s_chunks = _chunked(successes, reflect_mini)
         f_chunks = _chunked(failures, reflect_mini)
         n_mini = max(len(s_chunks), len(f_chunks), 1)
@@ -621,22 +967,38 @@ async def optimize_skill(
             f_mb = f_chunks[i] if i < len(f_chunks) else []
             if not s_mb and not f_mb:
                 continue
-            edits = await _reflect_and_propose(
-                current_skill=current_skill,
-                successes=s_mb,
-                failures=f_mb,
-                rejected_edits=rejected_edit_buffer,
-                meta_notes=meta_notes,
-                lr_budget=lr,
-                api_key=api_key,
-                token_counter=token_counter,
-            )
-            all_proposed.extend(edits)
-
+            if f_mb:
+                f_edits = await _analyze_failures(
+                    current_skill=current_skill,
+                    failures=f_mb,
+                    rejected_edits=rejected_edit_buffer,
+                    meta_notes=meta_notes,
+                    lr_budget=lr,
+                    api_key=api_key,
+                    token_counter=token_counter,
+                )
+                failure_edit_batches.append(f_edits)
+            if s_mb:
+                s_edits = await _analyze_successes(
+                    current_skill=current_skill,
+                    successes=s_mb,
+                    meta_notes=meta_notes,
+                    lr_budget=lr,
+                    api_key=api_key,
+                    token_counter=token_counter,
+                )
+                success_edit_batches.append(s_edits)
             if cancel_check and await cancel_check():
                 raise InterruptedError("Cancelled by user.")
 
-        ranked = _rank_edits(all_proposed, lr)
+        ranked = await _merge_proposals(
+            failure_edit_batches,
+            success_edit_batches,
+            current_skill,
+            lr,
+            api_key,
+            token_counter,
+        )
         epoch_proposed_edits = ranked
 
         # ── Gate: build candidate and validate ────────────────────────────────
@@ -678,6 +1040,7 @@ async def optimize_skill(
             current_score = candidate_score
             epoch_accepted_edits = ranked
             total_accepted += len(ranked)
+            consecutive_rejections = 0
             if candidate_score > best_score:
                 best_skill = candidate_skill
                 best_score = candidate_score
@@ -690,8 +1053,28 @@ async def optimize_skill(
             )
             rejected_edit_buffer.extend(ranked)
             total_rejected += len(ranked)
-            # Keep buffer bounded
             rejected_edit_buffer = rejected_edit_buffer[-20:]
+            consecutive_rejections += 1
+            if consecutive_rejections >= 2:
+                _log.info("skillopt_rewrite_triggered", epoch=epoch + 1)
+                rewrite_candidate = await _rewrite_skill(
+                    current_skill, all_epoch_traces, meta_notes, api_key, token_counter
+                )
+                rewrite_score = await _score_on_selection_cached(
+                    rewrite_candidate, d_sel, _score_cache, api_key, token_counter, executor_model
+                )
+                if rewrite_score > current_score:
+                    _log.info(
+                        "skillopt_rewrite_accepted",
+                        epoch=epoch + 1,
+                        score=round(rewrite_score, 3),
+                    )
+                    current_skill = rewrite_candidate
+                    current_score = rewrite_score
+                    if rewrite_score > best_score:
+                        best_skill = rewrite_candidate
+                        best_score = rewrite_score
+                consecutive_rejections = 0
 
         # ── Slow/meta update at epoch boundary ───────────────────────────────
         if emit_state:
@@ -719,7 +1102,7 @@ async def optimize_skill(
                 }
             )
 
-        new_meta = await _meta_update(
+        new_meta, updated_protected = await _meta_update(
             current_skill=current_skill,
             score_before=epoch_score_before,
             score_after=current_score,
@@ -728,7 +1111,14 @@ async def optimize_skill(
             api_key=api_key,
             token_counter=token_counter,
         )
-        meta_notes = (meta_notes + new_meta)[-10:]  # keep last 10 lessons
+        meta_notes = (meta_notes + new_meta)[-10:]
+
+        # Apply updated protected block to current_skill
+        if updated_protected:
+            editable, _ = _extract_protected(current_skill)
+            current_skill = _restore_protected(editable, updated_protected)
+            if current_score >= best_score:
+                best_skill = current_skill
 
         epoch_results.append(
             {

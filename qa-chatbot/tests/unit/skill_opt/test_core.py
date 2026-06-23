@@ -44,6 +44,207 @@ def test_score_cache_key_length() -> None:
     assert len(_score_cache_key("any skill")) == 16
 
 
+# ── Tasks 4–6: Protected region, rewrite, analyst, rank ───────────────────────
+
+from promptly.skill_opt.core.skillopt import (  # noqa: E402
+    _META_END,
+    _META_START,
+    Edit,
+    Trace,
+    _analyze_failures,
+    _analyze_successes,
+    _apply_edits,
+    _extract_protected,
+    _merge_proposals,
+    _rank_edits,
+    _restore_protected,
+    _rewrite_skill,
+)
+
+SKILL_WITH_META = """\
+# Guide
+
+Do step A.
+Do step B.
+
+---
+## Consolidated Lessons
+<!-- META:START -->
+- lesson one
+<!-- META:END -->"""
+
+SKILL_NO_META = "# Guide\n\nDo step A."
+
+
+def test_extract_protected_returns_editable_and_block() -> None:
+    editable, protected = _extract_protected(SKILL_WITH_META)
+    assert _META_START in protected
+    assert _META_END in protected
+    assert _META_START not in editable
+
+
+def test_extract_protected_no_meta_returns_full_skill() -> None:
+    editable, protected = _extract_protected(SKILL_NO_META)
+    assert editable == SKILL_NO_META
+    assert protected == ""
+
+
+def test_restore_protected_roundtrips() -> None:
+    editable, protected = _extract_protected(SKILL_WITH_META)
+    result = _restore_protected(editable, protected)
+    assert _META_START in result
+    assert "Do step A." in result
+
+
+def test_apply_edits_preserves_protected_block() -> None:
+    edits = [Edit(op="ADD", target=None, content="New rule here.", rationale="r")]
+    result = _apply_edits(SKILL_WITH_META, edits)
+    assert "New rule here." in result
+    assert _META_START in result
+    assert _META_END in result
+
+
+def test_apply_edits_cannot_delete_inside_protected() -> None:
+    edits = [Edit(op="DELETE", target="lesson one", rationale="r", content=None)]
+    result = _apply_edits(SKILL_WITH_META, edits)
+    assert "lesson one" in result
+
+
+def test_rank_edits_failure_before_success_at_equal_frequency() -> None:
+    edits = [
+        Edit(op="ADD", target=None, content="success rule", rationale="r", source="success"),
+        Edit(op="ADD", target=None, content="failure rule", rationale="r", source="failure"),
+    ]
+    ranked = _rank_edits(edits, budget=2)
+    assert ranked[0].source == "failure"
+    assert ranked[1].source == "success"
+
+
+def test_rank_edits_frequency_still_wins_within_same_source() -> None:
+    edits = [
+        Edit(
+            op="ADD",
+            target=None,
+            content="rare failure",
+            rationale="r",
+            source="failure",
+            frequency=1,
+        ),
+        Edit(
+            op="ADD",
+            target=None,
+            content="common failure",
+            rationale="r",
+            source="failure",
+            frequency=3,
+        ),
+    ]
+    ranked = _rank_edits(edits, budget=2)
+    assert ranked[0].content == "common failure"
+
+
+def test_edit_default_source_is_failure() -> None:
+    e = Edit(op="ADD", target=None, content="x", rationale="r")
+    assert e.source == "failure"
+
+
+def _make_trace(score: float) -> Trace:
+    return Trace(
+        example=Example(input="q", expected="a"),
+        output="o",
+        score=score,
+        feedback="ok",
+    )
+
+
+@pytest.mark.asyncio
+async def test_analyze_failures_returns_empty_for_no_failures() -> None:
+    result = await _analyze_failures("skill", [], [], [], 3, "key")
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_analyze_successes_returns_empty_for_no_successes() -> None:
+    result = await _analyze_successes("skill", [], [], 3, "key")
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_analyze_failures_tags_edits_as_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from unittest.mock import AsyncMock, MagicMock
+
+    mock_resp = MagicMock()
+    mock_resp.content = (
+        '{"analysis": "ok", "edits": [{"op": "ADD", "target": null,'
+        ' "content": "fix", "rationale": "r"}]}'
+    )
+    mock_resp.usage_metadata = None
+    mock_llm = MagicMock()
+    mock_llm.ainvoke = AsyncMock(return_value=mock_resp)
+
+    monkeypatch.setattr("promptly.skill_opt.core.skillopt._build", lambda *a, **kw: mock_llm)
+    edits = await _analyze_failures("skill", [_make_trace(0.2)], [], [], 3, "key")
+    assert all(e.source == "failure" for e in edits)
+
+
+@pytest.mark.asyncio
+async def test_analyze_successes_tags_edits_as_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from unittest.mock import AsyncMock, MagicMock
+
+    mock_resp = MagicMock()
+    mock_resp.content = (
+        '{"analysis": "ok", "edits": [{"op": "ADD", "target": null,'
+        ' "content": "reinforce", "rationale": "r"}]}'
+    )
+    mock_resp.usage_metadata = None
+    mock_llm = MagicMock()
+    mock_llm.ainvoke = AsyncMock(return_value=mock_resp)
+
+    monkeypatch.setattr("promptly.skill_opt.core.skillopt._build", lambda *a, **kw: mock_llm)
+    edits = await _analyze_successes("skill", [_make_trace(0.8)], [], 3, "key")
+    assert all(e.source == "success" for e in edits)
+
+
+@pytest.mark.asyncio
+async def test_merge_proposals_empty_batches_returns_empty() -> None:
+    result = await _merge_proposals([], [], "skill", 3, "key")
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_rewrite_skill_appends_meta_block_if_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from unittest.mock import AsyncMock, MagicMock
+
+    mock_resp = MagicMock()
+    mock_resp.content = "# Fresh Skill\n\nDo things."
+    mock_resp.usage_metadata = None
+    mock_llm = MagicMock()
+    mock_llm.ainvoke = AsyncMock(return_value=mock_resp)
+
+    monkeypatch.setattr("promptly.skill_opt.core.skillopt._build", lambda *a, **kw: mock_llm)
+    result = await _rewrite_skill("old skill", [], [], "key", None)
+    assert _META_START in result
+
+
+@pytest.mark.asyncio
+async def test_rewrite_skill_returns_current_on_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from unittest.mock import AsyncMock, MagicMock
+
+    mock_llm = MagicMock()
+    mock_llm.ainvoke = AsyncMock(side_effect=Exception("LLM failed"))
+    monkeypatch.setattr("promptly.skill_opt.core.skillopt._build", lambda *a, **kw: mock_llm)
+    result = await _rewrite_skill("fallback skill", [], [], "key", None)
+    assert result == "fallback skill"
+
+
 @pytest.mark.asyncio
 async def test_score_cache_hit_skips_llm(monkeypatch: pytest.MonkeyPatch) -> None:
     cache: dict[str, float] = {}
