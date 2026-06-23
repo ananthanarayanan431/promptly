@@ -10,7 +10,7 @@ import httpx
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import Date as SqlDate
-from sqlalchemy import cast, func, select, text, update
+from sqlalchemy import case, cast, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -1628,38 +1628,618 @@ _ANALYTICS_VIEWS = {
 
 
 async def _agent_optimizer(db: AsyncSession, days: int) -> AnalyticsResponse:
+    now = datetime.now(UTC)
+    cutoff = now - timedelta(days=days)
+
+    # Runs per day
+    runs_rows = (
+        await db.execute(
+            select(cast(UsageEvent.created_at, SqlDate).label("day"), func.count().label("cnt"))
+            .where(UsageEvent.action == "optimize", UsageEvent.created_at >= cutoff)
+            .group_by(cast(UsageEvent.created_at, SqlDate))
+            .order_by(cast(UsageEvent.created_at, SqlDate))
+        )
+    ).fetchall()
+    runs_map = {str(r.day): r.cnt for r in runs_rows}
+    total_runs = sum(runs_map.values())
+
+    # Tokens per day
+    tok_rows = (
+        await db.execute(
+            select(
+                cast(Message.created_at, SqlDate).label("day"),
+                func.coalesce(func.sum(Message.token_usage["total_tokens"].as_integer()), 0).label(
+                    "t"
+                ),
+            )
+            .where(Message.created_at >= cutoff, Message.token_usage.isnot(None))
+            .group_by(cast(Message.created_at, SqlDate))
+            .order_by(cast(Message.created_at, SqlDate))
+        )
+    ).fetchall()
+    tok_map: dict[str, int | float] = {str(r.day): r.t for r in tok_rows}
+    total_tokens = sum(tok_map.values())
+
+    # Unique users per day
+    uq_rows = (
+        await db.execute(
+            select(
+                cast(UsageEvent.created_at, SqlDate).label("day"),
+                func.count(UsageEvent.user_id.distinct()).label("cnt"),
+            )
+            .where(UsageEvent.action == "optimize", UsageEvent.created_at >= cutoff)
+            .group_by(cast(UsageEvent.created_at, SqlDate))
+            .order_by(cast(UsageEvent.created_at, SqlDate))
+        )
+    ).fetchall()
+    uq_map = {str(r.day): r.cnt for r in uq_rows}
+
+    # Completed vs failed sessions per day (stacked)
+    status_rows = (
+        await db.execute(
+            select(
+                cast(ChatSession.created_at, SqlDate).label("day"),
+                func.count().label("cnt"),
+            )
+            .where(ChatSession.created_at >= cutoff)
+            .group_by(cast(ChatSession.created_at, SqlDate))
+            .order_by(cast(ChatSession.created_at, SqlDate))
+        )
+    ).fetchall()
+    sessions_map = {str(r.day): r.cnt for r in status_rows}
+
+    # Credits per day (optimize = 10 credits each)
+    cred_data = [
+        AnalyticsPoint(date=p.date, value=p.value * 10) for p in _fill_days(cutoff, days, runs_map)
+    ]
+
+    # Council model distribution (all time, top 10)
+    model_rows = (
+        await db.execute(
+            text("""
+        SELECT vote ->> 'model' AS model, COUNT(*) AS cnt
+        FROM messages, jsonb_array_elements(council_votes::jsonb) AS vote
+        WHERE council_votes IS NOT NULL
+        GROUP BY model
+        ORDER BY cnt DESC
+        LIMIT 10
+    """)
+        )
+    ).fetchall()
+    model_total = sum(r.cnt for r in model_rows)
+    model_data = [
+        AnalyticsPoint(date=str(r.model or "unknown"), value=float(r.cnt)) for r in model_rows
+    ]
+
+    # Static: avg tokens per optimization
+    avg_tokens = round(total_tokens / max(1, total_runs), 0)
+    total_dau_sum = sum(uq_map.values())
+    calls_per_user = round(total_runs / max(1, total_dau_sum / max(1, days)), 1)
+
     return AnalyticsResponse(
         view="agent_optimizer",
         generated_at=datetime.now(UTC).isoformat(),
-        statics={},
-        series=[],
+        statics={
+            "avg_tokens_per_opt": avg_tokens,
+            "calls_per_active_user": calls_per_user,
+            "total_runs": total_runs,
+            "total_tokens": total_tokens,
+        },
+        series=[
+            AnalyticsSeries(
+                key="optimizer_runs",
+                label="Runs per Day",
+                total=float(total_runs),
+                time_range=f"Last {days} Days",
+                data=_fill_days(cutoff, days, runs_map),
+                chart_type="line",
+            ),
+            AnalyticsSeries(
+                key="optimizer_tokens",
+                label="Tokens per Day",
+                total=float(total_tokens),
+                time_range=f"Last {days} Days",
+                data=_fill_days(cutoff, days, tok_map),
+                chart_type="line",
+            ),
+            AnalyticsSeries(
+                key="optimizer_unique_users",
+                label="Unique Users per Day",
+                total=float(sum(uq_map.values())),
+                time_range=f"Last {days} Days",
+                data=_fill_days(cutoff, days, uq_map),
+                chart_type="line",
+            ),
+            AnalyticsSeries(
+                key="optimizer_sessions",
+                label="Sessions Created per Day",
+                total=float(sum(sessions_map.values())),
+                time_range=f"Last {days} Days",
+                data=_fill_days(cutoff, days, sessions_map),
+                chart_type="bar",
+            ),
+            AnalyticsSeries(
+                key="optimizer_credits",
+                label="Credits Charged per Day",
+                total=float(total_runs * 10),
+                time_range=f"Last {days} Days",
+                data=cred_data,
+                chart_type="bar",
+            ),
+            AnalyticsSeries(
+                key="council_models",
+                label="Council Model Distribution",
+                total=float(model_total),
+                time_range="All Time",
+                data=model_data,
+                chart_type="bar",
+            ),
+        ],
     )
 
 
 async def _agent_skillopt(db: AsyncSession, days: int) -> AnalyticsResponse:
+    now = datetime.now(UTC)
+    cutoff = now - timedelta(days=days)
+
+    # Runs per day (completed only)
+    runs_rows = (
+        await db.execute(
+            select(
+                cast(SkillOptProject.created_at, SqlDate).label("day"), func.count().label("cnt")
+            )
+            .where(SkillOptProject.status == "completed", SkillOptProject.created_at >= cutoff)
+            .group_by(cast(SkillOptProject.created_at, SqlDate))
+            .order_by(cast(SkillOptProject.created_at, SqlDate))
+        )
+    ).fetchall()
+    runs_map = {str(r.day): r.cnt for r in runs_rows}
+
+    # Avg score improvement per day
+    score_rows = (
+        await db.execute(
+            select(
+                cast(SkillOptProject.created_at, SqlDate).label("day"),
+                func.avg(SkillOptProject.score_after - SkillOptProject.score_before).label("imp"),
+            )
+            .where(
+                SkillOptProject.status == "completed",
+                SkillOptProject.created_at >= cutoff,
+                SkillOptProject.score_before.isnot(None),
+                SkillOptProject.score_after.isnot(None),
+            )
+            .group_by(cast(SkillOptProject.created_at, SqlDate))
+            .order_by(cast(SkillOptProject.created_at, SqlDate))
+        )
+    ).fetchall()
+    score_map: dict[str, int | float] = {
+        str(r.day): round(float(r.imp or 0), 3) for r in score_rows
+    }
+
+    # Avg score_test per day
+    st_rows = (
+        await db.execute(
+            select(
+                cast(SkillOptProject.created_at, SqlDate).label("day"),
+                func.avg(SkillOptProject.score_test).label("st"),
+            )
+            .where(
+                SkillOptProject.status == "completed",
+                SkillOptProject.created_at >= cutoff,
+                SkillOptProject.score_test.isnot(None),
+            )
+            .group_by(cast(SkillOptProject.created_at, SqlDate))
+            .order_by(cast(SkillOptProject.created_at, SqlDate))
+        )
+    ).fetchall()
+    st_map: dict[str, int | float] = {str(r.day): round(float(r.st or 0), 3) for r in st_rows}
+
+    # Edits accepted per day
+    edits_rows = (
+        await db.execute(
+            select(
+                cast(SkillOptProject.created_at, SqlDate).label("day"),
+                func.coalesce(func.sum(SkillOptProject.edits_accepted), 0).label("ea"),
+            )
+            .where(SkillOptProject.status == "completed", SkillOptProject.created_at >= cutoff)
+            .group_by(cast(SkillOptProject.created_at, SqlDate))
+            .order_by(cast(SkillOptProject.created_at, SqlDate))
+        )
+    ).fetchall()
+    edits_map: dict[str, int | float] = {str(r.day): r.ea for r in edits_rows}
+
+    # Acceptance ratio per day
+    ratio_rows = (
+        await db.execute(
+            select(
+                cast(SkillOptProject.created_at, SqlDate).label("day"),
+                func.coalesce(func.sum(SkillOptProject.edits_accepted), 0).label("ea"),
+                func.coalesce(
+                    func.sum(SkillOptProject.edits_accepted + SkillOptProject.edits_rejected), 0
+                ).label("total"),
+            )
+            .where(SkillOptProject.status == "completed", SkillOptProject.created_at >= cutoff)
+            .group_by(cast(SkillOptProject.created_at, SqlDate))
+            .order_by(cast(SkillOptProject.created_at, SqlDate))
+        )
+    ).fetchall()
+    ratio_map: dict[str, int | float] = {
+        str(r.day): round(r.ea / max(1, r.total), 2) for r in ratio_rows
+    }
+
+    # Tier breakdown (stacked)
+    tier_expr = case(
+        (SkillOptProject.credits_charged == 5, "low"),
+        (SkillOptProject.credits_charged == 16, "high"),
+        else_="medium",
+    )
+    tier_rows = (
+        await db.execute(
+            select(
+                cast(SkillOptProject.created_at, SqlDate).label("day"),
+                tier_expr.label("tier"),
+                func.count().label("cnt"),
+            )
+            .where(SkillOptProject.status == "completed", SkillOptProject.created_at >= cutoff)
+            .group_by(cast(SkillOptProject.created_at, SqlDate), tier_expr)
+            .order_by(cast(SkillOptProject.created_at, SqlDate))
+        )
+    ).fetchall()
+    tier_maps: dict[str, dict[str, int | float]] = {"low": {}, "medium": {}, "high": {}}
+    for r in tier_rows:
+        tier_maps[r.tier][str(r.day)] = r.cnt
+
+    # Unique users per day
+    uq_rows = (
+        await db.execute(
+            select(
+                cast(SkillOptProject.created_at, SqlDate).label("day"),
+                func.count(SkillOptProject.user_id.distinct()).label("cnt"),
+            )
+            .where(SkillOptProject.status == "completed", SkillOptProject.created_at >= cutoff)
+            .group_by(cast(SkillOptProject.created_at, SqlDate))
+            .order_by(cast(SkillOptProject.created_at, SqlDate))
+        )
+    ).fetchall()
+    uq_map = {str(r.day): r.cnt for r in uq_rows}
+
+    # Statics
+    avg_epochs = float(
+        (
+            await db.execute(
+                select(func.coalesce(func.avg(SkillOptProject.epochs_run), 0)).where(
+                    SkillOptProject.status == "completed"
+                )
+            )
+        ).scalar_one()
+        or 0
+    )
+    total_examples = int(
+        (
+            await db.execute(
+                select(func.coalesce(func.sum(SkillOptProject.example_count), 0)).where(
+                    SkillOptProject.status == "completed"
+                )
+            )
+        ).scalar_one()
+        or 0
+    )
+    overall_improvement = float(
+        (
+            await db.execute(
+                select(
+                    func.coalesce(
+                        func.avg(SkillOptProject.score_after - SkillOptProject.score_before), 0
+                    )
+                ).where(
+                    SkillOptProject.status == "completed",
+                    SkillOptProject.score_before.isnot(None),
+                    SkillOptProject.score_after.isnot(None),
+                )
+            )
+        ).scalar_one()
+        or 0
+    )
+
+    tier_colors = {"low": "#06b6d4", "medium": "var(--primary)", "high": "#f43f5e"}
+
     return AnalyticsResponse(
         view="agent_skillopt",
         generated_at=datetime.now(UTC).isoformat(),
-        statics={},
-        series=[],
+        statics={
+            "avg_epochs": round(avg_epochs, 1),
+            "total_examples": total_examples,
+            "overall_avg_improvement": round(overall_improvement, 3),
+        },
+        series=[
+            AnalyticsSeries(
+                key="so_runs",
+                label="Runs per Day",
+                total=float(sum(runs_map.values())),
+                time_range=f"Last {days} Days",
+                data=_fill_days(cutoff, days, runs_map),
+                chart_type="line",
+            ),
+            AnalyticsSeries(
+                key="so_improvement",
+                label="Avg Score Improvement per Day",
+                total=round(overall_improvement, 3),
+                time_range=f"Last {days} Days",
+                data=_fill_days(cutoff, days, score_map),
+                chart_type="line",
+            ),
+            AnalyticsSeries(
+                key="so_score_test",
+                label="Avg Test Score per Day",
+                total=float(sum(st_map.values()) / max(1, len(st_map))),
+                time_range=f"Last {days} Days",
+                data=_fill_days(cutoff, days, st_map),
+                chart_type="line",
+            ),
+            AnalyticsSeries(
+                key="so_edits_accepted",
+                label="Edits Accepted per Day",
+                total=float(sum(edits_map.values())),
+                time_range=f"Last {days} Days",
+                data=_fill_days(cutoff, days, edits_map),
+                chart_type="bar",
+            ),
+            AnalyticsSeries(
+                key="so_acceptance_ratio",
+                label="Edit Acceptance Ratio",
+                total=round(sum(ratio_map.values()) / max(1, len(ratio_map)), 2),
+                time_range=f"Last {days} Days",
+                data=_fill_days(cutoff, days, ratio_map),
+                chart_type="line",
+            ),
+            AnalyticsSeries(
+                key="so_unique_users",
+                label="Unique Users per Day",
+                total=float(sum(uq_map.values())),
+                time_range=f"Last {days} Days",
+                data=_fill_days(cutoff, days, uq_map),
+                chart_type="line",
+            ),
+            *[
+                AnalyticsSeries(
+                    key=f"so_tier_{tier}",
+                    label=f"{tier.title()} Tier",
+                    total=float(sum(tier_maps[tier].values())),
+                    time_range=f"Last {days} Days",
+                    data=_fill_days(cutoff, days, tier_maps[tier]),
+                    chart_type="bar",
+                    color=tier_colors[tier],
+                )
+                for tier in ("low", "medium", "high")
+            ],
+        ],
     )
 
 
 async def _agent_domain(db: AsyncSession, days: int) -> AnalyticsResponse:
+    now = datetime.now(UTC)
+    cutoff = now - timedelta(days=days)
+
+    domain_actions = ["domain_pdo", "domain_gepa"]
+    augment_action = "domain_gepa_augment"
+
+    # Runs per day (PDO + GEPA combined)
+    runs_rows = (
+        await db.execute(
+            select(cast(UsageEvent.created_at, SqlDate).label("day"), func.count().label("cnt"))
+            .where(UsageEvent.action.in_(domain_actions), UsageEvent.created_at >= cutoff)
+            .group_by(cast(UsageEvent.created_at, SqlDate))
+            .order_by(cast(UsageEvent.created_at, SqlDate))
+        )
+    ).fetchall()
+    runs_map = {str(r.day): r.cnt for r in runs_rows}
+
+    # Augment per day
+    aug_rows = (
+        await db.execute(
+            select(cast(UsageEvent.created_at, SqlDate).label("day"), func.count().label("cnt"))
+            .where(UsageEvent.action == augment_action, UsageEvent.created_at >= cutoff)
+            .group_by(cast(UsageEvent.created_at, SqlDate))
+            .order_by(cast(UsageEvent.created_at, SqlDate))
+        )
+    ).fetchall()
+    aug_map = {str(r.day): r.cnt for r in aug_rows}
+
+    # PDO vs GEPA split (two series)
+    pdo_rows = (
+        await db.execute(
+            select(cast(UsageEvent.created_at, SqlDate).label("day"), func.count().label("cnt"))
+            .where(UsageEvent.action == "domain_pdo", UsageEvent.created_at >= cutoff)
+            .group_by(cast(UsageEvent.created_at, SqlDate))
+            .order_by(cast(UsageEvent.created_at, SqlDate))
+        )
+    ).fetchall()
+    pdo_map = {str(r.day): r.cnt for r in pdo_rows}
+
+    gepa_rows = (
+        await db.execute(
+            select(cast(UsageEvent.created_at, SqlDate).label("day"), func.count().label("cnt"))
+            .where(UsageEvent.action == "domain_gepa", UsageEvent.created_at >= cutoff)
+            .group_by(cast(UsageEvent.created_at, SqlDate))
+            .order_by(cast(UsageEvent.created_at, SqlDate))
+        )
+    ).fetchall()
+    gepa_map = {str(r.day): r.cnt for r in gepa_rows}
+
+    # Unique users per day
+    uq_rows = (
+        await db.execute(
+            select(
+                cast(UsageEvent.created_at, SqlDate).label("day"),
+                func.count(UsageEvent.user_id.distinct()).label("cnt"),
+            )
+            .where(
+                UsageEvent.action.in_(domain_actions + [augment_action]),
+                UsageEvent.created_at >= cutoff,
+            )
+            .group_by(cast(UsageEvent.created_at, SqlDate))
+            .order_by(cast(UsageEvent.created_at, SqlDate))
+        )
+    ).fetchall()
+    uq_map = {str(r.day): r.cnt for r in uq_rows}
+
+    # Tokens per day
+    tok_rows = (
+        await db.execute(
+            select(
+                cast(Message.created_at, SqlDate).label("day"),
+                func.coalesce(func.sum(Message.token_usage["total_tokens"].as_integer()), 0).label(
+                    "t"
+                ),
+            )
+            .where(Message.created_at >= cutoff, Message.token_usage.isnot(None))
+            .group_by(cast(Message.created_at, SqlDate))
+            .order_by(cast(Message.created_at, SqlDate))
+        )
+    ).fetchall()
+    tok_map: dict[str, int | float] = {str(r.day): r.t for r in tok_rows}
+
+    total_runs = sum(runs_map.values())
+
     return AnalyticsResponse(
         view="agent_domain",
         generated_at=datetime.now(UTC).isoformat(),
-        statics={},
-        series=[],
+        statics={"total_runs": total_runs},
+        series=[
+            AnalyticsSeries(
+                key="domain_runs",
+                label="Domain Runs per Day",
+                total=float(total_runs),
+                time_range=f"Last {days} Days",
+                data=_fill_days(cutoff, days, runs_map),
+                chart_type="line",
+            ),
+            AnalyticsSeries(
+                key="domain_augment",
+                label="Augmentation Runs per Day",
+                total=float(sum(aug_map.values())),
+                time_range=f"Last {days} Days",
+                data=_fill_days(cutoff, days, aug_map),
+                chart_type="bar",
+            ),
+            AnalyticsSeries(
+                key="domain_pdo",
+                label="PDO Runs",
+                total=float(sum(pdo_map.values())),
+                time_range=f"Last {days} Days",
+                data=_fill_days(cutoff, days, pdo_map),
+                chart_type="bar",
+                color="#06b6d4",
+            ),
+            AnalyticsSeries(
+                key="domain_gepa",
+                label="GEPA Runs",
+                total=float(sum(gepa_map.values())),
+                time_range=f"Last {days} Days",
+                data=_fill_days(cutoff, days, gepa_map),
+                chart_type="bar",
+                color="#8b5cf6",
+            ),
+            AnalyticsSeries(
+                key="domain_tokens",
+                label="Tokens per Day",
+                total=float(sum(tok_map.values())),
+                time_range=f"Last {days} Days",
+                data=_fill_days(cutoff, days, tok_map),
+                chart_type="line",
+            ),
+            AnalyticsSeries(
+                key="domain_unique_users",
+                label="Unique Users per Day",
+                total=float(sum(uq_map.values())),
+                time_range=f"Last {days} Days",
+                data=_fill_days(cutoff, days, uq_map),
+                chart_type="line",
+            ),
+        ],
     )
 
 
 async def _agent_bridge(db: AsyncSession, days: int) -> AnalyticsResponse:
+    now = datetime.now(UTC)
+    cutoff = now - timedelta(days=days)
+
+    runs_rows = (
+        await db.execute(
+            select(cast(UsageEvent.created_at, SqlDate).label("day"), func.count().label("cnt"))
+            .where(UsageEvent.action == "bridge", UsageEvent.created_at >= cutoff)
+            .group_by(cast(UsageEvent.created_at, SqlDate))
+            .order_by(cast(UsageEvent.created_at, SqlDate))
+        )
+    ).fetchall()
+    runs_map = {str(r.day): r.cnt for r in runs_rows}
+
+    uq_rows = (
+        await db.execute(
+            select(
+                cast(UsageEvent.created_at, SqlDate).label("day"),
+                func.count(UsageEvent.user_id.distinct()).label("cnt"),
+            )
+            .where(UsageEvent.action == "bridge", UsageEvent.created_at >= cutoff)
+            .group_by(cast(UsageEvent.created_at, SqlDate))
+            .order_by(cast(UsageEvent.created_at, SqlDate))
+        )
+    ).fetchall()
+    uq_map = {str(r.day): r.cnt for r in uq_rows}
+
+    tok_rows = (
+        await db.execute(
+            select(
+                cast(Message.created_at, SqlDate).label("day"),
+                func.coalesce(func.sum(Message.token_usage["total_tokens"].as_integer()), 0).label(
+                    "t"
+                ),
+            )
+            .where(Message.created_at >= cutoff, Message.token_usage.isnot(None))
+            .group_by(cast(Message.created_at, SqlDate))
+            .order_by(cast(Message.created_at, SqlDate))
+        )
+    ).fetchall()
+    tok_map: dict[str, int | float] = {str(r.day): r.t for r in tok_rows}
+
+    total_bridge = int(
+        (
+            await db.execute(
+                select(func.count()).select_from(UsageEvent).where(UsageEvent.action == "bridge")
+            )
+        ).scalar_one()
+    )
+
     return AnalyticsResponse(
         view="agent_bridge",
         generated_at=datetime.now(UTC).isoformat(),
-        statics={},
-        series=[],
+        statics={"total_bridges": total_bridge},
+        series=[
+            AnalyticsSeries(
+                key="bridge_runs",
+                label="Bridges per Day",
+                total=float(sum(runs_map.values())),
+                time_range=f"Last {days} Days",
+                data=_fill_days(cutoff, days, runs_map),
+                chart_type="line",
+            ),
+            AnalyticsSeries(
+                key="bridge_tokens",
+                label="Tokens per Day",
+                total=float(sum(tok_map.values())),
+                time_range=f"Last {days} Days",
+                data=_fill_days(cutoff, days, tok_map),
+                chart_type="line",
+            ),
+            AnalyticsSeries(
+                key="bridge_unique_users",
+                label="Unique Users per Day",
+                total=float(sum(uq_map.values())),
+                time_range=f"Last {days} Days",
+                data=_fill_days(cutoff, days, uq_map),
+                chart_type="line",
+            ),
+        ],
     )
 
 
