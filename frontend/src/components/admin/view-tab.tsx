@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { PlatformEngagement } from './analytics/platform-engagement';
 import { PlatformLogins } from './analytics/platform-logins';
+import { PlatformUsers } from './analytics/platform-users';
 import { AgentOptimizer } from './analytics/agent-optimizer';
 import { AgentSkillOpt } from './analytics/agent-skillopt';
 import { AgentDomain } from './analytics/agent-domain';
@@ -10,12 +11,13 @@ import { AgentBridge } from './analytics/agent-bridge';
 
 type TopToggle = 'platform' | 'agents';
 
-type PlatformView = 'feature_engagement' | 'login_activity';
+type PlatformView = 'feature_engagement' | 'login_activity' | 'user_metrics';
 type AgentView = 'prompt_optimizer' | 'skill_builder' | 'domain_pdogepa' | 'bridge';
 
 const PLATFORM_ITEMS: { id: PlatformView; label: string }[] = [
   { id: 'feature_engagement', label: 'Feature Engagement' },
   { id: 'login_activity',     label: 'Login Activity' },
+  { id: 'user_metrics',       label: 'User Metrics' },
 ];
 
 const AGENT_ITEMS: { id: AgentView; label: string }[] = [
@@ -61,6 +63,8 @@ export function ViewTab() {
       desc: 'Track and analyze user engagement with different features across the platform' },
     login_activity:     { title: 'Login Activity',
       desc: 'Track login activity and daily, weekly, monthly active user trends' },
+    user_metrics:       { title: 'User Metrics',
+      desc: 'User growth, new signups, and daily/weekly active user trends' },
     prompt_optimizer:   { title: 'Prompt Optimizer',
       desc: 'Council optimizer runs, token consumption, and model distribution' },
     skill_builder:      { title: 'Skill Builder',
@@ -129,6 +133,7 @@ export function ViewTab() {
         {/* View content */}
         {toggle === 'platform' && platformView === 'feature_engagement' && <PlatformEngagement />}
         {toggle === 'platform' && platformView === 'login_activity' && <PlatformLogins />}
+        {toggle === 'platform' && platformView === 'user_metrics' && <PlatformUsers />}
         {toggle === 'agents' && agentView === 'prompt_optimizer' && <AgentOptimizer />}
         {toggle === 'agents' && agentView === 'skill_builder' && <AgentSkillOpt />}
         {toggle === 'agents' && agentView === 'domain_pdogepa' && <AgentDomain />}
