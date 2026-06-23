@@ -132,6 +132,25 @@ async def _score_on_selection_cached(
     return score
 
 
+def _split_examples(
+    raw: list[dict[str, str]], seed: int = 42
+) -> tuple[list[Example], list[Example], list[Example]]:
+    """Shuffle and 3-way split into (d_train, d_sel, d_test). Minimum 10 examples required."""
+    if len(raw) < 10:
+        raise ValueError(f"SkillOpt needs at least 10 examples; got {len(raw)}.")
+    parsed = [Example(input=e["input"], expected=e["expected"]) for e in raw]
+    rng = random.Random(seed)  # noqa: S311
+    rng.shuffle(parsed)
+    n_test = max(2, len(parsed) // 5)
+    n_sel = max(2, len(parsed) // 4)
+    d_test = parsed[-n_test:]
+    d_sel = parsed[-(n_test + n_sel) : -n_test]
+    d_train = parsed[: -(n_test + n_sel)]
+    if not d_train:
+        d_train = parsed
+    return d_train, d_sel, d_test
+
+
 def _format_traces(traces: list[Trace], max_per: int = 3) -> str:
     out = []
     for i, t in enumerate(traces[:max_per]):
@@ -478,15 +497,9 @@ async def optimize_skill(
     reflect_mini = tier["reflect_minibatch"]
     lr_base = tier["lr_budget"]
 
-    parsed = [Example(input=e["input"], expected=e["expected"]) for e in examples]
-    if len(parsed) < 6:
-        raise ValueError(f"SkillOpt needs at least 6 examples; got {len(parsed)}.")
-
+    d_train, d_sel, d_test = _split_examples(examples, seed=42)
+    _score_cache: dict[str, float] = {}
     rng = random.Random(42)  # noqa: S311
-    rng.shuffle(parsed)
-    n_sel = max(3, len(parsed) // 3)
-    d_sel = parsed[-n_sel:]
-    d_train = parsed[:-n_sel] or parsed
 
     token_counter: list[int] = [0]
 
@@ -509,14 +522,14 @@ async def optimize_skill(
             }
         )
 
-    current_skill = await _generate_seed_skill(task_description, parsed[:5], api_key)
+    current_skill = await _generate_seed_skill(task_description, d_train[:5], api_key)
     seed_skill = current_skill
 
     _log.info("skillopt_seed_generated", chars=len(current_skill))
 
     # Baseline score on D_sel
-    current_score = await _score_on_selection(
-        current_skill, d_sel, api_key, token_counter, executor_model
+    current_score = await _score_on_selection_cached(
+        current_skill, d_sel, _score_cache, api_key, token_counter, executor_model
     )
     best_score = current_score
     best_skill = current_skill
@@ -650,7 +663,9 @@ async def optimize_skill(
                 }
             )
 
-        candidate_score = await _score_on_selection(candidate_skill, d_sel, api_key, token_counter)
+        candidate_score = await _score_on_selection_cached(
+            candidate_skill, d_sel, _score_cache, api_key, token_counter, executor_model
+        )
 
         if candidate_score > current_score:  # hard gate — strictly improving
             _log.info(
@@ -746,24 +761,31 @@ async def optimize_skill(
             }
         )
 
+    score_test = await _score_on_selection_cached(
+        best_skill, d_test, _score_cache, api_key, token_counter, executor_model
+    )
+
     _log.info(
         "skillopt_complete",
         score_before=round(float(epoch_results[0]["score_before"]), 3) if epoch_results else 0,
         score_after=round(best_score, 3),
+        score_test=round(score_test, 3),
         total_accepted=total_accepted,
         total_rejected=total_rejected,
         total_tokens=token_counter[0],
     )
 
+    total_examples = len(d_train) + len(d_sel) + len(d_test)
     return {
         "best_skill": best_skill,
         "seed_skill": seed_skill,
         "score_before": round(float(epoch_results[0]["score_before"]), 4) if epoch_results else 0.0,
         "score_after": round(best_score, 4),
+        "score_test": round(score_test, 4),
         "epochs_run": n_epochs,
         "edits_accepted": total_accepted,
         "edits_rejected": total_rejected,
-        "example_count": len(parsed),
+        "example_count": total_examples,
         "epoch_results": epoch_results,
         "total_tokens": token_counter[0],
         "executor_model": executor_model,
