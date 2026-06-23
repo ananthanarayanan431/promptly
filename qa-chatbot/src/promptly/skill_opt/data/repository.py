@@ -68,6 +68,7 @@ class SkillOptProjectRepository:
         best_skill: str | None = None,
         score_before: float | None = None,
         score_after: float | None = None,
+        score_test: float | None = None,
         epochs_run: int | None = None,
         edits_accepted: int | None = None,
         edits_rejected: int | None = None,
@@ -84,6 +85,8 @@ class SkillOptProjectRepository:
             project.score_before = score_before
         if score_after is not None:
             project.score_after = score_after
+        if score_test is not None:
+            project.score_test = score_test
         if epochs_run is not None:
             project.epochs_run = epochs_run
         if edits_accepted is not None:

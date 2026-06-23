@@ -23,7 +23,7 @@ class SkillExample(BaseModel):
 
 
 class SetExamplesRequest(BaseModel):
-    examples: list[SkillExample] = Field(min_length=6, max_length=500)
+    examples: list[SkillExample] = Field(min_length=10, max_length=500)
 
 
 class OptimizeSkillRequest(BaseModel):
@@ -75,6 +75,7 @@ class SkillProjectResponse(BaseModel):
     best_skill: str | None
     score_before: float | None
     score_after: float | None
+    score_test: float | None = None
     epochs_run: int | None
     edits_accepted: int | None
     edits_rejected: int | None

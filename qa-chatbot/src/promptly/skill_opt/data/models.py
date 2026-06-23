@@ -41,6 +41,8 @@ class SkillOptProject(Base, UUIDMixin, TimestampMixin):
     score_before: Mapped[float | None] = mapped_column(Float, nullable=True)
     score_after: Mapped[float | None] = mapped_column(Float, nullable=True)
 
+    score_test: Mapped[float | None] = mapped_column(Float, nullable=True)
+
     # Run stats
     epochs_run: Mapped[int | None] = mapped_column(Integer, nullable=True)
     edits_accepted: Mapped[int | None] = mapped_column(Integer, nullable=True)

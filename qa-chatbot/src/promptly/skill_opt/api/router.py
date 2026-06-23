@@ -264,7 +264,7 @@ async def start_optimization(
     if project.status == SkillOptStatus.optimizing:
         raise SkillOptAlreadyRunningError()
 
-    if not project.example_count or project.example_count < 6:
+    if not project.example_count or project.example_count < 10:
         raise SkillOptNoExamplesError()
 
     user_repo = UserRepository(db)
