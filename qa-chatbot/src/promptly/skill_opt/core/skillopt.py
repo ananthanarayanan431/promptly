@@ -103,7 +103,7 @@ def _cosine_lr(base: int, epoch: int, total: int) -> int:
     if total <= 1:
         return base
     factor = 0.5 * (1 + math.cos(math.pi * epoch / (total - 1)))
-    return max(1, round(base * (0.5 + 0.5 * factor)))
+    return max(2, round(base * (0.5 + 0.5 * factor)))
 
 
 def _chunked(lst: list[Any], size: int) -> list[list[Any]]:
