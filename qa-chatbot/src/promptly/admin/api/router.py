@@ -8,7 +8,7 @@ from typing import Annotated, Any
 
 import httpx
 import structlog
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import Date as SqlDate
 from sqlalchemy import cast, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -453,14 +453,6 @@ async def _platform_engagement(db: AsyncSession, days: int) -> AnalyticsResponse
                 chart_type="bar",
             ),
             AnalyticsSeries(
-                key="logins_per_day",
-                label="Unique Logins per Day",
-                total=float(max((p.value for p in dau_data), default=0)),
-                time_range=f"Last {days} Days",
-                data=dau_data,
-                chart_type="line",
-            ),
-            AnalyticsSeries(
                 key="tokens_per_day",
                 label="Tokens Consumed per Day",
                 total=float(sum(tok_map.values())),
@@ -490,8 +482,10 @@ async def _platform_engagement(db: AsyncSession, days: int) -> AnalyticsResponse
 
 
 async def _platform_logins(db: AsyncSession, days: int) -> AnalyticsResponse:
+    # days is intentionally unused — login activity uses fixed time horizons
     now = datetime.now(UTC)
     cutoff_7d = now - timedelta(days=7)
+    cutoff_7w = now - timedelta(weeks=7)
     cutoff_30d = now - timedelta(days=30)
     cutoff_90d = now - timedelta(days=90)
     cutoff_365d = now - timedelta(days=365)
@@ -507,7 +501,7 @@ async def _platform_logins(db: AsyncSession, days: int) -> AnalyticsResponse:
     wau_7d: int = (
         await db.execute(
             select(func.count(UsageEvent.user_id.distinct())).where(
-                UsageEvent.created_at >= cutoff_7d
+                UsageEvent.created_at >= cutoff_7w
             )
         )
     ).scalar_one()
@@ -1682,8 +1676,6 @@ async def get_analytics(
     days: int = Query(default=30, ge=7, le=365),
 ) -> SuccessResponse[AnalyticsResponse]:
     if view not in _ANALYTICS_VIEWS:
-        from fastapi import HTTPException
-
         raise HTTPException(status_code=422, detail=f"Unknown view: {view!r}")
     handlers = {
         "platform_engagement": _platform_engagement,
