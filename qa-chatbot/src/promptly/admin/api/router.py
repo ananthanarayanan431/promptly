@@ -68,6 +68,7 @@ from promptly.models.message import Message
 from promptly.models.session import ChatSession
 from promptly.models.usage_event import UsageEvent
 from promptly.models.user import User
+from promptly.prompt_bridge.data.models import TransferJob
 from promptly.repositories.user_repo import UserRepository
 from promptly.skill_opt.data.models import SkillOptProject
 
@@ -116,6 +117,73 @@ async def _fetch_or_key_info() -> dict[str, Any]:
         )
         resp.raise_for_status()
     return dict(resp.json().get("data", {}))
+
+
+# ── Live model pricing cache (10-minute TTL) ──────────────────────────────────
+# Maps OpenRouter model slug → blended $/token (70% input + 30% output weight).
+
+_or_live_pricing: dict[str, float] = {}
+_or_live_pricing_ts: float = 0.0
+_OR_PRICING_TTL = 600.0  # seconds
+
+
+async def _fetch_or_model_pricing() -> dict[str, float]:
+    """Return {model_slug: blended_cost_per_token} fetched from OpenRouter /models.
+
+    Cached in-process for 10 minutes.  Falls back to the hardcoded table when
+    the API is unavailable so callers always get a usable value.
+    """
+    global _or_live_pricing, _or_live_pricing_ts  # noqa: PLW0603
+
+    now = time.monotonic()
+    if _or_live_pricing and now - _or_live_pricing_ts < _OR_PRICING_TTL:
+        return _or_live_pricing
+
+    try:
+        llm = get_llm_settings()
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                "https://openrouter.ai/api/v1/models",
+                headers={"Authorization": f"Bearer {llm.OPENROUTER_API_KEY.get_secret_value()}"},
+            )
+        resp.raise_for_status()
+        raw_models: list[dict[str, Any]] = resp.json().get("data", [])
+    except Exception:
+        return _or_live_pricing  # serve stale cache on error
+
+    result: dict[str, float] = {}
+    for m in raw_models:
+        if not isinstance(m, dict):
+            continue
+        model_id = str(m.get("id") or "")
+        if not model_id:
+            continue
+        raw_p = m.get("pricing")
+        if not isinstance(raw_p, dict):
+            continue
+        try:
+            inp = float(str(raw_p.get("prompt") or 0))
+            out = float(str(raw_p.get("completion") or 0))
+            result[model_id] = inp * 0.7 + out * 0.3
+        except (ValueError, TypeError):
+            continue
+
+    if result:  # only overwrite cache when we got a valid response
+        _or_live_pricing = result
+        _or_live_pricing_ts = now
+
+    return result
+
+
+def _live_cost_per_token(model: str, pricing: dict[str, float]) -> float:
+    """Look up $/token from the live OpenRouter pricing dict.
+
+    Falls back to the hardcoded ``_or_cost_per_token`` table if the model is
+    not present in the API response (e.g. very new or private models).
+    """
+    if model in pricing:
+        return pricing[model]
+    return _or_cost_per_token(model)
 
 
 _FEATURE_LABELS: dict[str, str] = {
@@ -2207,10 +2275,66 @@ async def _agent_bridge(db: AsyncSession, days: int) -> AnalyticsResponse:
         ).scalar_one()
     )
 
+    # Fetch live per-model pricing from OpenRouter (cached 10 min)
+    live_pricing = await _fetch_or_model_pricing()
+
+    # Source model distribution — count + tokens (all time, ordered by usage)
+    src_rows = (
+        await db.execute(
+            select(
+                TransferJob.source_model.label("model"),
+                func.count().label("cnt"),
+                func.coalesce(func.sum(TransferJob.token_count), 0).label("tokens"),
+            )
+            .where(TransferJob.status == "completed")
+            .group_by(TransferJob.source_model)
+            .order_by(func.count().desc())
+        )
+    ).fetchall()
+    src_count_data = [AnalyticsPoint(date=str(r.model), value=float(r.cnt)) for r in src_rows]
+    src_token_data = [AnalyticsPoint(date=str(r.model), value=float(r.tokens)) for r in src_rows]
+    src_cost_data = [
+        AnalyticsPoint(
+            date=str(r.model),
+            value=round(float(r.tokens) * _live_cost_per_token(r.model, live_pricing), 6),
+        )
+        for r in src_rows
+    ]
+
+    # Target model distribution — count + tokens (all time, ordered by usage)
+    tgt_rows = (
+        await db.execute(
+            select(
+                TransferJob.target_model.label("model"),
+                func.count().label("cnt"),
+                func.coalesce(func.sum(TransferJob.token_count), 0).label("tokens"),
+            )
+            .where(TransferJob.status == "completed")
+            .group_by(TransferJob.target_model)
+            .order_by(func.count().desc())
+        )
+    ).fetchall()
+    tgt_count_data = [AnalyticsPoint(date=str(r.model), value=float(r.cnt)) for r in tgt_rows]
+    tgt_token_data = [AnalyticsPoint(date=str(r.model), value=float(r.tokens)) for r in tgt_rows]
+    tgt_cost_data = [
+        AnalyticsPoint(
+            date=str(r.model),
+            value=round(float(r.tokens) * _live_cost_per_token(r.model, live_pricing), 6),
+        )
+        for r in tgt_rows
+    ]
+
+    total_src_cost = round(sum(p.value for p in src_cost_data), 6)
+    total_tgt_cost = round(sum(p.value for p in tgt_cost_data), 6)
+
     return AnalyticsResponse(
         view="agent_bridge",
         generated_at=datetime.now(UTC).isoformat(),
-        statics={"total_bridges": total_bridge},
+        statics={
+            "total_bridges": total_bridge,
+            "total_src_cost_usd": total_src_cost,
+            "total_tgt_cost_usd": total_tgt_cost,
+        },
         series=[
             AnalyticsSeries(
                 key="bridge_runs",
@@ -2235,6 +2359,56 @@ async def _agent_bridge(db: AsyncSession, days: int) -> AnalyticsResponse:
                 time_range=f"Last {days} Days",
                 data=_fill_days(cutoff, days, uq_map),
                 chart_type="line",
+            ),
+            # Source model breakdown
+            AnalyticsSeries(
+                key="bridge_source_models",
+                label="Source Model — Runs",
+                total=float(total_bridge),
+                time_range="All Time",
+                data=src_count_data,
+                chart_type="bar",
+            ),
+            AnalyticsSeries(
+                key="bridge_source_model_tokens",
+                label="Source Model — Tokens",
+                total=float(sum(p.value for p in src_token_data)),
+                time_range="All Time",
+                data=src_token_data,
+                chart_type="bar",
+            ),
+            AnalyticsSeries(
+                key="bridge_source_model_costs",
+                label="Source Model — Cost (USD)",
+                total=total_src_cost,
+                time_range="All Time",
+                data=src_cost_data,
+                chart_type="bar",
+            ),
+            # Target model breakdown
+            AnalyticsSeries(
+                key="bridge_target_models",
+                label="Target Model — Runs",
+                total=float(total_bridge),
+                time_range="All Time",
+                data=tgt_count_data,
+                chart_type="bar",
+            ),
+            AnalyticsSeries(
+                key="bridge_target_model_tokens",
+                label="Target Model — Tokens",
+                total=float(sum(p.value for p in tgt_token_data)),
+                time_range="All Time",
+                data=tgt_token_data,
+                chart_type="bar",
+            ),
+            AnalyticsSeries(
+                key="bridge_target_model_costs",
+                label="Target Model — Cost (USD)",
+                total=total_tgt_cost,
+                time_range="All Time",
+                data=tgt_cost_data,
+                chart_type="bar",
             ),
         ],
     )
