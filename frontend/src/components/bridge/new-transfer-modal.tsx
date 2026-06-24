@@ -135,6 +135,37 @@ function ModelInput({
   );
 }
 
+function ModelPill({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div style={{
+        display: 'block', fontSize: 11.5, color: 'var(--text-subtle)',
+        marginBottom: 5, fontWeight: 500, letterSpacing: '0.02em',
+      }}>
+        {label}
+      </div>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 7,
+        padding: '9px 11px', borderRadius: 8,
+        border: '1px solid var(--border)', background: 'var(--surface-2)',
+        color: 'var(--text-muted)',
+      }}>
+        <svg width={12} height={12} viewBox="0 0 24 24" fill="none"
+          stroke="var(--text-subtle)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="11" width="18" height="11" rx="2" />
+          <path d="M7 11V7a5 5 0 0110 0v4" />
+        </svg>
+        <span style={{
+          fontSize: 13, fontFamily: 'var(--font-geist-mono, monospace)',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
+          {value}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function BridgeDiagram({ animating }: { animating: boolean }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0 4px' }}>
@@ -296,8 +327,17 @@ export function NewTransferModal({ onClose, onJobStarted, defaultSourceModel = '
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 8 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <ModelInput label="Source model" value={sourceModel} onChange={setSourceModel} placeholder="openai/gpt-4o" models={models} modelsLoading={modelsLoading} />
-            <ModelInput label="Target model" value={targetModel} onChange={setTargetModel} placeholder="anthropic/claude-sonnet-4-5" models={models} modelsLoading={modelsLoading} />
+            {isPrefilled ? (
+              <>
+                <ModelPill label="Source model" value={sourceModel} />
+                <ModelPill label="Target model" value={targetModel} />
+              </>
+            ) : (
+              <>
+                <ModelInput label="Source model" value={sourceModel} onChange={setSourceModel} placeholder="openai/gpt-4o" models={models} modelsLoading={modelsLoading} />
+                <ModelInput label="Target model" value={targetModel} onChange={setTargetModel} placeholder="anthropic/claude-sonnet-4-5" models={models} modelsLoading={modelsLoading} />
+              </>
+            )}
           </div>
 
           <div>
