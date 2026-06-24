@@ -224,7 +224,7 @@ interface Props {
 }
 
 export function JobProgress({ progress }: Props) {
-  const [detailsOpen, setDetailsOpen] = useState(true);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const startTsRef = useRef(Date.now());
   const elapsed = useElapsed();
 
