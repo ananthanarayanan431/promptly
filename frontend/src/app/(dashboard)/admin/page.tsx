@@ -11,7 +11,6 @@ import { HealthTab } from '@/components/admin/health-tab';
 import { ApiKeysTable } from '@/components/admin/api-keys-table';
 import { AuditLogTable } from '@/components/admin/audit-log-table';
 import { JobsMonitorTab } from '@/components/admin/jobs-monitor';
-
 type Tab =
   | 'overview'
   | 'users'
@@ -96,7 +95,14 @@ export default function AdminPage() {
       </div>
 
       {/* Tab content */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '24px 32px 60px' }}>
+      <div style={{
+        flex: 1,
+        overflowY: 'auto',
+        padding: '24px 32px 60px',
+        display: 'block',
+        flexDirection: 'column' as const,
+        minHeight: 0,
+      }}>
         {activeTab === 'overview'    && <StatsCards />}
         {activeTab === 'users'       && <UsersTable />}
         {activeTab === 'rate-limits' && <RateLimitsTable />}

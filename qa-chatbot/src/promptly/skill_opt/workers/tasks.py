@@ -88,8 +88,8 @@ def run_skillopt(
                 except Exception:  # noqa: BLE001, S112
                     continue
 
-            if len(examples) < 6:
-                raise ValueError(f"SkillOpt needs at least 6 examples; found {len(examples)}.")
+            if len(examples) < 10:
+                raise ValueError(f"SkillOpt needs at least 10 examples; found {len(examples)}.")
 
             if await is_so_job_cancelled(job_id):
                 raise InterruptedError("Cancelled before optimization.")
@@ -137,6 +137,7 @@ def run_skillopt(
                     best_skill=result["best_skill"],
                     score_before=result["score_before"],
                     score_after=result["score_after"],
+                    score_test=result.get("score_test"),
                     epochs_run=result["epochs_run"],
                     edits_accepted=result["edits_accepted"],
                     edits_rejected=result["edits_rejected"],
@@ -172,6 +173,7 @@ def run_skillopt(
                     "best_skill": result["best_skill"],
                     "score_before": result["score_before"],
                     "score_after": result["score_after"],
+                    "score_test": result.get("score_test"),
                     "epochs_run": result["epochs_run"],
                     "edits_accepted": result["edits_accepted"],
                     "edits_rejected": result["edits_rejected"],
