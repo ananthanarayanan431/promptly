@@ -22,11 +22,17 @@ function fmtVal(n: number): string {
 }
 
 function shortDate(s: string): string {
-  // "2026-06-23" → "23 Jun", "2026-06" → "Jun", "2026-06-01" quarter → "Q2"
-  if (s.length === 7) return new Date(s + '-01').toLocaleString('en', { month: 'short' });
+  // "2026-06-23" → "23 Jun", "2026-06" → "Jun"
+  // Use Date.UTC to avoid off-by-one day shifts in negative-offset timezones.
+  if (s.length === 7) {
+    const [y, m] = s.split('-').map(Number);
+    const d = new Date(Date.UTC(y, m - 1, 1));
+    return d.toLocaleString('en', { month: 'short', timeZone: 'UTC' });
+  }
   if (s.length >= 10) {
-    const d = new Date(s);
-    return `${d.getDate()} ${d.toLocaleString('en', { month: 'short' })}`;
+    const [y, m, day] = s.substring(0, 10).split('-').map(Number);
+    const d = new Date(Date.UTC(y, m - 1, day));
+    return `${d.getUTCDate()} ${d.toLocaleString('en', { month: 'short', timeZone: 'UTC' })}`;
   }
   return s;
 }
