@@ -114,7 +114,7 @@ export function DomainCard({
             fontSize: 11, color: '#5a5a60',
             fontFamily: 'var(--font-geist-mono, monospace)',
           }}>
-            {domain.dataset.row_count} data sources
+            {domain.dataset.row_count} Q&amp;A pairs
           </span>
         )}
         {domain.optimized_prompt && (

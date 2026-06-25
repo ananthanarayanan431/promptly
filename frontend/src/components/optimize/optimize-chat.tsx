@@ -18,6 +18,13 @@ import { ChatInput } from './chat-input';
 import { ResultPanel } from './result-panel';
 import type { ChatTurn, JobResult, SessionDetail, TemplateListResponse } from '@/types/api';
 
+const TEMPLATE_TO_CATEGORY_SLUG: Record<string, string> = {
+  coding: 'code-generation',
+  writing: 'writing-content',
+  'customer-support': 'qa-rag',
+  analysis: 'analysis-reasoning',
+};
+
 function TemplatePickerModal({
   data,
   onSelect,
@@ -162,14 +169,6 @@ export function OptimizeChat() {
   const [templateCategorySlug, setTemplateCategorySlug] = useState<string | undefined>();
   // Incremented on every chip click so ChatInput's useEffect fires even if slug didn't change
   const [categoryNonce, setCategoryNonce] = useState(0);
-
-  // Maps template seed categories → prompt category slugs
-  const TEMPLATE_TO_CATEGORY_SLUG: Record<string, string> = {
-    coding: 'code-generation',
-    writing: 'writing-content',
-    'customer-support': 'qa-rag',
-    analysis: 'analysis-reasoning',
-  };
 
   const { data: templatesData } = useQuery({
     queryKey: ['templates'],

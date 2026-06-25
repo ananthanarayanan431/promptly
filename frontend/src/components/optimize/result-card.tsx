@@ -15,10 +15,14 @@ export function ResultCard({ result }: { result: JobResult }) {
   const [showOriginal, setShowOriginal] = useState(false);
 
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(result.optimized_prompt);
-    setCopied(true);
-    toast.success('Copied to clipboard');
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      await navigator.clipboard.writeText(result.optimized_prompt);
+      setCopied(true);
+      toast.success('Copied to clipboard');
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error('Failed to copy — please copy manually.');
+    }
   };
 
   return (

@@ -15,7 +15,7 @@ export const registerSchema = z.object({
 export type RegisterFormData = z.infer<typeof registerSchema>;
 
 export const optimizePromptSchema = z.object({
-  prompt: z.string().min(10, { message: 'Prompt must be at least 10 characters long' }).optional().or(z.literal('')),
+  prompt: z.string().min(10, { message: 'Prompt must be at least 10 characters long' }).optional(),
   prompt_id: z.string().uuid().optional(),
   name: z.string().optional(),
   feedback: z.string().optional(),

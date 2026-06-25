@@ -77,7 +77,9 @@ async def prompt_health_score(
         await user_repo.deduct_tokens(current_user.user_id, token_count)
 
     usage_repo = UsageEventRepository(db)
-    await usage_repo.log(user_id=current_user.user_id, action="health_score", credits_spent=0)
+    await usage_repo.log(
+        user_id=current_user.user_id, action="health_score", credits_spent=token_count
+    )
     await db.commit()
 
     return SuccessResponse(data=PromptHealthScoreResponse(**result))
@@ -117,7 +119,7 @@ async def prompt_advisory(
         await user_repo.deduct_tokens(current_user.user_id, token_count)
 
     usage_repo = UsageEventRepository(db)
-    await usage_repo.log(user_id=current_user.user_id, action="advisory", credits_spent=0)
+    await usage_repo.log(user_id=current_user.user_id, action="advisory", credits_spent=token_count)
     await db.commit()
 
     return SuccessResponse(data=PromptAdvisoryResponse(**result))

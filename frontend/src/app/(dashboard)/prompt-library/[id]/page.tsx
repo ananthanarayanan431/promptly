@@ -72,7 +72,7 @@ export default function PromptLibraryDetailPage({
   const handleUnstar = async () => {
     if (!window.confirm('Remove this prompt from your library?')) return;
     try {
-      await unlikeMutation.mutateAsync(params.id);
+      await unlikeMutation.mutateAsync({ id: params.id, promptVersionId: data?.prompt_version_id });
       router.push('/prompt-library');
     } catch {
       toast.error('Failed to remove from library');

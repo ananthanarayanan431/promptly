@@ -68,7 +68,7 @@ from promptly.models.message import Message
 from promptly.models.session import ChatSession
 from promptly.models.usage_event import UsageEvent
 from promptly.models.user import User
-from promptly.prompt_bridge.data.models import TransferJob
+from promptly.prompt_bridge.data.models import TransferJob, TransferJobStatus
 from promptly.repositories.user_repo import UserRepository
 from promptly.skill_opt.data.models import SkillOptProject
 
@@ -1680,6 +1680,318 @@ async def bulk_grant_tokens(
     return SuccessResponse(data=BulkTokenResult(updated=updated, amount=body.amount))
 
 
+async def _developer_metrics(db: AsyncSession, days: int) -> AnalyticsResponse:
+    now = datetime.now(UTC)
+    cutoff = now - timedelta(days=days)
+
+    # ── Bridge pipeline statics (all-time) ────────────────────────────────────
+
+    total_bridge_jobs: int = (
+        await db.execute(select(func.count()).select_from(TransferJob))
+    ).scalar_one()
+
+    completed_bridge: int = (
+        await db.execute(
+            select(func.count())
+            .select_from(TransferJob)
+            .where(TransferJob.status == TransferJobStatus.completed)
+        )
+    ).scalar_one()
+
+    failed_bridge: int = (
+        await db.execute(
+            select(func.count())
+            .select_from(TransferJob)
+            .where(TransferJob.status == TransferJobStatus.failed)
+        )
+    ).scalar_one()
+
+    reused_bridge: int = (
+        await db.execute(
+            select(func.count()).select_from(TransferJob).where(TransferJob.reused_mapping == True)  # noqa: E712
+        )
+    ).scalar_one()
+
+    # Current queue depth: jobs in a non-terminal state right now
+    queue_depth: int = (
+        await db.execute(
+            select(func.count())
+            .select_from(TransferJob)
+            .where(
+                TransferJob.status.in_(
+                    [
+                        TransferJobStatus.queued,
+                        TransferJobStatus.calibrating,
+                        TransferJobStatus.extracting_mapping,
+                        TransferJobStatus.adapting,
+                    ]
+                )
+            )
+        )
+    ).scalar_one()
+
+    # ── Optimizer pipeline statics (all-time) ─────────────────────────────────
+
+    total_opt_sessions: int = (
+        await db.execute(select(func.count()).select_from(ChatSession))
+    ).scalar_one()
+
+    # Incomplete sessions: created but never received an assistant reply
+    # (Celery worker died or the job was never processed)
+    asst_msg = aliased(Message)
+    incomplete_sessions: int = (
+        await db.execute(
+            select(func.count())
+            .select_from(ChatSession)
+            .outerjoin(
+                asst_msg,
+                (asst_msg.session_id == ChatSession.id) & (asst_msg.role == "assistant"),
+            )
+            .where(asst_msg.id.is_(None))
+        )
+    ).scalar_one()
+
+    # ── Derived rates ─────────────────────────────────────────────────────────
+
+    bridge_success_rate = round(completed_bridge / max(1, total_bridge_jobs) * 100, 1)
+    bridge_failure_rate = round(failed_bridge / max(1, total_bridge_jobs) * 100, 1)
+    bridge_reuse_rate = round(reused_bridge / max(1, total_bridge_jobs) * 100, 1)
+    opt_completion_rate = round(
+        (total_opt_sessions - incomplete_sessions) / max(1, total_opt_sessions) * 100, 1
+    )
+
+    # ── Time-series (last N days) ─────────────────────────────────────────────
+
+    # Bridge: all jobs per day
+    bridge_all_rows = (
+        await db.execute(
+            select(
+                cast(TransferJob.created_at, SqlDate).label("day"),
+                func.count().label("cnt"),
+            )
+            .where(TransferJob.created_at >= cutoff)
+            .group_by(cast(TransferJob.created_at, SqlDate))
+            .order_by(cast(TransferJob.created_at, SqlDate))
+        )
+    ).fetchall()
+    bridge_all_map: dict[str, int | float] = {str(r.day): r.cnt for r in bridge_all_rows}
+
+    # Bridge: completed per day
+    bridge_ok_rows = (
+        await db.execute(
+            select(
+                cast(TransferJob.created_at, SqlDate).label("day"),
+                func.count().label("cnt"),
+            )
+            .where(
+                TransferJob.created_at >= cutoff,
+                TransferJob.status == TransferJobStatus.completed,
+            )
+            .group_by(cast(TransferJob.created_at, SqlDate))
+            .order_by(cast(TransferJob.created_at, SqlDate))
+        )
+    ).fetchall()
+    bridge_ok_map: dict[str, int | float] = {str(r.day): r.cnt for r in bridge_ok_rows}
+
+    # Bridge: failed per day
+    bridge_fail_rows = (
+        await db.execute(
+            select(
+                cast(TransferJob.created_at, SqlDate).label("day"),
+                func.count().label("cnt"),
+            )
+            .where(
+                TransferJob.created_at >= cutoff,
+                TransferJob.status == TransferJobStatus.failed,
+            )
+            .group_by(cast(TransferJob.created_at, SqlDate))
+            .order_by(cast(TransferJob.created_at, SqlDate))
+        )
+    ).fetchall()
+    bridge_fail_map: dict[str, int | float] = {str(r.day): r.cnt for r in bridge_fail_rows}
+
+    # Optimizer: sessions per day
+    opt_sess_rows = (
+        await db.execute(
+            select(
+                cast(ChatSession.created_at, SqlDate).label("day"),
+                func.count().label("cnt"),
+            )
+            .where(ChatSession.created_at >= cutoff)
+            .group_by(cast(ChatSession.created_at, SqlDate))
+            .order_by(cast(ChatSession.created_at, SqlDate))
+        )
+    ).fetchall()
+    opt_sess_map: dict[str, int | float] = {str(r.day): r.cnt for r in opt_sess_rows}
+
+    # Optimizer: incomplete sessions per day (no assistant reply)
+    asst_msg2 = aliased(Message)
+    inc_rows = (
+        await db.execute(
+            select(
+                cast(ChatSession.created_at, SqlDate).label("day"),
+                func.count().label("cnt"),
+            )
+            .outerjoin(
+                asst_msg2,
+                (asst_msg2.session_id == ChatSession.id) & (asst_msg2.role == "assistant"),
+            )
+            .where(ChatSession.created_at >= cutoff, asst_msg2.id.is_(None))
+            .group_by(cast(ChatSession.created_at, SqlDate))
+            .order_by(cast(ChatSession.created_at, SqlDate))
+        )
+    ).fetchall()
+    incomplete_map: dict[str, int | float] = {str(r.day): r.cnt for r in inc_rows}
+
+    # UsageEvent actions per day (optimize / health_score / advisory)
+    act_rows = (
+        await db.execute(
+            select(
+                UsageEvent.action.label("act"),
+                cast(UsageEvent.created_at, SqlDate).label("day"),
+                func.count().label("cnt"),
+            )
+            .where(UsageEvent.created_at >= cutoff)
+            .group_by(UsageEvent.action, cast(UsageEvent.created_at, SqlDate))
+            .order_by(cast(UsageEvent.created_at, SqlDate))
+        )
+    ).fetchall()
+    act_maps: dict[str, dict[str, int | float]] = {}
+    for r in act_rows:
+        act_maps.setdefault(str(r.act), {})[str(r.day)] = r.cnt
+    opt_evt_map = act_maps.get("optimize", {})
+    hs_evt_map = act_maps.get("health_score", {})
+    adv_evt_map = act_maps.get("advisory", {})
+
+    # ── Categorical distributions (all-time) ─────────────────────────────────
+
+    bridge_status_rows = (
+        await db.execute(
+            select(TransferJob.status.label("status"), func.count().label("cnt"))
+            .group_by(TransferJob.status)
+            .order_by(func.count().desc())
+        )
+    ).fetchall()
+    bridge_status_data = [
+        AnalyticsPoint(date=str(r.status), value=float(r.cnt)) for r in bridge_status_rows
+    ]
+
+    bridge_reuse_data = [
+        AnalyticsPoint(date="Reused", value=float(reused_bridge)),
+        AnalyticsPoint(date="Fresh", value=float(max(0, total_bridge_jobs - reused_bridge))),
+    ]
+
+    # ── Build response ────────────────────────────────────────────────────────
+
+    return AnalyticsResponse(
+        view="developer_metrics",
+        generated_at=now.isoformat(),
+        statics={
+            "total_bridge_jobs": total_bridge_jobs,
+            "bridge_failed_all_time": failed_bridge,
+            "bridge_success_rate_pct": bridge_success_rate,
+            "bridge_failure_rate_pct": bridge_failure_rate,
+            "bridge_reuse_rate_pct": bridge_reuse_rate,
+            "bridge_queue_depth": queue_depth,
+            "total_optimizer_sessions": total_opt_sessions,
+            "optimizer_incomplete_sessions": incomplete_sessions,
+            "optimizer_completion_rate_pct": opt_completion_rate,
+        },
+        series=[
+            AnalyticsSeries(
+                key="dev_bridge_jobs_daily",
+                label="Bridge Jobs / Day",
+                total=float(sum(bridge_all_map.values())),
+                time_range=f"Last {days} Days",
+                data=_fill_days(cutoff, days, bridge_all_map),
+                chart_type="line",
+                color="#8b5cf6",
+            ),
+            AnalyticsSeries(
+                key="dev_bridge_completed_daily",
+                label="Completed Bridge Jobs / Day",
+                total=float(sum(bridge_ok_map.values())),
+                time_range=f"Last {days} Days",
+                data=_fill_days(cutoff, days, bridge_ok_map),
+                chart_type="bar",
+                color="#10b981",
+            ),
+            AnalyticsSeries(
+                key="dev_bridge_failed_daily",
+                label="Failed Bridge Jobs / Day",
+                total=float(sum(bridge_fail_map.values())),
+                time_range=f"Last {days} Days",
+                data=_fill_days(cutoff, days, bridge_fail_map),
+                chart_type="bar",
+                color="#f43f5e",
+            ),
+            AnalyticsSeries(
+                key="dev_optimizer_sessions_daily",
+                label="Optimizer Sessions / Day",
+                total=float(sum(opt_sess_map.values())),
+                time_range=f"Last {days} Days",
+                data=_fill_days(cutoff, days, opt_sess_map),
+                chart_type="line",
+                color="var(--primary)",
+            ),
+            AnalyticsSeries(
+                key="dev_incomplete_sessions_daily",
+                label="Incomplete Optimizer Sessions / Day",
+                total=float(sum(incomplete_map.values())),
+                time_range=f"Last {days} Days",
+                data=_fill_days(cutoff, days, incomplete_map),
+                chart_type="bar",
+                color="#f43f5e",
+            ),
+            AnalyticsSeries(
+                key="dev_optimize_events_daily",
+                label="Optimize API Calls / Day",
+                total=float(sum(opt_evt_map.values())),
+                time_range=f"Last {days} Days",
+                data=_fill_days(cutoff, days, opt_evt_map),
+                chart_type="bar",
+                color="var(--primary)",
+            ),
+            AnalyticsSeries(
+                key="dev_health_score_daily",
+                label="Health Score API Calls / Day",
+                total=float(sum(hs_evt_map.values())),
+                time_range=f"Last {days} Days",
+                data=_fill_days(cutoff, days, hs_evt_map),
+                chart_type="bar",
+                color="#06b6d4",
+            ),
+            AnalyticsSeries(
+                key="dev_advisory_daily",
+                label="Advisory API Calls / Day",
+                total=float(sum(adv_evt_map.values())),
+                time_range=f"Last {days} Days",
+                data=_fill_days(cutoff, days, adv_evt_map),
+                chart_type="bar",
+                color="#f59e0b",
+            ),
+            AnalyticsSeries(
+                key="dev_bridge_status_dist",
+                label="Bridge Job Status Distribution",
+                total=float(total_bridge_jobs),
+                time_range="All Time",
+                data=bridge_status_data,
+                chart_type="bar",
+                color="#8b5cf6",
+            ),
+            AnalyticsSeries(
+                key="dev_bridge_reuse_dist",
+                label="Bridge Mapping Reuse",
+                total=float(total_bridge_jobs),
+                time_range="All Time",
+                data=bridge_reuse_data,
+                chart_type="bar",
+                color="#06b6d4",
+            ),
+        ],
+    )
+
+
 # ── Analytics endpoint ────────────────────────────────────────────────────────
 
 _ANALYTICS_VIEWS = {
@@ -1689,6 +2001,7 @@ _ANALYTICS_VIEWS = {
     "agent_skillopt",
     "agent_domain",
     "agent_bridge",
+    "developer_metrics",
 }
 
 
@@ -2435,6 +2748,7 @@ async def get_analytics(
         "agent_skillopt": _agent_skillopt,
         "agent_domain": _agent_domain,
         "agent_bridge": _agent_bridge,
+        "developer_metrics": _developer_metrics,
     }
     result = await handlers[view](db, days)
     return SuccessResponse(data=result)

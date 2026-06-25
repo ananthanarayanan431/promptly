@@ -494,7 +494,7 @@ export function TransferDetail({
               }}>
                 <StatCell label="Credits used" value={`${job.credits_charged}`} color="var(--primary)" />
                 <div style={{ width: 1, background: 'var(--border)' }} />
-                <StatCell label="Transfer type" value={job.reused_mapping ? 'Cached' : 'Full'} color={job.reused_mapping ? 'var(--primary)' : 'var(--primary)'} />
+                <StatCell label="Transfer type" value={job.reused_mapping ? 'Cached' : 'Full'} color={job.reused_mapping ? 'var(--primary)' : 'var(--text-muted)'} />
                 <div style={{ width: 1, background: 'var(--border)' }} />
                 <StatCell label="Mapping" value={mapping ? `${mapping.pair_count} pair${mapping.pair_count !== 1 ? 's' : ''}` : 'New'} color="var(--success)" />
                 {mapping?.avg_target_score != null && (

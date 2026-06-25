@@ -67,6 +67,8 @@ export interface TransferJobSummary {
   error_message: string | null;
   created_at: string;
   redis_job_id: string | null;
+  token_count?: number | null;
+  mapping_text?: string | null;
 }
 
 export interface TransferJobListResponse {

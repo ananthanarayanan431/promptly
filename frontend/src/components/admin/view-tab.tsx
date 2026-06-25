@@ -8,16 +8,18 @@ import { AgentOptimizer } from './analytics/agent-optimizer';
 import { AgentSkillOpt } from './analytics/agent-skillopt';
 import { AgentDomain } from './analytics/agent-domain';
 import { AgentBridge } from './analytics/agent-bridge';
+import { DeveloperMetrics } from './analytics/developer-metrics';
 
 type TopToggle = 'platform' | 'agents';
 
-type PlatformView = 'feature_engagement' | 'login_activity' | 'user_metrics';
+type PlatformView = 'feature_engagement' | 'login_activity' | 'user_metrics' | 'developer_metrics';
 type AgentView = 'prompt_optimizer' | 'skill_builder' | 'domain_pdogepa' | 'bridge';
 
 const PLATFORM_ITEMS: { id: PlatformView; label: string }[] = [
-  { id: 'feature_engagement', label: 'Feature Engagement' },
-  { id: 'login_activity',     label: 'Login Activity' },
-  { id: 'user_metrics',       label: 'User Metrics' },
+  { id: 'feature_engagement',  label: 'Feature Engagement' },
+  { id: 'login_activity',      label: 'Login Activity' },
+  { id: 'user_metrics',        label: 'User Metrics' },
+  { id: 'developer_metrics',   label: 'Developer Metrics' },
 ];
 
 const AGENT_ITEMS: { id: AgentView; label: string }[] = [
@@ -65,6 +67,8 @@ export function ViewTab() {
       desc: 'Track login activity and daily, weekly, monthly active user trends' },
     user_metrics:       { title: 'User Metrics',
       desc: 'User growth, new signups, and daily/weekly active user trends' },
+    developer_metrics:  { title: 'Developer Metrics',
+      desc: 'Token throughput, feature API calls, bridge pipeline health, credit economy, and cost tracking' },
     prompt_optimizer:   { title: 'Prompt Optimizer',
       desc: 'Council optimizer runs, token consumption, and model distribution' },
     skill_builder:      { title: 'Skill Builder',
@@ -134,6 +138,7 @@ export function ViewTab() {
         {toggle === 'platform' && platformView === 'feature_engagement' && <PlatformEngagement />}
         {toggle === 'platform' && platformView === 'login_activity' && <PlatformLogins />}
         {toggle === 'platform' && platformView === 'user_metrics' && <PlatformUsers />}
+        {toggle === 'platform' && platformView === 'developer_metrics' && <DeveloperMetrics />}
         {toggle === 'agents' && agentView === 'prompt_optimizer' && <AgentOptimizer />}
         {toggle === 'agents' && agentView === 'skill_builder' && <AgentSkillOpt />}
         {toggle === 'agents' && agentView === 'domain_pdogepa' && <AgentDomain />}

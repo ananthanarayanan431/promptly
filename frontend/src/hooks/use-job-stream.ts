@@ -106,6 +106,8 @@ export function useJobStream(jobId: string | null): UseJobStreamResult {
   useEffect(() => {
     if (!jobId) return;
 
+    // Abort any previous in-flight stream before starting a new one.
+    abortRef.current?.abort();
     const ctrl = new AbortController();
     abortRef.current = ctrl;
 
@@ -117,6 +119,13 @@ export function useJobStream(jobId: string | null): UseJobStreamResult {
     (async () => {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token ?? '';
+
+      if (!token) {
+        setError('Session expired — please refresh the page');
+        setStatus('failed');
+        return;
+      }
+
       try {
         const res = await fetch(`${API_URL}/api/v1/chat/jobs/${jobId}/stream`, {
           headers: { Authorization: `Bearer ${token}` },
@@ -138,7 +147,7 @@ export function useJobStream(jobId: string | null): UseJobStreamResult {
         let buf = '';
         let terminal = false;
 
-        while (true) {
+        outer: while (true) {
           const { done, value } = await reader.read();
           if (done) break;
 
@@ -156,7 +165,8 @@ export function useJobStream(jobId: string | null): UseJobStreamResult {
                 terminal = true;
               } else if (ev.step === 'failed') {
                 if (ev.error === 'Stream timeout') {
-                  break;
+                  // Server closed the stream; fall through to polling fallback.
+                  break outer;
                 }
                 setError(ev.error ?? 'Optimization failed');
                 setStatus('failed');
