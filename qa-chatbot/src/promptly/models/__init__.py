@@ -5,6 +5,7 @@
 # then dependent tables.
 from promptly.models.admin_audit_log import AdminAuditLog
 from promptly.models.api_key import ApiKey
+from promptly.models.api_request_log import ApiRequestLog
 from promptly.models.favorite_prompt import FavoritePrompt
 from promptly.models.health_score import HealthScore
 from promptly.models.message import Message
@@ -18,6 +19,7 @@ from promptly.models.user import User
 __all__ = [
     "AdminAuditLog",
     "ApiKey",
+    "ApiRequestLog",
     "User",
     "ChatSession",
     "Message",

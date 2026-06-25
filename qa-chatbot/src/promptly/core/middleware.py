@@ -1,4 +1,6 @@
 import asyncio
+import re
+import time
 import uuid
 from typing import Any
 
@@ -11,6 +13,61 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from promptly.config.app import get_app_settings
 from promptly.config.rate_limit import get_rate_limit_settings
 from promptly.db.redis import get_redis_client
+
+_SKIP_PATHS = {"/api/v1/health", "/api/v1/ready"}
+
+_UUID_RE = re.compile(
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+    re.IGNORECASE,
+)
+_LOG_SKIP_PREFIXES = ("/docs", "/redoc", "/openapi", "/_", "/favicon")
+_background_tasks: set[asyncio.Task[None]] = set()
+
+
+async def _write_request_log(method: str, path: str, status_code: int, duration_ms: int) -> None:
+    from promptly.db.session import AsyncSessionLocal  # lazy to avoid circular import
+    from promptly.models.api_request_log import ApiRequestLog  # lazy to avoid circular import
+
+    try:
+        async with AsyncSessionLocal() as session:
+            session.add(
+                ApiRequestLog(
+                    method=method,
+                    path=path,
+                    status_code=status_code,
+                    duration_ms=duration_ms,
+                )
+            )
+            await session.commit()
+    except Exception:  # noqa: S110
+        pass
+
+
+class HttpRequestLogMiddleware(BaseHTTPMiddleware):
+    """Append every request to api_request_logs via a fire-and-forget background task."""
+
+    async def dispatch(self, request: Request, call_next: Any) -> Any:
+        path = request.url.path
+        if path in _SKIP_PATHS or any(path.startswith(p) for p in _LOG_SKIP_PREFIXES):
+            return await call_next(request)
+
+        start = time.monotonic()
+        status_code = 500
+        try:
+            response = await call_next(request)
+            status_code = response.status_code
+            return response
+        finally:
+            duration_ms = int((time.monotonic() - start) * 1000)
+            normalized = _UUID_RE.sub("{id}", path)[:255]
+            try:
+                task: asyncio.Task[None] = asyncio.create_task(
+                    _write_request_log(request.method, normalized, status_code, duration_ms)
+                )
+                _background_tasks.add(task)
+                task.add_done_callback(_background_tasks.discard)
+            except Exception:  # noqa: S110
+                pass
 
 
 class CorrelationIdMiddleware(BaseHTTPMiddleware):
@@ -25,9 +82,6 @@ class CorrelationIdMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         response.headers["X-Correlation-ID"] = correlation_id
         return response
-
-
-_SKIP_PATHS = {"/api/v1/health", "/api/v1/ready"}
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):

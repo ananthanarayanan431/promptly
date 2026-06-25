@@ -17,6 +17,7 @@ from promptly.config.app import AppSettings, get_app_settings
 from promptly.core.logging import RequestLoggingMiddleware, setup_logging
 from promptly.core.middleware import (
     CorrelationIdMiddleware,
+    HttpRequestLogMiddleware,
     RateLimitMiddleware,
     RequestLimitMiddleware,
 )
@@ -94,6 +95,7 @@ def create_app() -> FastAPI:
     app.add_middleware(RequestLoggingMiddleware)
     app.add_middleware(RateLimitMiddleware)
     app.add_middleware(RequestLimitMiddleware)
+    app.add_middleware(HttpRequestLogMiddleware)
     app.add_middleware(CorrelationIdMiddleware)
     app.include_router(api_router, prefix=settings.API_V1_PREFIX)
     # webhooks_router is an intentional empty placeholder for future Supabase

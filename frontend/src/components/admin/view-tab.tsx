@@ -68,7 +68,7 @@ export function ViewTab() {
     user_metrics:       { title: 'User Metrics',
       desc: 'User growth, new signups, and daily/weekly active user trends' },
     developer_metrics:  { title: 'Developer Metrics',
-      desc: 'Token throughput, feature API calls, bridge pipeline health, credit economy, and cost tracking' },
+      desc: 'HTTP request health, Sentry error tracking, bridge pipeline health, and optimizer session outcomes' },
     prompt_optimizer:   { title: 'Prompt Optimizer',
       desc: 'Council optimizer runs, token consumption, and model distribution' },
     skill_builder:      { title: 'Skill Builder',

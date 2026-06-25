@@ -64,6 +64,7 @@ from promptly.domain_prompt.infrastructure.cache import get_dp_job_owner
 from promptly.llm.settings import get_llm_settings
 from promptly.models.admin_audit_log import AdminAuditLog
 from promptly.models.api_key import ApiKey
+from promptly.models.api_request_log import ApiRequestLog
 from promptly.models.message import Message
 from promptly.models.session import ChatSession
 from promptly.models.usage_event import UsageEvent
@@ -184,6 +185,84 @@ def _live_cost_per_token(model: str, pricing: dict[str, float]) -> float:
     if model in pricing:
         return pricing[model]
     return _or_cost_per_token(model)
+
+
+# ── Sentry error stats cache (5-minute TTL) ──────────────────────────────────
+_sentry_stats_cache: dict[str, Any] = {}
+_sentry_stats_cache_ts: float = 0.0
+_SENTRY_STATS_TTL = 300.0  # seconds
+
+
+async def _fetch_sentry_stats(days: int) -> dict[str, Any]:
+    """Return Sentry error stats for the last `days` days, cached for 5 minutes.
+
+    Returns an empty dict when Sentry API credentials are not configured.
+    """
+    global _sentry_stats_cache, _sentry_stats_cache_ts  # noqa: PLW0603
+
+    now = time.monotonic()
+    if _sentry_stats_cache and now - _sentry_stats_cache_ts < _SENTRY_STATS_TTL:
+        return _sentry_stats_cache
+
+    app = get_app_settings()
+    if not (app.SENTRY_AUTH_TOKEN and app.SENTRY_ORG_SLUG and app.SENTRY_PROJECT_SLUG):
+        return {}
+
+    token = app.SENTRY_AUTH_TOKEN.get_secret_value()
+    org = app.SENTRY_ORG_SLUG
+    project = app.SENTRY_PROJECT_SLUG
+    headers = {"Authorization": f"Bearer {token}"}
+
+    try:
+        since = int((datetime.now(UTC) - timedelta(days=days)).timestamp())
+        until = int(datetime.now(UTC).timestamp())
+
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            stats_resp = await client.get(
+                f"https://sentry.io/api/0/projects/{org}/{project}/stats/",
+                params={"stat": "received", "resolution": "1d", "since": since, "until": until},
+                headers=headers,
+            )
+            issues_resp = await client.get(
+                f"https://sentry.io/api/0/projects/{org}/{project}/issues/",
+                params={"query": "is:unresolved", "limit": "5", "sort": "freq"},
+                headers=headers,
+            )
+
+        result: dict[str, Any] = {}
+
+        if stats_resp.status_code == 200:
+            raw_stats = stats_resp.json()
+            if isinstance(raw_stats, list):
+                daily: list[dict[str, Any]] = []
+                for row in raw_stats:
+                    if isinstance(row, list | tuple) and len(row) >= 2:  # noqa: PLR2004
+                        daily.append({"ts": int(row[0]), "count": int(row[1])})
+                result["error_events_daily"] = daily
+                result["total_errors"] = sum(r["count"] for r in daily)
+
+        if issues_resp.status_code == 200:
+            raw_issues = issues_resp.json()
+            if isinstance(raw_issues, list):
+                result["top_issues"] = [
+                    {
+                        "title": str(issue.get("title", "Unknown"))[:60],
+                        "count": int(issue.get("count", 0)),
+                        "level": str(issue.get("level", "error")),
+                    }
+                    for issue in raw_issues[:5]
+                    if isinstance(issue, dict)
+                ]
+                result["unresolved_issue_count"] = len(result.get("top_issues", []))
+
+        if result:
+            _sentry_stats_cache = result
+            _sentry_stats_cache_ts = now
+
+        return result
+
+    except Exception:
+        return _sentry_stats_cache  # serve stale on error
 
 
 _FEATURE_LABELS: dict[str, str] = {
@@ -1680,9 +1759,115 @@ async def bulk_grant_tokens(
     return SuccessResponse(data=BulkTokenResult(updated=updated, amount=body.amount))
 
 
-async def _developer_metrics(db: AsyncSession, days: int) -> AnalyticsResponse:
+async def _developer_metrics(db: AsyncSession, days: int) -> AnalyticsResponse:  # noqa: PLR0912, PLR0915
     now = datetime.now(UTC)
     cutoff = now - timedelta(days=days)
+
+    # ── HTTP request metrics (from api_request_logs, last N days) ────────────
+
+    http_total_30d: int = (
+        await db.execute(
+            select(func.count())
+            .select_from(ApiRequestLog)
+            .where(ApiRequestLog.created_at >= cutoff)
+        )
+    ).scalar_one()
+
+    http_error_30d: int = (
+        await db.execute(
+            select(func.count())
+            .select_from(ApiRequestLog)
+            .where(ApiRequestLog.created_at >= cutoff, ApiRequestLog.status_code >= 400)
+        )
+    ).scalar_one()
+
+    http_5xx_30d: int = (
+        await db.execute(
+            select(func.count())
+            .select_from(ApiRequestLog)
+            .where(ApiRequestLog.created_at >= cutoff, ApiRequestLog.status_code >= 500)
+        )
+    ).scalar_one()
+
+    p95_raw = (
+        await db.execute(
+            text(
+                "SELECT percentile_cont(0.95) WITHIN GROUP (ORDER BY duration_ms) "
+                "FROM api_request_logs WHERE created_at >= :cutoff"
+            ),
+            {"cutoff": cutoff},
+        )
+    ).scalar_one_or_none()
+    p95_latency_ms = round(float(p95_raw), 0) if p95_raw is not None else 0.0
+
+    # HTTP requests per day
+    http_req_rows = (
+        await db.execute(
+            select(
+                cast(ApiRequestLog.created_at, SqlDate).label("day"),
+                func.count().label("cnt"),
+            )
+            .where(ApiRequestLog.created_at >= cutoff)
+            .group_by(cast(ApiRequestLog.created_at, SqlDate))
+            .order_by(cast(ApiRequestLog.created_at, SqlDate))
+        )
+    ).fetchall()
+    http_req_map: dict[str, int | float] = {str(r.day): r.cnt for r in http_req_rows}
+
+    # HTTP errors (4xx + 5xx) per day
+    http_err_rows = (
+        await db.execute(
+            select(
+                cast(ApiRequestLog.created_at, SqlDate).label("day"),
+                func.count().label("cnt"),
+            )
+            .where(ApiRequestLog.created_at >= cutoff, ApiRequestLog.status_code >= 400)
+            .group_by(cast(ApiRequestLog.created_at, SqlDate))
+            .order_by(cast(ApiRequestLog.created_at, SqlDate))
+        )
+    ).fetchall()
+    http_err_map: dict[str, int | float] = {str(r.day): r.cnt for r in http_err_rows}
+
+    # HTTP 5xx per day
+    http_5xx_rows = (
+        await db.execute(
+            select(
+                cast(ApiRequestLog.created_at, SqlDate).label("day"),
+                func.count().label("cnt"),
+            )
+            .where(ApiRequestLog.created_at >= cutoff, ApiRequestLog.status_code >= 500)
+            .group_by(cast(ApiRequestLog.created_at, SqlDate))
+            .order_by(cast(ApiRequestLog.created_at, SqlDate))
+        )
+    ).fetchall()
+    http_5xx_map: dict[str, int | float] = {str(r.day): r.cnt for r in http_5xx_rows}
+
+    # Top failing endpoints (top 5 by error count)
+    top_fail_rows = (
+        await db.execute(
+            select(
+                ApiRequestLog.path.label("path"),
+                func.count().label("cnt"),
+            )
+            .where(ApiRequestLog.created_at >= cutoff, ApiRequestLog.status_code >= 400)
+            .group_by(ApiRequestLog.path)
+            .order_by(func.count().desc())
+            .limit(5)
+        )
+    ).fetchall()
+    top_fail_data = [AnalyticsPoint(date=str(r.path), value=float(r.cnt)) for r in top_fail_rows]
+
+    # ── Sentry error stats ────────────────────────────────────────────────────
+
+    sentry = await _fetch_sentry_stats(days)
+    sentry_daily_map: dict[str, int | float] = {}
+    for row in sentry.get("error_events_daily", []):
+        d = str(datetime.fromtimestamp(int(row["ts"]), tz=UTC).date())
+        sentry_daily_map[d] = int(row["count"])
+    sentry_issues_data = [
+        AnalyticsPoint(date=str(issue["title"])[:60], value=float(issue["count"]))
+        for issue in sentry.get("top_issues", [])
+    ]
 
     # ── Bridge pipeline statics (all-time) ────────────────────────────────────
 
@@ -1887,17 +2072,85 @@ async def _developer_metrics(db: AsyncSession, days: int) -> AnalyticsResponse:
         view="developer_metrics",
         generated_at=now.isoformat(),
         statics={
+            # HTTP health
+            "http_total_requests_30d": http_total_30d,
+            "http_error_count_30d": http_error_30d,
+            "http_5xx_count_30d": http_5xx_30d,
+            "http_error_rate_pct": round(http_error_30d / max(1, http_total_30d) * 100, 2),
+            "http_p95_latency_ms": p95_latency_ms,
+            # Sentry (-1 = not configured)
+            "sentry_total_errors": sentry.get("total_errors", -1),
+            "sentry_unresolved_issues": sentry.get("unresolved_issue_count", -1),
+            # Bridge pipeline
             "total_bridge_jobs": total_bridge_jobs,
             "bridge_failed_all_time": failed_bridge,
             "bridge_success_rate_pct": bridge_success_rate,
             "bridge_failure_rate_pct": bridge_failure_rate,
             "bridge_reuse_rate_pct": bridge_reuse_rate,
             "bridge_queue_depth": queue_depth,
+            # Optimizer pipeline
             "total_optimizer_sessions": total_opt_sessions,
             "optimizer_incomplete_sessions": incomplete_sessions,
             "optimizer_completion_rate_pct": opt_completion_rate,
         },
         series=[
+            # ── HTTP health ───────────────────────────────────────────────────
+            AnalyticsSeries(
+                key="dev_http_requests_daily",
+                label="HTTP Requests / Day",
+                total=float(http_total_30d),
+                time_range=f"Last {days} Days",
+                data=_fill_days(cutoff, days, http_req_map),
+                chart_type="line",
+                color="#06b6d4",
+            ),
+            AnalyticsSeries(
+                key="dev_http_errors_daily",
+                label="HTTP Errors / Day (4xx + 5xx)",
+                total=float(http_error_30d),
+                time_range=f"Last {days} Days",
+                data=_fill_days(cutoff, days, http_err_map),
+                chart_type="bar",
+                color="#f43f5e",
+            ),
+            AnalyticsSeries(
+                key="dev_http_5xx_daily",
+                label="Server Errors / Day (5xx)",
+                total=float(http_5xx_30d),
+                time_range=f"Last {days} Days",
+                data=_fill_days(cutoff, days, http_5xx_map),
+                chart_type="bar",
+                color="#dc2626",
+            ),
+            AnalyticsSeries(
+                key="dev_http_top_failing_paths",
+                label="Top Failing Endpoints",
+                total=float(http_error_30d),
+                time_range=f"Last {days} Days",
+                data=top_fail_data,
+                chart_type="bar",
+                color="#f43f5e",
+            ),
+            # ── Sentry ────────────────────────────────────────────────────────
+            AnalyticsSeries(
+                key="dev_sentry_errors_daily",
+                label="Sentry Error Events / Day",
+                total=float(sentry.get("total_errors", 0)),
+                time_range=f"Last {days} Days",
+                data=_fill_days(cutoff, days, sentry_daily_map),
+                chart_type="bar",
+                color="#f43f5e",
+            ),
+            AnalyticsSeries(
+                key="dev_sentry_top_issues",
+                label="Top Sentry Issues",
+                total=float(sentry.get("unresolved_issue_count", 0)),
+                time_range=f"Last {days} Days",
+                data=sentry_issues_data,
+                chart_type="bar",
+                color="#f59e0b",
+            ),
+            # ── Bridge pipeline ───────────────────────────────────────────────
             AnalyticsSeries(
                 key="dev_bridge_jobs_daily",
                 label="Bridge Jobs / Day",
