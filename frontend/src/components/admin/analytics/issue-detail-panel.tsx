@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -378,6 +378,72 @@ function FrameRow({ frame }: { frame: StackFrame }) {
   );
 }
 
+// ── Coding-agent prompt builder ───────────────────────────────────────────────
+
+function buildCodingAgentPrompt(d: IssueDetail, aiAnalysis?: string): string {
+  const ev = d.latest_event;
+  const exc = ev.exception;
+  const inApp = exc ? exc.frames.filter(f => f.in_app) : [];
+  const topFrame = inApp[inApp.length - 1];
+
+  const lines: string[] = [];
+  lines.push('Fix this production error in our FastAPI / Python codebase:\n');
+
+  // Error identity
+  if (exc) {
+    lines.push(`**Error:** \`${exc.exc_type}: ${exc.exc_value.slice(0, 300)}\``);
+  } else {
+    lines.push(`**Error:** ${d.issue.title}`);
+  }
+  if (d.issue.culprit) lines.push(`**Culprit:** ${d.issue.culprit}`);
+  lines.push(`**Occurrences:** ${d.issue.count.toLocaleString()} events · ${d.issue.user_count} users affected\n`);
+
+  // Stack trace — in-app frames only
+  if (inApp.length > 0) {
+    lines.push('## Stack Trace (in-app frames)\n\n```');
+    for (const f of inApp.slice(-6)) {
+      lines.push(`File "${f.filename}", line ${f.lineno ?? '?'}, in ${f.function}()`);
+      const errLine = f.context.find(([n]) => n === f.lineno);
+      if (errLine) lines.push(`  ${String(errLine[1]).trim()}`);
+    }
+    lines.push('```\n');
+  }
+
+  // Primary file with annotated context
+  if (topFrame) {
+    lines.push(`## File to Fix\n\nOpen \`${topFrame.filename}\` at line \`${topFrame.lineno ?? '?'}\`.\n`);
+    if (topFrame.context.length > 0) {
+      lines.push('```python');
+      for (const [lineNo, lineText] of topFrame.context) {
+        const marker = lineNo === topFrame.lineno ? '>>>' : '   ';
+        lines.push(`${marker} ${String(lineNo).padStart(4)} | ${lineText}`);
+      }
+      lines.push('```\n');
+    }
+  }
+
+  // Request context
+  if (ev.request?.url) {
+    lines.push(`## Request\n\n\`${ev.request.method} ${ev.request.url}\`\n`);
+  }
+
+  // Paste the AI analysis when available — gives the agent a head-start
+  if (aiAnalysis) {
+    lines.push('## AI Root-Cause Analysis\n');
+    lines.push(aiAnalysis);
+    lines.push('');
+  }
+
+  // Instructions
+  lines.push('## What to Do\n');
+  lines.push(`1. Identify the root cause of the \`${exc?.exc_type ?? 'error'}\` at \`${topFrame?.filename ?? '?'}:${topFrame?.lineno ?? '?'}\``);
+  lines.push('2. Apply the minimal fix needed — avoid unrelated refactors');
+  lines.push('3. Check for the same pattern elsewhere in the codebase');
+  lines.push('4. Confirm existing tests still pass after your change');
+
+  return lines.join('\n');
+}
+
 // ── Main panel ────────────────────────────────────────────────────────────────
 
 export function IssueDetailPanel({
@@ -387,21 +453,31 @@ export function IssueDetailPanel({
   issueId: string;
   onClose: () => void;
 }) {
-  const [aiFixShown, setAiFixShown] = useState(false);
-  const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
+  // AI fix — enabled on demand; TanStack caches by issueId so the same issue
+  // never triggers a second API call within the session.
+  const queryClient = useQueryClient();
+  const aiCacheKey = ['admin', 'sentry-ai-fix', issueId];
+  const hasCached = !!queryClient.getQueryData(aiCacheKey);
+  const [aiEnabled, setAiEnabled] = useState(hasCached);
+  const [aiShown, setAiShown] = useState(hasCached);
+  const [copied, setCopied] = useState(false);
 
-  const aiFixMutation = useMutation({
-    mutationFn: async (payload: ReturnType<typeof buildAiFixPayload>) => {
+  const aiQuery = useQuery<string>({
+    queryKey: aiCacheKey,
+    queryFn: async () => {
+      // data is guaranteed to exist before this fires (aiEnabled only set after data loads)
+      const payload = buildAiFixPayload(queryClient.getQueryData<IssueDetail>(
+        ['admin', 'sentry-issue', issueId]
+      )!);
       const res = await api.post<{ data: { analysis: string } }>(
         '/api/v1/admin/sentry/issues/ai-fix',
         payload,
       );
       return res.data.data.analysis;
     },
-    onSuccess: (analysis) => {
-      setAiAnalysis(analysis);
-      setAiFixShown(true);
-    },
+    enabled: aiEnabled,
+    staleTime: Infinity,   // never re-fetch the same issue
+    gcTime: 30 * 60 * 1000,
   });
 
   const { data, isLoading, isError } = useQuery<IssueDetail>({
@@ -478,22 +554,23 @@ export function IssueDetailPanel({
               </span>
               <button
                 onClick={() => {
-                  if (aiAnalysis) { setAiFixShown(s => !s); return; }
-                  aiFixMutation.mutate(buildAiFixPayload(data));
+                  if (aiQuery.data) { setAiShown(s => !s); return; }
+                  setAiEnabled(true);
+                  setAiShown(true);
                 }}
-                disabled={aiFixMutation.isPending}
+                disabled={aiQuery.isFetching}
                 style={{
                   fontSize: 11, fontWeight: 700, cursor: 'pointer', flexShrink: 0,
                   border: '1px solid color-mix(in oklab, #a78bfa 35%, transparent)',
                   borderRadius: 5, padding: '3px 10px',
-                  background: aiFixShown
+                  background: aiShown
                     ? 'color-mix(in oklab, #a78bfa 15%, transparent)'
                     : 'color-mix(in oklab, #a78bfa 8%, transparent)',
                   color: '#a78bfa',
                   transition: 'all .15s',
                 }}
               >
-                {aiFixMutation.isPending ? '✦ Analysing…' : aiFixShown ? '✦ Hide AI Fix' : '✦ Fix with AI'}
+                {aiQuery.isFetching ? '✦ Analysing…' : aiShown ? '✦ Hide AI Fix' : '✦ Fix with AI'}
               </button>
               <a
                 href={data.issue.permalink}
@@ -560,7 +637,7 @@ export function IssueDetailPanel({
                 </div>
 
                 {/* AI Fix result */}
-                {aiFixMutation.isError && (
+                {aiQuery.isError && (
                   <div style={{
                     background: 'color-mix(in oklab, #f43f5e 8%, transparent)',
                     border: '1px solid color-mix(in oklab, #f43f5e 25%, transparent)',
@@ -570,14 +647,15 @@ export function IssueDetailPanel({
                     AI analysis failed — check that the backend LLM is configured.
                   </div>
                 )}
-                {aiFixShown && aiAnalysis && (
+                {aiShown && aiQuery.data && (
                   <div style={{
                     background: 'color-mix(in oklab, #a78bfa 6%, transparent)',
                     border: '1px solid color-mix(in oklab, #a78bfa 25%, transparent)',
                     borderRadius: 10, padding: '16px 18px',
                     display: 'flex', flexDirection: 'column', gap: 12,
                   }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {/* Header row */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       <span style={{
                         fontSize: 10, fontWeight: 800, letterSpacing: '.1em',
                         color: '#a78bfa',
@@ -587,8 +665,27 @@ export function IssueDetailPanel({
                       <span style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>
                         gpt-4.1-mini · in-app frames only
                       </span>
+                      {/* Copy prompt button */}
                       <button
-                        onClick={() => { setAiFixShown(false); setAiAnalysis(null); }}
+                        onClick={() => {
+                          const prompt = buildCodingAgentPrompt(data, aiQuery.data);
+                          navigator.clipboard.writeText(prompt).then(() => {
+                            setCopied(true);
+                            setTimeout(() => setCopied(false), 2000);
+                          });
+                        }}
+                        style={{
+                          fontSize: 10.5, fontWeight: 600, cursor: 'pointer',
+                          border: '1px solid color-mix(in oklab, #a78bfa 30%, transparent)',
+                          borderRadius: 5, padding: '2px 9px',
+                          background: 'color-mix(in oklab, #a78bfa 10%, transparent)',
+                          color: '#a78bfa', transition: 'all .12s',
+                        }}
+                      >
+                        {copied ? '✓ Copied!' : '⎘ Copy Prompt'}
+                      </button>
+                      <button
+                        onClick={() => setAiShown(false)}
                         style={{
                           marginLeft: 'auto', background: 'none', border: 'none',
                           cursor: 'pointer', fontSize: 12, color: 'var(--text-muted)',
@@ -598,7 +695,30 @@ export function IssueDetailPanel({
                         ✕
                       </button>
                     </div>
-                    <AiFixResult text={aiAnalysis} />
+                    <AiFixResult text={aiQuery.data} />
+                  </div>
+                )}
+                {/* Copy prompt without AI analysis (available immediately) */}
+                {!aiShown && (
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 4 }}>
+                    <button
+                      onClick={() => {
+                        const prompt = buildCodingAgentPrompt(data, aiQuery.data);
+                        navigator.clipboard.writeText(prompt).then(() => {
+                          setCopied(true);
+                          setTimeout(() => setCopied(false), 2000);
+                        });
+                      }}
+                      style={{
+                        fontSize: 10.5, fontWeight: 600, cursor: 'pointer',
+                        border: '1px solid var(--border)',
+                        borderRadius: 5, padding: '3px 10px',
+                        background: 'var(--surface-2)',
+                        color: 'var(--text-muted)', transition: 'all .12s',
+                      }}
+                    >
+                      {copied ? '✓ Copied!' : '⎘ Copy Agent Prompt'}
+                    </button>
                   </div>
                 )}
 
