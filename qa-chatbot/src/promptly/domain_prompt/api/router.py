@@ -45,6 +45,7 @@ from promptly.domain_prompt.data.repository import (
 )
 from promptly.domain_prompt.infrastructure.cache import (
     clear_dp_domain_active_job,
+    clear_dp_gepa_state,
     clear_dp_tournament_state,
     get_dp_celery_task_id,
     get_dp_domain_active_job,
@@ -488,28 +489,41 @@ async def reoptimize_domain(
     await set_dp_job_status(job_id, "queued")
     await set_dp_job_owner(job_id, str(current_user.user_id))
 
-    if body.algorithm == "gepa":
-        tier_params = _GEPA_TIERS.get(body.budget_tier, _GEPA_TIERS["medium"])
-        run_gepa_optimization.apply_async(
-            kwargs={
-                "job_id": job_id,
-                "domain_id": str(domain_id),
-                "user_id": str(current_user.user_id),
-                "prompt_to_optimize": body.prompt.strip(),
-                **tier_params,
-            }
-        )
-    else:
-        tier_params = _PDO_TIERS.get(body.budget_tier, _PDO_TIERS["medium"])
-        run_domain_optimization.apply_async(
-            kwargs={
-                "job_id": job_id,
-                "domain_id": str(domain_id),
-                "user_id": str(current_user.user_id),
-                "prompt_to_optimize": body.prompt.strip(),
-                **tier_params,
-            }
-        )
+    try:
+        if body.algorithm == "gepa":
+            await clear_dp_gepa_state(str(domain_id))
+            tier_params = _GEPA_TIERS.get(body.budget_tier, _GEPA_TIERS["medium"])
+            run_gepa_optimization.apply_async(
+                kwargs={
+                    "job_id": job_id,
+                    "domain_id": str(domain_id),
+                    "user_id": str(current_user.user_id),
+                    "prompt_to_optimize": body.prompt.strip(),
+                    **tier_params,
+                }
+            )
+        else:
+            tier_params = _PDO_TIERS.get(body.budget_tier, _PDO_TIERS["medium"])
+            run_domain_optimization.apply_async(
+                kwargs={
+                    "job_id": job_id,
+                    "domain_id": str(domain_id),
+                    "user_id": str(current_user.user_id),
+                    "prompt_to_optimize": body.prompt.strip(),
+                    **tier_params,
+                }
+            )
+    except Exception as celery_exc:
+        # Broker unreachable — restore domain status so the user can retry.
+        try:
+            await repo.set_status(domain, DomainPromptStatus.failed)
+            await db.commit()
+        except Exception:  # noqa: BLE001, S110
+            pass
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Job queue unavailable — please retry in a moment.",
+        ) from celery_exc
     log.info(
         "domain_optimize_job_queued",
         job_id=job_id,

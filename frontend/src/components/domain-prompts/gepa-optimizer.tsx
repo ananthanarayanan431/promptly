@@ -767,15 +767,18 @@ export function GepaOptimizer({
       try {
         const res = await api.get<{ data: GepaState | null }>(`/api/v1/domain-prompts/${domainId}/gepa-state`);
         return res.data.data ?? null;
-      } catch {
-        // 404 = state not written yet; treat as null (run just started)
-        return null;
+      } catch (err) {
+        // Only 404 means state not written yet; all other errors are real failures.
+        const status = (err as { response?: { status?: number } }).response?.status;
+        if (status === 404) return null;
+        throw err;
       }
     },
     // Poll fast while a run is in progress; back off to 30 s when idle.
     refetchInterval: (query) => {
       const s = query.state.data;
-      return s && s.phase !== 'completed' ? 2000 : 30_000;
+      if (isRunning || (s && s.phase !== 'completed')) return 2000;
+      return 30_000;
     },
     staleTime: 0,
   });
