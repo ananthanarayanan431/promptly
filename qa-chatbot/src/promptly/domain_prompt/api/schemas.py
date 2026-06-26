@@ -166,6 +166,8 @@ class GepaStateResponse(BaseModel):
     pool: list[GepaCandidate]
     pending: GepaPending | None
     budget_used: int
+    budget_max: int | None = None
+    n_pareto_size: int | None = None
     full_pct: float
     baseline: float | None
     current_iter: GepaCurrentIter | None

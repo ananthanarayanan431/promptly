@@ -795,7 +795,7 @@ function OptimizeTab({ domain, onReoptimize, reoptimizing, sessionResult, onClea
       )}
 
       {busy && domain.status === 'optimizing' && engine === 'gepa' && (
-        <GepaOptimizer domainId={domain.id} optimizedPrompt={null} promptInput={draft || null} />
+        <GepaOptimizer domainId={domain.id} optimizedPrompt={null} promptInput={draft || null} isRunning />
       )}
 
       {hasResult && engine === 'gepa' && (

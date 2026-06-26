@@ -30,6 +30,7 @@ from promptly.domain_prompt.api.schemas import (
     DomainJobPollResponse,
     DomainListResponse,
     DomainPromptResponse,
+    GepaStateResponse,
     OptimizationRunResponse,
     OptimizeDomainRequest,
     QAPair,
@@ -47,6 +48,7 @@ from promptly.domain_prompt.infrastructure.cache import (
     clear_dp_tournament_state,
     get_dp_celery_task_id,
     get_dp_domain_active_job,
+    get_dp_gepa_state,
     get_dp_job_domain_id,
     get_dp_job_owner,
     get_dp_job_result,
@@ -69,10 +71,23 @@ from promptly.domain_prompt.workers.tasks import (
     augment_domain_dataset,
     prepare_domain_dataset,
     run_domain_optimization,
+    run_gepa_optimization,
 )
 from promptly.repositories.usage_event_repo import UsageEventRepository
 from promptly.repositories.user_repo import UserRepository
 from promptly.utils.log import get_logger
+
+# Budget-tier → task-param mappings (must match frontend BUDGET_TIERS / PDO_TIERS)
+_GEPA_TIERS: dict[str, dict[str, int]] = {
+    "low": {"gepa_budget": 100, "gepa_n_pareto": 10},
+    "medium": {"gepa_budget": 260, "gepa_n_pareto": 22},
+    "high": {"gepa_budget": 460, "gepa_n_pareto": 38},
+}
+_PDO_TIERS: dict[str, dict[str, int]] = {
+    "low": {"pdo_rounds": 15, "pdo_num_candidates": 6},
+    "medium": {"pdo_rounds": 30, "pdo_num_candidates": 10},
+    "high": {"pdo_rounds": 50, "pdo_num_candidates": 15},
+}
 
 log = get_logger(__name__)
 
@@ -400,6 +415,32 @@ async def get_tournament_state(
     return SuccessResponse(data=TournamentStateResponse(**state))
 
 
+@router.get(
+    "/{domain_id}/gepa-state",
+    response_model=SuccessResponse[GepaStateResponse],
+    dependencies=[Depends(_read_limiter)],
+    summary="Get GEPA state",
+    description="Return the live GEPA reflective-evolution state for a running optimization.",
+    responses=error_responses(401, 404, 429, 500),
+)
+async def get_gepa_state(
+    domain_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
+) -> SuccessResponse[GepaStateResponse]:
+    """Return live GEPA state written by the optimizer during a running GEPA job."""
+    repo = DomainPromptRepository(db)
+    domain = await repo.get_by_id_and_user(domain_id, current_user.user_id)
+    if domain is None:
+        raise DomainNotFoundException()
+
+    state = await get_dp_gepa_state(str(domain_id))
+    if state is None:
+        raise HTTPException(status_code=404, detail="No GEPA state available yet.")
+
+    return SuccessResponse(data=GepaStateResponse(**state))
+
+
 @router.post(
     "/{domain_id}/optimize",
     response_model=SuccessResponse[CreateDomainJobResponse],
@@ -439,22 +480,42 @@ async def reoptimize_domain(
 
     await repo.set_status(domain, DomainPromptStatus.optimizing, last_prompt=body.prompt.strip())
     usage_repo = UsageEventRepository(db)
-    await usage_repo.log(user_id=current_user.user_id, action="domain_pdo", credits_spent=0)
+    action = "domain_gepa" if body.algorithm == "gepa" else "domain_pdo"
+    await usage_repo.log(user_id=current_user.user_id, action=action, credits_spent=0)
     await db.commit()
 
     job_id = str(uuid.uuid4())
     await set_dp_job_status(job_id, "queued")
     await set_dp_job_owner(job_id, str(current_user.user_id))
 
-    run_domain_optimization.apply_async(
-        kwargs={
-            "job_id": job_id,
-            "domain_id": str(domain_id),
-            "user_id": str(current_user.user_id),
-            "prompt_to_optimize": body.prompt.strip(),
-        }
+    if body.algorithm == "gepa":
+        tier_params = _GEPA_TIERS.get(body.budget_tier, _GEPA_TIERS["medium"])
+        run_gepa_optimization.apply_async(
+            kwargs={
+                "job_id": job_id,
+                "domain_id": str(domain_id),
+                "user_id": str(current_user.user_id),
+                "prompt_to_optimize": body.prompt.strip(),
+                **tier_params,
+            }
+        )
+    else:
+        tier_params = _PDO_TIERS.get(body.budget_tier, _PDO_TIERS["medium"])
+        run_domain_optimization.apply_async(
+            kwargs={
+                "job_id": job_id,
+                "domain_id": str(domain_id),
+                "user_id": str(current_user.user_id),
+                "prompt_to_optimize": body.prompt.strip(),
+                **tier_params,
+            }
+        )
+    log.info(
+        "domain_optimize_job_queued",
+        job_id=job_id,
+        domain_id=str(domain_id),
+        algorithm=body.algorithm,
     )
-    log.info("domain_optimize_job_queued", job_id=job_id, domain_id=str(domain_id))
 
     return SuccessResponse(data=CreateDomainJobResponse(job_id=job_id, domain_id=domain_id))
 
