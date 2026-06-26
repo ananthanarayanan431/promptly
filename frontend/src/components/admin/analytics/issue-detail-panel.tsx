@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -82,6 +82,133 @@ function relativeTime(iso: string) {
 const LEVEL_COLOR: Record<string, string> = {
   error: '#f43f5e', warning: '#f59e0b', info: '#06b6d4', debug: '#6b7280',
 };
+
+// ── AI fix payload builder ────────────────────────────────────────────────────
+
+function buildAiFixPayload(d: IssueDetail) {
+  const ev = d.latest_event;
+  const exc = ev.exception;
+
+  const compressedFrames = exc
+    ? (exc.frames.filter(f => f.in_app).slice(-8)).map(f => ({
+        filename: f.filename,
+        lineno: f.lineno,
+        function: f.function,
+        // max 7 context lines around the error line
+        context: f.context.slice(-7),
+        in_app: f.in_app,
+        // max 4 vars
+        vars: Object.fromEntries(Object.entries(f.vars).slice(0, 4)),
+      }))
+    : [];
+
+  return {
+    title: d.issue.title,
+    level: d.issue.level,
+    culprit: d.issue.culprit,
+    exception: exc ? {
+      exc_type: exc.exc_type,
+      exc_value: exc.exc_value.slice(0, 400),
+      mechanism: exc.mechanism,
+      frames: compressedFrames,
+    } : null,
+    request_method: ev.request?.method ?? '',
+    request_url: ev.request?.url ?? '',
+    // last 3 breadcrumbs only
+    breadcrumbs: ev.breadcrumbs.slice(-3).map(c => ({
+      category: c.category,
+      message: c.message.slice(0, 100),
+      timestamp: c.timestamp,
+    })),
+  };
+}
+
+// ── Simple markdown renderer (## headings + ```code``` blocks) ───────────────
+
+function AiFixResult({ text }: { text: string }) {
+  // Split into segments: heading | code | plain text
+  const segments: { type: 'h2' | 'code' | 'text'; content: string }[] = [];
+  const codeRe = /```[\w]*\n?([\s\S]*?)```/g;
+  const h2Re = /^##\s+(.+)$/m;
+
+  let remaining = text;
+
+  // Process section by section (split on ## headings)
+  const sections = remaining.split(/(?=^## )/m);
+  for (const section of sections) {
+    const headingMatch = section.match(/^## (.+)\n?/);
+    if (headingMatch) {
+      segments.push({ type: 'h2', content: headingMatch[1].trim() });
+      remaining = section.slice(headingMatch[0].length);
+    } else {
+      remaining = section;
+    }
+
+    // Within the section body, extract code blocks
+    let lastIndex = 0;
+    codeRe.lastIndex = 0;
+    let match;
+    while ((match = codeRe.exec(remaining)) !== null) {
+      if (match.index > lastIndex) {
+        const plain = remaining.slice(lastIndex, match.index).trim();
+        if (plain) segments.push({ type: 'text', content: plain });
+      }
+      segments.push({ type: 'code', content: match[1] });
+      lastIndex = match.index + match[0].length;
+    }
+    const tail = remaining.slice(lastIndex).trim();
+    if (tail) segments.push({ type: 'text', content: tail });
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {segments.map((seg, i) => {
+        if (seg.type === 'h2') return (
+          <div key={i} style={{
+            fontSize: 11, fontWeight: 700, color: '#a78bfa',
+            textTransform: 'uppercase', letterSpacing: '.08em',
+            marginTop: i === 0 ? 0 : 10,
+          }}>
+            {seg.content}
+          </div>
+        );
+        if (seg.type === 'code') return (
+          <div key={i} style={{
+            background: '#0d1117', borderRadius: 6,
+            border: '1px solid color-mix(in oklab, #6366f1 20%, transparent)',
+            overflow: 'hidden',
+          }}>
+            <pre style={{
+              fontFamily: 'var(--mono)', fontSize: 11.5,
+              color: '#e2e8f0', padding: '10px 14px',
+              margin: 0, overflowX: 'auto', whiteSpace: 'pre',
+            }}>
+              {seg.content}
+            </pre>
+          </div>
+        );
+        // Inline code within text: wrap `backtick` spans
+        const parts = seg.content.split(/`([^`]+)`/);
+        return (
+          <p key={i} style={{
+            fontSize: 12.5, color: 'var(--text)',
+            lineHeight: 1.6, margin: 0,
+          }}>
+            {parts.map((p, j) =>
+              j % 2 === 1
+                ? <code key={j} style={{
+                    fontFamily: 'var(--mono)', fontSize: 11.5,
+                    background: 'var(--surface-2)', padding: '1px 5px',
+                    borderRadius: 4, color: '#a78bfa',
+                  }}>{p}</code>
+                : p
+            )}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
