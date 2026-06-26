@@ -3554,7 +3554,7 @@ async def get_sentry_issue_ai_fix(
                 "Content-Type": "application/json",
             },
             json={
-                "model": "anthropic/claude-3.5-haiku",
+                "model": "openai/gpt-4.1-mini",
                 "max_tokens": 800,
                 "messages": [
                     {"role": "system", "content": system_prompt},

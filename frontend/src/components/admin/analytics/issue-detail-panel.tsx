@@ -129,8 +129,6 @@ function AiFixResult({ text }: { text: string }) {
   // Split into segments: heading | code | plain text
   const segments: { type: 'h2' | 'code' | 'text'; content: string }[] = [];
   const codeRe = /```[\w]*\n?([\s\S]*?)```/g;
-  const h2Re = /^##\s+(.+)$/m;
-
   let remaining = text;
 
   // Process section by section (split on ## headings)
@@ -389,6 +387,23 @@ export function IssueDetailPanel({
   issueId: string;
   onClose: () => void;
 }) {
+  const [aiFixShown, setAiFixShown] = useState(false);
+  const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
+
+  const aiFixMutation = useMutation({
+    mutationFn: async (payload: ReturnType<typeof buildAiFixPayload>) => {
+      const res = await api.post<{ data: { analysis: string } }>(
+        '/api/v1/admin/sentry/issues/ai-fix',
+        payload,
+      );
+      return res.data.data.analysis;
+    },
+    onSuccess: (analysis) => {
+      setAiAnalysis(analysis);
+      setAiFixShown(true);
+    },
+  });
+
   const { data, isLoading, isError } = useQuery<IssueDetail>({
     queryKey: ['admin', 'sentry-issue', issueId],
     queryFn: async () => {
@@ -461,6 +476,25 @@ export function IssueDetailPanel({
                 textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {data.issue.title}
               </span>
+              <button
+                onClick={() => {
+                  if (aiAnalysis) { setAiFixShown(s => !s); return; }
+                  aiFixMutation.mutate(buildAiFixPayload(data));
+                }}
+                disabled={aiFixMutation.isPending}
+                style={{
+                  fontSize: 11, fontWeight: 700, cursor: 'pointer', flexShrink: 0,
+                  border: '1px solid color-mix(in oklab, #a78bfa 35%, transparent)',
+                  borderRadius: 5, padding: '3px 10px',
+                  background: aiFixShown
+                    ? 'color-mix(in oklab, #a78bfa 15%, transparent)'
+                    : 'color-mix(in oklab, #a78bfa 8%, transparent)',
+                  color: '#a78bfa',
+                  transition: 'all .15s',
+                }}
+              >
+                {aiFixMutation.isPending ? '✦ Analysing…' : aiFixShown ? '✦ Hide AI Fix' : '✦ Fix with AI'}
+              </button>
               <a
                 href={data.issue.permalink}
                 target="_blank"
@@ -524,6 +558,49 @@ export function IssueDetailPanel({
                     </div>
                   ))}
                 </div>
+
+                {/* AI Fix result */}
+                {aiFixMutation.isError && (
+                  <div style={{
+                    background: 'color-mix(in oklab, #f43f5e 8%, transparent)',
+                    border: '1px solid color-mix(in oklab, #f43f5e 25%, transparent)',
+                    borderRadius: 8, padding: '10px 14px',
+                    fontSize: 12, color: '#f43f5e',
+                  }}>
+                    AI analysis failed — check that the backend LLM is configured.
+                  </div>
+                )}
+                {aiFixShown && aiAnalysis && (
+                  <div style={{
+                    background: 'color-mix(in oklab, #a78bfa 6%, transparent)',
+                    border: '1px solid color-mix(in oklab, #a78bfa 25%, transparent)',
+                    borderRadius: 10, padding: '16px 18px',
+                    display: 'flex', flexDirection: 'column', gap: 12,
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{
+                        fontSize: 10, fontWeight: 800, letterSpacing: '.1em',
+                        color: '#a78bfa',
+                        background: 'color-mix(in oklab, #a78bfa 15%, transparent)',
+                        padding: '2px 7px', borderRadius: 4,
+                      }}>✦ AI ANALYSIS</span>
+                      <span style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>
+                        gpt-4.1-mini · in-app frames only
+                      </span>
+                      <button
+                        onClick={() => { setAiFixShown(false); setAiAnalysis(null); }}
+                        style={{
+                          marginLeft: 'auto', background: 'none', border: 'none',
+                          cursor: 'pointer', fontSize: 12, color: 'var(--text-muted)',
+                          padding: '0 4px',
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    <AiFixResult text={aiAnalysis} />
+                  </div>
+                )}
 
                 {/* Stack trace */}
                 {ev.exception && (
