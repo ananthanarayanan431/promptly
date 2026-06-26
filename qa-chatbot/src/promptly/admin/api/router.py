@@ -1230,7 +1230,7 @@ async def get_user_prompts(
                 ChatSession.id.label("session_id"),
                 ChatSession.created_at,
                 select(Message.raw_prompt)
-                .where(Message.session_id == ChatSession.id, Message.role == "user")
+                .where(Message.session_id == ChatSession.id, Message.role == "assistant")
                 .order_by(Message.created_at.asc())
                 .limit(1)
                 .correlate(ChatSession)
