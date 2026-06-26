@@ -94,7 +94,8 @@ function formatTokens(n: number): string {
   return String(n);
 }
 
-function TokenCard({ tokenBalance }: { tokenBalance: number | undefined }) {
+function TokenCard({ tokenBalance }: { tokenBalance: number | undefined | null }) {
+  if (tokenBalance === null) return null;
   if (tokenBalance === undefined) {
     return (
       <div className="ply-card" style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8, boxShadow: 'none' }}>
@@ -203,7 +204,7 @@ function RecentSessions() {
 export function Sidebar() {
   const pathname = usePathname();
 
-  const { data: fetchedUser } = useQuery<User>({
+  const { data: fetchedUser, isError: userFetchError } = useQuery<User>({
     queryKey: ['user', 'me'],
     queryFn: async () => {
       const res = await api.get<{ data: User }>('/api/v1/users/me');
@@ -212,7 +213,7 @@ export function Sidebar() {
     staleTime: 1000 * 60 * 5,
   });
 
-  const tokenBalance = fetchedUser?.token_balance;
+  const tokenBalance = userFetchError ? null : fetchedUser?.token_balance;
 
   return (
     <aside style={{

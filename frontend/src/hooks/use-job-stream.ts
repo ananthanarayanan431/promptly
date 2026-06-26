@@ -118,6 +118,7 @@ export function useJobStream(jobId: string | null): UseJobStreamResult {
 
     (async () => {
       const { data: { session } } = await supabase.auth.getSession();
+      if (ctrl.signal.aborted) return;
       const token = session?.access_token ?? '';
 
       if (!token) {

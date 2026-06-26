@@ -1553,17 +1553,17 @@ export function DomainWorkspace() {
     }
   }, [selected]);
 
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const handleDelete = useCallback(async () => {
     if (!selected) return;
     try {
       await api.delete(`/api/v1/domain-prompts/${selected.id}`);
       setSelectedId(null);
-      setConfirmDelete(false);
+      setConfirmDeleteId(null);
       void qc.invalidateQueries({ queryKey: ['domain-prompts'] });
     } catch {
       toast.error('Failed to delete domain — please try again.');
-      setConfirmDelete(false);
+      setConfirmDeleteId(null);
     }
   }, [selected, qc]);
 
@@ -1667,14 +1667,14 @@ export function DomainWorkspace() {
                 {recovering ? 'Restoring…' : 'Restore to Ready'}
               </button>
             )}
-            {confirmDelete ? (
+            {confirmDeleteId === selected?.id ? (
               <>
                 <span style={{ fontSize: 12, color: 'var(--danger)' }}>Delete?</span>
                 <button className="ply-btn ply-btn-sm" style={{ color: 'var(--danger)' }} onClick={handleDelete} aria-label="Confirm delete">Yes</button>
-                <button className="ply-btn ply-btn-sm" onClick={() => setConfirmDelete(false)} aria-label="Cancel delete">No</button>
+                <button className="ply-btn ply-btn-sm" onClick={() => setConfirmDeleteId(null)} aria-label="Cancel delete">No</button>
               </>
             ) : (
-              <button className="ply-btn ply-btn-sm" aria-label="Delete domain" onClick={() => setConfirmDelete(true)} title="Delete domain">
+              <button className="ply-btn ply-btn-sm" aria-label="Delete domain" onClick={() => setConfirmDeleteId(selected?.id ?? null)} title="Delete domain">
                 <Icon name="trash" size={13} />
               </button>
             )}

@@ -9,6 +9,8 @@ from typing import Annotated, Any
 import httpx
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 from sqlalchemy import Date as SqlDate
 from sqlalchemy import case, cast, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -187,22 +189,24 @@ def _live_cost_per_token(model: str, pricing: dict[str, float]) -> float:
     return _or_cost_per_token(model)
 
 
-# ── Sentry error stats cache (5-minute TTL) ──────────────────────────────────
-_sentry_stats_cache: dict[str, Any] = {}
-_sentry_stats_cache_ts: float = 0.0
+# ── Sentry error stats cache (5-minute TTL, keyed by days) ───────────────────
+_sentry_stats_cache: dict[int, dict[str, Any]] = {}
+_sentry_stats_cache_ts: dict[int, float] = {}
 _SENTRY_STATS_TTL = 300.0  # seconds
 
 
-async def _fetch_sentry_stats(days: int) -> dict[str, Any]:
+async def _fetch_sentry_stats(days: int) -> dict[str, Any]:  # noqa: PLR0912, PLR0915
     """Return Sentry error stats for the last `days` days, cached for 5 minutes.
 
     Returns an empty dict when Sentry API credentials are not configured.
+    Fires 4 concurrent Sentry API calls: stats, issues, stats_v2 outcomes, sessions.
     """
     global _sentry_stats_cache, _sentry_stats_cache_ts  # noqa: PLW0603
 
     now = time.monotonic()
-    if _sentry_stats_cache and now - _sentry_stats_cache_ts < _SENTRY_STATS_TTL:
-        return _sentry_stats_cache
+    cached_at = _sentry_stats_cache_ts.get(days, 0.0)
+    if days in _sentry_stats_cache and now - cached_at < _SENTRY_STATS_TTL:
+        return _sentry_stats_cache[days]
 
     app = get_app_settings()
     if not (app.SENTRY_AUTH_TOKEN and app.SENTRY_ORG_SLUG and app.SENTRY_PROJECT_SLUG):
@@ -212,25 +216,70 @@ async def _fetch_sentry_stats(days: int) -> dict[str, Any]:
     org = app.SENTRY_ORG_SLUG
     project = app.SENTRY_PROJECT_SLUG
     headers = {"Authorization": f"Bearer {token}"}
+    stats_period = f"{days}d"
+    # Issues API only accepts '' | '24h' | '14d'
+    issues_period = "14d"
 
     try:
         since = int((datetime.now(UTC) - timedelta(days=days)).timestamp())
         until = int(datetime.now(UTC).timestamp())
 
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            stats_resp = await client.get(
-                f"https://sentry.io/api/0/projects/{org}/{project}/stats/",
-                params={"stat": "received", "resolution": "1d", "since": since, "until": until},
-                headers=headers,
-            )
-            issues_resp = await client.get(
-                f"https://sentry.io/api/0/projects/{org}/{project}/issues/",
-                params={"query": "is:unresolved", "limit": "5", "sort": "freq"},
-                headers=headers,
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            (
+                stats_resp,
+                issues_resp,
+                outcomes_resp,
+                sessions_resp,
+                releases_resp,
+            ) = await asyncio.gather(
+                client.get(
+                    f"https://sentry.io/api/0/projects/{org}/{project}/stats/",
+                    params={"stat": "received", "resolution": "1d", "since": since, "until": until},
+                    headers=headers,
+                ),
+                client.get(
+                    f"https://sentry.io/api/0/projects/{org}/{project}/issues/",
+                    params={
+                        "query": "is:unresolved",
+                        "limit": "100",
+                        "sort": "freq",
+                        "statsPeriod": issues_period,
+                    },
+                    headers=headers,
+                ),
+                client.get(
+                    f"https://sentry.io/api/0/organizations/{org}/stats_v2/",
+                    params={
+                        "project": project,
+                        "field": "sum(times_seen)",
+                        "groupBy": "outcome",
+                        "interval": "1d",
+                        "statsPeriod": stats_period,
+                        "category": "error",
+                    },
+                    headers=headers,
+                ),
+                client.get(
+                    f"https://sentry.io/api/0/organizations/{org}/sessions/",
+                    params={
+                        "project": project,
+                        "field": "sum(session)",
+                        "groupBy": "session.status",
+                        "interval": "1d",
+                        "statsPeriod": stats_period,
+                    },
+                    headers=headers,
+                ),
+                client.get(
+                    f"https://sentry.io/api/0/projects/{org}/{project}/releases/",
+                    params={"limit": "20"},
+                    headers=headers,
+                ),
             )
 
         result: dict[str, Any] = {}
 
+        # ── Error events per day (legacy /stats/) ─────────────────────────────
         if stats_resp.status_code == 200:
             raw_stats = stats_resp.json()
             if isinstance(raw_stats, list):
@@ -241,28 +290,138 @@ async def _fetch_sentry_stats(days: int) -> dict[str, Any]:
                 result["error_events_daily"] = daily
                 result["total_errors"] = sum(r["count"] for r in daily)
 
+        # ── Unresolved issues + level breakdown + rich issue objects ─────────
         if issues_resp.status_code == 200:
             raw_issues = issues_resp.json()
             if isinstance(raw_issues, list):
+                valid_issues = [i for i in raw_issues if isinstance(i, dict)]
+                result["unresolved_issue_count"] = len(valid_issues)
+                level_breakdown: dict[str, int] = {}
+                for issue in valid_issues:
+                    lvl = str(issue.get("level", "error"))
+                    level_breakdown[lvl] = level_breakdown.get(lvl, 0) + 1
+                result["issue_level_breakdown"] = level_breakdown
+                # Lightweight summary for series charts
                 result["top_issues"] = [
                     {
                         "title": str(issue.get("title", "Unknown"))[:60],
                         "count": int(issue.get("count", 0)),
                         "level": str(issue.get("level", "error")),
+                        "user_count": int(issue.get("userCount", 0)),
                     }
-                    for issue in raw_issues[:5]
-                    if isinstance(issue, dict)
+                    for issue in valid_issues[:10]
                 ]
-                result["unresolved_issue_count"] = len(result.get("top_issues", []))
+                # Rich objects for the issues table (all fields needed for the UI)
+                result["rich_issues"] = [
+                    {
+                        "id": str(iss.get("id", "")),
+                        "short_id": str(iss.get("shortId", "")),
+                        "title": str(iss.get("title", "Unknown")),
+                        "level": str(iss.get("level", "error")),
+                        "count": int(iss.get("count", 0)),
+                        "user_count": int(iss.get("userCount", 0)),
+                        "first_seen": str(iss.get("firstSeen", "")),
+                        "last_seen": str(iss.get("lastSeen", "")),
+                        "permalink": str(iss.get("permalink", "")),
+                        "culprit": str(iss.get("culprit", "")),
+                        "is_unhandled": bool(iss.get("isUnhandled", False)),
+                        "priority": iss.get("priority"),
+                        "filename": str((iss.get("metadata") or {}).get("filename", "")),
+                    }
+                    for iss in valid_issues
+                ]
+
+        # ── Error outcomes per day (stats_v2: accepted / discarded / filtered) ─
+        if outcomes_resp.status_code == 200:
+            od = outcomes_resp.json()
+            start_str = od.get("start", "")
+            if start_str:
+                start_dt = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
+                for g in od.get("groups", []):
+                    outcome = g["by"].get("outcome", "")
+                    series = g["series"].get("sum(times_seen)", [])
+                    total_val = g["totals"].get("sum(times_seen)", 0)
+                    day_map: dict[str, int] = {}
+                    for idx, cnt in enumerate(series):
+                        day_str = str((start_dt + timedelta(days=idx)).date())
+                        day_map[day_str] = int(cnt)
+                    if outcome == "accepted":
+                        result["accepted_daily"] = day_map
+                        result["accepted_total"] = int(total_val)
+                    elif outcome == "client_discard":
+                        result["discarded_daily"] = day_map
+                        result["discarded_total"] = int(total_val)
+                    elif outcome == "filtered":
+                        result["filtered_daily"] = day_map
+                        result["filtered_total"] = int(total_val)
+
+        # ── Session health (crash-free rate, healthy/crashed/errored) ─────────
+        if sessions_resp.status_code == 200:
+            sd = sessions_resp.json()
+            sess_start = (datetime.now(UTC) - timedelta(days=days)).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
+            sess_totals: dict[str, int] = {}
+            sess_daily_by_status: dict[str, dict[str, int]] = {}
+
+            for g in sd.get("groups", []):
+                status = g["by"].get("session.status", "unknown")
+                series = g["series"].get("sum(session)", [])
+                sess_totals[status] = int(g["totals"].get("sum(session)", 0))
+                day_map2: dict[str, int] = {}
+                for idx, cnt in enumerate(series):
+                    day_str = str((sess_start + timedelta(days=idx)).date())
+                    day_map2[day_str] = int(cnt)
+                sess_daily_by_status[status] = day_map2
+
+            healthy = sess_totals.get("healthy", 0)
+            crashed = sess_totals.get("crashed", 0)
+            errored = sess_totals.get("errored", 0)
+            abnormal = sess_totals.get("abnormal", 0)
+            total_sessions = healthy + crashed + errored + abnormal
+
+            result["session_totals"] = sess_totals
+            result["healthy_sessions"] = healthy
+            result["crashed_sessions"] = crashed
+            result["errored_sessions"] = errored
+            result["total_sessions"] = total_sessions
+            result["crash_free_rate"] = round(100.0 * (1 - crashed / max(1, total_sessions)), 2)
+
+            # Crash-free % per day (skip days where total sessions = 0)
+            h_daily = sess_daily_by_status.get("healthy", {})
+            c_daily = sess_daily_by_status.get("crashed", {})
+            crash_free_map: dict[str, float] = {}
+            for d_str in sorted(set(list(h_daily.keys()) + list(c_daily.keys()))):
+                h = h_daily.get(d_str, 0)
+                c = c_daily.get(d_str, 0)
+                total_d = h + c
+                if total_d > 0:
+                    crash_free_map[d_str] = round(100.0 * (1 - c / total_d), 1)
+            result["crash_free_daily"] = crash_free_map
+
+        # ── Recent releases ───────────────────────────────────────────────────
+        if releases_resp.status_code == 200:
+            raw_releases = releases_resp.json()
+            if isinstance(raw_releases, list):
+                result["releases"] = [
+                    {
+                        "version": str(r.get("version", ""))[:12],
+                        "date_created": str(r.get("dateCreated", "")),
+                        "new_groups": int(r.get("newGroups", 0)),
+                        "commit_count": int(r.get("commitCount", 0)),
+                    }
+                    for r in raw_releases
+                    if isinstance(r, dict)
+                ]
 
         if result:
-            _sentry_stats_cache = result
-            _sentry_stats_cache_ts = now
+            _sentry_stats_cache[days] = result
+            _sentry_stats_cache_ts[days] = now
 
         return result
 
     except Exception:
-        return _sentry_stats_cache  # serve stale on error
+        return _sentry_stats_cache.get(days, {})  # serve stale on error
 
 
 _FEATURE_LABELS: dict[str, str] = {
@@ -1761,7 +1920,7 @@ async def bulk_grant_tokens(
 
 async def _developer_metrics(db: AsyncSession, days: int) -> AnalyticsResponse:  # noqa: PLR0912, PLR0915
     now = datetime.now(UTC)
-    cutoff = now - timedelta(days=days)
+    cutoff = (now - timedelta(days=days)).replace(hour=0, minute=0, second=0, microsecond=0)
 
     # ── HTTP request metrics (from api_request_logs, last N days) ────────────
 
@@ -1842,14 +2001,18 @@ async def _developer_metrics(db: AsyncSession, days: int) -> AnalyticsResponse: 
     ).fetchall()
     http_5xx_map: dict[str, int | float] = {str(r.day): r.cnt for r in http_5xx_rows}
 
-    # Top failing endpoints (top 5 by error count)
+    # Top failing endpoints (top 5, user-facing paths only — exclude admin internals)
     top_fail_rows = (
         await db.execute(
             select(
                 ApiRequestLog.path.label("path"),
                 func.count().label("cnt"),
             )
-            .where(ApiRequestLog.created_at >= cutoff, ApiRequestLog.status_code >= 400)
+            .where(
+                ApiRequestLog.created_at >= cutoff,
+                ApiRequestLog.status_code >= 400,
+                ~ApiRequestLog.path.like("/api/v1/admin/%"),
+            )
             .group_by(ApiRequestLog.path)
             .order_by(func.count().desc())
             .limit(5)
@@ -1857,16 +2020,74 @@ async def _developer_metrics(db: AsyncSession, days: int) -> AnalyticsResponse: 
     ).fetchall()
     top_fail_data = [AnalyticsPoint(date=str(r.path), value=float(r.cnt)) for r in top_fail_rows]
 
-    # ── Sentry error stats ────────────────────────────────────────────────────
+    # Per-endpoint latency (top 10 by volume, user-facing paths only)
+    latency_rows = (
+        await db.execute(
+            text(
+                "SELECT path, COUNT(*) AS cnt,"
+                " PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY duration_ms) AS p50,"
+                " PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY duration_ms) AS p95"
+                " FROM api_request_logs"
+                " WHERE created_at >= :cutoff"
+                " AND path NOT LIKE '/api/v1/admin/%'"
+                " GROUP BY path ORDER BY cnt DESC LIMIT 10"
+            ),
+            {"cutoff": cutoff},
+        )
+    ).fetchall()
+    endpoint_latency = [
+        {
+            "path": str(r.path),
+            "count": int(r.cnt),
+            "p50_ms": round(float(r.p50), 0) if r.p50 is not None else 0,
+            "p95_ms": round(float(r.p95), 0) if r.p95 is not None else 0,
+        }
+        for r in latency_rows
+    ]
+
+    # ── Sentry error stats (concurrent Sentry API calls) ─────────────────────
 
     sentry = await _fetch_sentry_stats(days)
+
+    # Error events per day (legacy /stats/ — received count)
     sentry_daily_map: dict[str, int | float] = {}
     for row in sentry.get("error_events_daily", []):
         d = str(datetime.fromtimestamp(int(row["ts"]), tz=UTC).date())
         sentry_daily_map[d] = int(row["count"])
+
+    # Top issues (distribution card)
     sentry_issues_data = [
         AnalyticsPoint(date=str(issue["title"])[:60], value=float(issue["count"]))
         for issue in sentry.get("top_issues", [])
+    ]
+
+    # Outcomes: accepted / discarded / filtered per day
+    sentry_accepted_map: dict[str, int | float] = {
+        k: float(v) for k, v in sentry.get("accepted_daily", {}).items()
+    }
+    sentry_discarded_map: dict[str, int | float] = {
+        k: float(v) for k, v in sentry.get("discarded_daily", {}).items()
+    }
+    sentry_filtered_map: dict[str, int | float] = {
+        k: float(v) for k, v in sentry.get("filtered_daily", {}).items()
+    }
+
+    # Session health: crash-free % per day
+    sentry_crash_free_map: dict[str, int | float] = {
+        k: float(v) for k, v in sentry.get("crash_free_daily", {}).items()
+    }
+
+    # Session health distribution (healthy / crashed / errored / abnormal)
+    sentry_session_health_data = [
+        AnalyticsPoint(date=status, value=float(count))
+        for status, count in sentry.get("session_totals", {}).items()
+        if int(count) > 0
+    ]
+
+    # Issue level breakdown (error / warning / info)
+    sentry_level_data = [
+        AnalyticsPoint(date=lvl, value=float(count))
+        for lvl, count in sentry.get("issue_level_breakdown", {}).items()
     ]
 
     # ── Bridge pipeline statics (all-time) ────────────────────────────────────
@@ -2081,6 +2302,13 @@ async def _developer_metrics(db: AsyncSession, days: int) -> AnalyticsResponse: 
             # Sentry (-1 = not configured)
             "sentry_total_errors": sentry.get("total_errors", -1),
             "sentry_unresolved_issues": sentry.get("unresolved_issue_count", -1),
+            "sentry_crash_free_rate": sentry.get("crash_free_rate", -1),
+            "sentry_total_sessions": sentry.get("total_sessions", -1),
+            "sentry_healthy_sessions": sentry.get("healthy_sessions", -1),
+            "sentry_crashed_sessions": sentry.get("crashed_sessions", -1),
+            "sentry_accepted_total": sentry.get("accepted_total", -1),
+            "sentry_discarded_total": sentry.get("discarded_total", -1),
+            "sentry_filtered_total": sentry.get("filtered_total", -1),
             # Bridge pipeline
             "total_bridge_jobs": total_bridge_jobs,
             "bridge_failed_all_time": failed_bridge,
@@ -2149,6 +2377,60 @@ async def _developer_metrics(db: AsyncSession, days: int) -> AnalyticsResponse: 
                 data=sentry_issues_data,
                 chart_type="bar",
                 color="#f59e0b",
+            ),
+            AnalyticsSeries(
+                key="dev_sentry_accepted_daily",
+                label="Accepted Error Events / Day",
+                total=float(sentry.get("accepted_total", 0)),
+                time_range=f"Last {days} Days",
+                data=_fill_days(cutoff, days, sentry_accepted_map),
+                chart_type="line",
+                color="#10b981",
+            ),
+            AnalyticsSeries(
+                key="dev_sentry_discarded_daily",
+                label="Discarded Events / Day",
+                total=float(sentry.get("discarded_total", 0)),
+                time_range=f"Last {days} Days",
+                data=_fill_days(cutoff, days, sentry_discarded_map),
+                chart_type="bar",
+                color="#f59e0b",
+            ),
+            AnalyticsSeries(
+                key="dev_sentry_filtered_daily",
+                label="Filtered Events / Day",
+                total=float(sentry.get("filtered_total", 0)),
+                time_range=f"Last {days} Days",
+                data=_fill_days(cutoff, days, sentry_filtered_map),
+                chart_type="bar",
+                color="#6366f1",
+            ),
+            AnalyticsSeries(
+                key="dev_sentry_crash_free_daily",
+                label="Crash-Free Session Rate",
+                total=float(sentry.get("crash_free_rate", 0)),
+                time_range=f"Last {days} Days",
+                data=_fill_days(cutoff, days, sentry_crash_free_map),
+                chart_type="line",
+                color="#10b981",
+            ),
+            AnalyticsSeries(
+                key="dev_sentry_session_health",
+                label="Session Health Breakdown",
+                total=float(sentry.get("total_sessions", 0)),
+                time_range=f"Last {days} Days",
+                data=sentry_session_health_data,
+                chart_type="bar",
+                color="#10b981",
+            ),
+            AnalyticsSeries(
+                key="dev_sentry_issue_levels",
+                label="Issues by Level",
+                total=float(sentry.get("unresolved_issue_count", 0)),
+                time_range=f"Last {days} Days",
+                data=sentry_level_data,
+                chart_type="bar",
+                color="#f43f5e",
             ),
             # ── Bridge pipeline ───────────────────────────────────────────────
             AnalyticsSeries(
@@ -2242,6 +2524,11 @@ async def _developer_metrics(db: AsyncSession, days: int) -> AnalyticsResponse: 
                 color="#06b6d4",
             ),
         ],
+        raw={
+            "sentry_issues": sentry.get("rich_issues", []),
+            "sentry_releases": sentry.get("releases", []),
+            "endpoint_latency": endpoint_latency,
+        },
     )
 
 
@@ -3005,3 +3292,284 @@ async def get_analytics(
     }
     result = await handlers[view](db, days)
     return SuccessResponse(data=result)
+
+
+@router.get(
+    "/sentry/issues/{issue_id}",
+    summary="Admin — Sentry issue detail with latest event",
+    response_model=None,
+    responses=error_responses(401, 403, 503),
+)
+async def get_sentry_issue_detail(
+    issue_id: str,
+    _admin: Annotated[Any, Depends(require_admin)],
+) -> JSONResponse:
+    app = get_app_settings()
+    if not (app.SENTRY_AUTH_TOKEN and app.SENTRY_ORG_SLUG):
+        raise HTTPException(status_code=503, detail="Sentry not configured")
+
+    token = app.SENTRY_AUTH_TOKEN.get_secret_value()
+    headers = {"Authorization": f"Bearer {token}"}
+
+    async with httpx.AsyncClient(timeout=12.0) as client:
+        issue_resp, event_resp = await asyncio.gather(
+            client.get(f"https://sentry.io/api/0/issues/{issue_id}/", headers=headers),
+            client.get(
+                f"https://sentry.io/api/0/issues/{issue_id}/events/latest/",
+                headers=headers,
+            ),
+        )
+
+    if issue_resp.status_code != 200:
+        raise HTTPException(status_code=404, detail="Issue not found in Sentry")
+
+    issue = issue_resp.json()
+    event_data: dict[str, Any] = {}
+
+    if event_resp.status_code == 200:
+        event = event_resp.json()
+        exception_info: dict[str, Any] | None = None
+        request_info: dict[str, Any] | None = None
+        breadcrumbs: list[dict[str, Any]] = []
+
+        for entry in event.get("entries", []):
+            etype = entry.get("type", "")
+
+            if etype == "exception":
+                values = entry["data"].get("values", [])
+                if values:
+                    exc = values[-1]
+                    raw_frames = (exc.get("stacktrace") or {}).get("frames", [])
+                    frames = [
+                        {
+                            "filename": f.get("filename", ""),
+                            "lineno": f.get("lineno"),
+                            "function": f.get("function", ""),
+                            "context": f.get("context", []),
+                            "in_app": bool(f.get("inApp", False)),
+                            "vars": {k: str(v)[:120] for k, v in (f.get("vars") or {}).items()},
+                        }
+                        for f in raw_frames
+                    ]
+                    exception_info = {
+                        "exc_type": exc.get("type", ""),
+                        "exc_value": str(exc.get("value", ""))[:500],
+                        "mechanism": (exc.get("mechanism") or {}).get("type", ""),
+                        "frames": frames[-20:],
+                    }
+
+            elif etype == "request":
+                req = entry["data"]
+                raw_headers = req.get("headers") or []
+                exception_info_req_headers = (
+                    raw_headers if isinstance(raw_headers, list) else list(raw_headers.items())
+                )
+                request_info = {
+                    "method": req.get("method", ""),
+                    "url": req.get("url", ""),
+                    "query_string": req.get("query", "") or "",
+                    "headers": exception_info_req_headers[:15],
+                }
+
+            elif etype == "breadcrumbs":
+                crumbs = (entry["data"].get("values") or [])[-12:]
+                breadcrumbs = [
+                    {
+                        "type": c.get("type", ""),
+                        "category": c.get("category", ""),
+                        "message": str(c.get("message") or "")[:120],
+                        "level": c.get("level", ""),
+                        "timestamp": c.get("timestamp", ""),
+                    }
+                    for c in crumbs
+                ]
+
+        user = event.get("user") or {}
+        geo = user.get("geo") or {}
+        tags = event.get("tags") or []
+
+        event_data = {
+            "event_id": event.get("eventID", ""),
+            "timestamp": event.get("dateCreated", ""),
+            "user": {
+                "id": user.get("id"),
+                "email": user.get("email"),
+                "ip": user.get("ip_address"),
+                "geo_city": geo.get("city"),
+                "geo_country": geo.get("country_code"),
+                "geo_region": geo.get("region"),
+            },
+            "tags": [
+                {"key": str(t[0]), "value": str(t[1])}
+                if isinstance(t, list | tuple)
+                else {"key": str(t.get("key", "")), "value": str(t.get("value", ""))}
+                for t in tags
+            ],
+            "exception": exception_info,
+            "request": request_info,
+            "breadcrumbs": breadcrumbs,
+            "release": (
+                event["release"].get("version")
+                if isinstance(event.get("release"), dict)
+                else str(event["release"])
+                if event.get("release") is not None
+                else None
+            ),
+        }
+
+    return JSONResponse(
+        content={
+            "success": True,
+            "data": {
+                "issue": {
+                    "id": str(issue.get("id", "")),
+                    "short_id": issue.get("shortId", ""),
+                    "title": issue.get("title", ""),
+                    "level": issue.get("level", "error"),
+                    "count": int(issue.get("count", 0) or 0),
+                    "user_count": int(issue.get("userCount", 0) or 0),
+                    "first_seen": issue.get("firstSeen", ""),
+                    "last_seen": issue.get("lastSeen", ""),
+                    "permalink": issue.get("permalink", ""),
+                    "culprit": issue.get("culprit", ""),
+                    "status": issue.get("status", ""),
+                },
+                "latest_event": event_data,
+            },
+        }
+    )
+
+
+# ── AI Fix suggestion ──────────────────────────────────────────────────────────
+
+
+class _AiFixFrame(BaseModel):
+    filename: str = ""
+    lineno: int | None = None
+    function: str = ""
+    context: list[list[Any]] = []
+    in_app: bool = False
+    vars: dict[str, str] = {}
+
+
+class _AiFixException(BaseModel):
+    exc_type: str = ""
+    exc_value: str = ""
+    mechanism: str = ""
+    frames: list[_AiFixFrame] = []
+
+
+class _AiFixRequest(BaseModel):
+    title: str
+    level: str = "error"
+    culprit: str = ""
+    exception: _AiFixException | None = None
+    request_method: str = ""
+    request_url: str = ""
+    breadcrumbs: list[dict[str, Any]] = []
+
+
+def _build_ai_fix_prompt(payload: _AiFixRequest) -> str:
+    """Build a focused, token-efficient prompt from compressed issue data."""
+    parts: list[str] = []
+
+    if payload.exception:
+        exc = payload.exception
+        parts.append(f"ERROR: {exc.exc_type}: {exc.exc_value[:400]}")
+        if exc.mechanism:
+            parts.append(f"Mechanism: {exc.mechanism}")
+    else:
+        parts.append(f"ERROR: {payload.title}")
+
+    if payload.culprit:
+        parts.append(f"Culprit: {payload.culprit}")
+
+    if payload.exception and payload.exception.frames:
+        in_app = [f for f in payload.exception.frames if f.in_app]
+        frames_to_show = (in_app or payload.exception.frames)[-8:]
+        parts.append("\nSTACK TRACE (in-app frames, newest first):")
+        for frame in reversed(frames_to_show):
+            parts.append(f"\n  File: {frame.filename}:{frame.lineno or '?'} in {frame.function}()")
+            for lineno, line_text in (frame.context or [])[-7:]:
+                marker = ">>>" if lineno == frame.lineno else "   "
+                parts.append(f"    {marker} {lineno:4d} | {line_text}")
+            if frame.vars:
+                vars_str = ", ".join(f"{k}={v}" for k, v in list(frame.vars.items())[:4])
+                parts.append(f"    vars: {vars_str}")
+
+    if payload.request_method and payload.request_url:
+        parts.append(f"\nREQUEST: {payload.request_method} {payload.request_url}")
+
+    if payload.breadcrumbs:
+        parts.append("\nLAST BREADCRUMBS:")
+        for crumb in payload.breadcrumbs[-3:]:
+            ts = str(crumb.get("timestamp", ""))[:19]
+            cat = crumb.get("category", "")
+            msg = str(crumb.get("message", ""))[:100]
+            parts.append(f"  [{ts}] {cat}: {msg}")
+
+    return "\n".join(parts)
+
+
+@router.post(
+    "/sentry/issues/ai-fix",
+    summary="Admin — AI root-cause analysis and fix suggestion for a Sentry issue",
+    response_model=None,
+    responses=error_responses(401, 403, 503),
+)
+async def get_sentry_issue_ai_fix(
+    payload: _AiFixRequest,
+    _admin: Annotated[Any, Depends(require_admin)],
+) -> JSONResponse:
+    llm = get_llm_settings()
+    if not llm.OPENROUTER_API_KEY:
+        raise HTTPException(status_code=503, detail="LLM not configured")
+
+    issue_context = _build_ai_fix_prompt(payload)
+
+    system_prompt = (
+        "You are a senior backend engineer performing root-cause analysis on production errors "
+        "from a FastAPI / Python application. Be concise, specific, and actionable. "
+        "Always reference exact file paths and line numbers from the stack trace.\n\n"
+        "Respond in this exact markdown format:\n\n"
+        "## Root Cause\n"
+        "[2-3 sentences explaining *why* the error occurs]\n\n"
+        "## Location\n"
+        "`filename.py:line_number` in `function_name()`\n"
+        "[One sentence on what this code does and why it fails]\n\n"
+        "## Fix\n"
+        "```python\n"
+        "[Corrected code snippet, 5-15 lines]\n"
+        "```\n"
+        "[1-2 sentences explaining the change]\n\n"
+        "## Prevention\n"
+        "[One concrete tip to prevent this class of error recurring]"
+    )
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {llm.OPENROUTER_API_KEY.get_secret_value()}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": "anthropic/claude-3.5-haiku",
+                "max_tokens": 800,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {
+                        "role": "user",
+                        "content": (
+                            "Analyze this production error and provide a fix:\n\n" + issue_context
+                        ),
+                    },
+                ],
+            },
+        )
+
+    if resp.status_code != 200:
+        raise HTTPException(status_code=503, detail="AI service unavailable")
+
+    content = resp.json()["choices"][0]["message"]["content"]
+    return JSONResponse(content={"success": True, "data": {"analysis": content}})

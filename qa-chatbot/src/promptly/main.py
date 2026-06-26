@@ -156,18 +156,22 @@ def create_app() -> FastAPI:
 
         log = get_logger(__name__)
         try:
+            error_str = str(exc)
+        except Exception:
+            error_str = type(exc).__name__
+        try:
             log.exception(
                 "unhandled_exception",
                 path=str(request.url.path),
                 method=request.method,
-                error=str(exc),
+                error=error_str,
             )
         except Exception:
             log.error(
                 "unhandled_exception",
                 path=str(request.url.path),
                 method=request.method,
-                error=str(exc),
+                error=error_str,
                 traceback=_tb.format_exc(),
             )
         return JSONResponse(

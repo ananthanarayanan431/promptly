@@ -1,13 +1,18 @@
 'use client';
 
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import type { AnalyticsResponse, AnalyticsPoint } from '@/types/analytics';
 import { getSeries } from '@/types/analytics';
 import { MetricCard } from './metric-card';
 import { StaticCard } from './static-card';
+import { IssuesTable } from './issues-table';
+import { ReleasesCard } from './releases-card';
+import { IssueDetailPanel } from './issue-detail-panel';
+import type { SentryIssue, SentryRelease, EndpointLatency } from '@/types/analytics';
 
-// ── Colors for status distribution ───────────────────────────────────────────
+// ── Colors ────────────────────────────────────────────────────────────────────
 
 const STATUS_COLORS: Record<string, string> = {
   completed: '#10b981',
@@ -19,7 +24,22 @@ const STATUS_COLORS: Record<string, string> = {
   cancelled: '#6b7280',
 };
 
-// ── Section divider ──────────────────────────────────────────────────────────
+const SESSION_COLORS: Record<string, string> = {
+  healthy: '#10b981',
+  crashed: '#f43f5e',
+  errored: '#f59e0b',
+  abnormal: '#6b7280',
+  unhandled: '#f97316',
+};
+
+const LEVEL_COLORS: Record<string, string> = {
+  error: '#f43f5e',
+  warning: '#f59e0b',
+  info: '#06b6d4',
+  debug: '#6b7280',
+};
+
+// ── Section divider ───────────────────────────────────────────────────────────
 
 function SectionHeader({ title }: { title: string }) {
   return (
@@ -119,7 +139,7 @@ function buildStatusItems(points: AnalyticsPoint[]): DistItem[] {
   }));
 }
 
-// ── HTTP health statics card ──────────────────────────────────────────────────
+// ── KPI stat card (color-coded) ───────────────────────────────────────────────
 
 function HttpStatCard({
   label, value, sub, thresholds,
@@ -132,7 +152,9 @@ function HttpStatCard({
   let color = 'var(--text)';
   if (thresholds) {
     const n = typeof value === 'number' ? value : parseFloat(String(value));
-    if (thresholds.inverse) {
+    if (!isFinite(n)) {
+      color = 'var(--text)';
+    } else if (thresholds.inverse) {
       color = n <= thresholds.good ? '#10b981' : n <= thresholds.ok ? '#f59e0b' : '#f43f5e';
     } else {
       color = n >= thresholds.good ? '#10b981' : n >= thresholds.ok ? '#f59e0b' : '#f43f5e';
@@ -195,9 +217,74 @@ function SentryConfigTip() {
   );
 }
 
+// ── Endpoint latency table ────────────────────────────────────────────────────
+
+function EndpointLatencyTable({ rows }: { rows: EndpointLatency[] }) {
+  if (rows.length === 0) return null;
+
+  const latencyColor = (ms: number) =>
+    ms <= 200 ? '#10b981' : ms <= 500 ? '#f59e0b' : '#f43f5e';
+
+  return (
+    <div style={{
+      background: 'var(--surface)', border: '1px solid var(--border)',
+      borderRadius: 12, overflow: 'hidden',
+    }}>
+      <div style={{ padding: '14px 18px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-subtle)',
+          textTransform: 'uppercase', letterSpacing: '.07em' }}>
+          Endpoint Latency
+        </span>
+        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>top 10 by volume · last 30 days</span>
+      </div>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+        <thead>
+          <tr style={{ borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)' }}>
+            {(['Endpoint', 'Requests', 'P50', 'P95'] as const).map(h => (
+              <th key={h} style={{
+                padding: '7px 18px', textAlign: h === 'Endpoint' ? 'left' : 'right',
+                fontSize: 10.5, fontWeight: 700, color: 'var(--text-subtle)',
+                textTransform: 'uppercase', letterSpacing: '.07em',
+                background: 'var(--surface-2)',
+              }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, i) => (
+            <tr key={row.path} style={{
+              borderBottom: i < rows.length - 1 ? '1px solid var(--border)' : 'none',
+            }}>
+              <td style={{ padding: '9px 18px', fontFamily: 'var(--mono)', fontSize: 12,
+                color: 'var(--text)', maxWidth: 360, overflow: 'hidden',
+                textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {row.path}
+              </td>
+              <td style={{ padding: '9px 18px', textAlign: 'right',
+                fontFamily: 'var(--mono)', color: 'var(--text)' }}>
+                {row.count.toLocaleString()}
+              </td>
+              <td style={{ padding: '9px 18px', textAlign: 'right',
+                fontFamily: 'var(--mono)', color: latencyColor(row.p50_ms), fontWeight: 600 }}>
+                {row.p50_ms}ms
+              </td>
+              <td style={{ padding: '9px 18px', textAlign: 'right',
+                fontFamily: 'var(--mono)', color: latencyColor(row.p95_ms), fontWeight: 600 }}>
+                {row.p95_ms}ms
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function DeveloperMetrics() {
+  const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
+
   const { data, isLoading, isError } = useQuery<AnalyticsResponse>({
     queryKey: ['admin', 'analytics', 'developer_metrics'],
     queryFn: async () => {
@@ -224,9 +311,18 @@ export function DeveloperMetrics() {
   const httpErrorRate   = Number(st.http_error_rate_pct     ?? 0);
   const httpP95         = Number(st.http_p95_latency_ms     ?? 0);
   const http5xxCount    = Number(st.http_5xx_count_30d      ?? 0);
-  const sentryErrors    = Number(st.sentry_total_errors     ?? -1);
-  const sentryIssues    = Number(st.sentry_unresolved_issues ?? -1);
-  const sentryConfigured = sentryErrors >= 0;
+
+  // Sentry metrics (-1 = not configured)
+  const sentryErrors       = Number(st.sentry_total_errors       ?? -1);
+  const sentryIssues       = Number(st.sentry_unresolved_issues  ?? -1);
+  const sentryCrashFree    = Number(st.sentry_crash_free_rate    ?? -1);
+  const sentryTotalSess    = Number(st.sentry_total_sessions     ?? -1);
+  const sentryHealthy      = Number(st.sentry_healthy_sessions   ?? -1);
+  const sentryCrashed      = Number(st.sentry_crashed_sessions   ?? -1);
+  const sentryAccepted     = Number(st.sentry_accepted_total     ?? -1);
+  const sentryDiscarded    = Number(st.sentry_discarded_total    ?? -1);
+  const sentryFiltered     = Number(st.sentry_filtered_total     ?? -1);
+  const sentryConfigured   = sentryErrors >= 0;
 
   // Bridge metrics
   const bridgeSuccessRate   = Number(st.bridge_success_rate_pct   ?? 0);
@@ -252,10 +348,30 @@ export function DeveloperMetrics() {
     color: ['#f43f5e', '#f97316', '#f59e0b', '#eab308', '#84cc16'][i] ?? '#6b7280',
   }));
 
-  const sentryIssueItems: DistItem[] = (s('dev_sentry_top_issues')?.data ?? []).map((p, i) => ({
-    label: p.date,
+  const endpointLatency: EndpointLatency[] = (data.raw?.endpoint_latency ?? []) as EndpointLatency[];
+  const richIssues: SentryIssue[] = (data.raw?.sentry_issues ?? []) as SentryIssue[];
+  const releases: SentryRelease[] = (data.raw?.sentry_releases ?? []) as SentryRelease[];
+
+  // Fallback list from series data when rich_issues not yet loaded (before server restart)
+  const fallbackIssueItems: DistItem[] = richIssues.length === 0
+    ? (s('dev_sentry_top_issues')?.data ?? []).map((p, i) => ({
+        label: p.date,
+        value: p.value,
+        color: ['#f43f5e', '#f97316', '#f59e0b', '#eab308', '#84cc16',
+                '#22c55e', '#06b6d4', '#8b5cf6', '#ec4899', '#6b7280'][i] ?? '#6b7280',
+      }))
+    : [];
+
+  const sessionHealthItems: DistItem[] = (s('dev_sentry_session_health')?.data ?? []).map(p => ({
+    label: p.date.charAt(0).toUpperCase() + p.date.slice(1),
     value: p.value,
-    color: ['#f43f5e', '#f97316', '#f59e0b', '#eab308', '#84cc16'][i] ?? '#6b7280',
+    color: SESSION_COLORS[p.date] ?? '#6b7280',
+  }));
+
+  const issueLevelItems: DistItem[] = (s('dev_sentry_issue_levels')?.data ?? []).map(p => ({
+    label: p.date.charAt(0).toUpperCase() + p.date.slice(1),
+    value: p.value,
+    color: LEVEL_COLORS[p.date] ?? '#6b7280',
   }));
 
   const httpHasData = httpTotal > 0;
@@ -307,6 +423,8 @@ export function DeveloperMetrics() {
         />
       )}
 
+      <EndpointLatencyTable rows={endpointLatency} />
+
       {/* ── Sentry ──────────────────────────────────────────────────────── */}
       <SectionHeader title="Sentry Error Tracking" />
 
@@ -314,7 +432,8 @@ export function DeveloperMetrics() {
         <SentryConfigTip />
       ) : (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
+          {/* Row 1: Error volume KPIs */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
             <HttpStatCard
               label="Sentry Errors (30d)"
               value={sentryErrors.toLocaleString()}
@@ -327,18 +446,102 @@ export function DeveloperMetrics() {
               sub="open issues right now"
               thresholds={{ good: 0, ok: 5, inverse: true }}
             />
+            <HttpStatCard
+              label="Accepted Events"
+              value={sentryAccepted >= 0 ? sentryAccepted.toLocaleString() : '—'}
+              sub="processed by Sentry (30d)"
+              thresholds={{ good: 0, ok: 50, inverse: true }}
+            />
+            <HttpStatCard
+              label="Discarded Events"
+              value={sentryDiscarded >= 0 ? sentryDiscarded.toLocaleString() : '—'}
+              sub="rate-limited or sampled out"
+              thresholds={{ good: 0, ok: 20, inverse: true }}
+            />
           </div>
 
+          {/* Row 2: Session health KPIs */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+            <HttpStatCard
+              label="Crash-Free Rate"
+              value={sentryCrashFree >= 0 ? `${sentryCrashFree}%` : '—'}
+              sub="session-level stability"
+              thresholds={{ good: 99.5, ok: 95, inverse: false }}
+            />
+            <HttpStatCard
+              label="Total Sessions"
+              value={sentryTotalSess >= 0 ? sentryTotalSess.toLocaleString() : '—'}
+              sub="last 30 days"
+            />
+            <HttpStatCard
+              label="Healthy Sessions"
+              value={sentryHealthy >= 0 ? sentryHealthy.toLocaleString() : '—'}
+              sub="completed without crash"
+              thresholds={{ good: 90, ok: 50, inverse: false }}
+            />
+            <HttpStatCard
+              label="Crashed Sessions"
+              value={sentryCrashed >= 0 ? sentryCrashed.toLocaleString() : '—'}
+              sub="sessions with unhandled error"
+              thresholds={{ good: 0, ok: 10, inverse: true }}
+            />
+          </div>
+
+          {/* Error volume + crash-free trend */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14 }}>
             {s('dev_sentry_errors_daily') && (
               <MetricCard series={s('dev_sentry_errors_daily')!} />
             )}
-            <DistributionCard
-              title="Top Unresolved Issues"
-              items={sentryIssueItems}
-              subtitle="by frequency"
-            />
+            {s('dev_sentry_crash_free_daily') && (
+              <MetricCard series={s('dev_sentry_crash_free_daily')!} />
+            )}
           </div>
+
+          {/* Accepted / discarded / filtered trends */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
+            {s('dev_sentry_accepted_daily') && (
+              <MetricCard series={s('dev_sentry_accepted_daily')!} />
+            )}
+            {s('dev_sentry_discarded_daily') && (
+              <MetricCard series={s('dev_sentry_discarded_daily')!} />
+            )}
+            {sentryFiltered > 0 && s('dev_sentry_filtered_daily') && (
+              <MetricCard series={s('dev_sentry_filtered_daily')!} />
+            )}
+          </div>
+
+          {/* Session health + issue levels side by side */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14 }}>
+            {sessionHealthItems.length > 0 && (
+              <DistributionCard
+                title="Session Health"
+                items={sessionHealthItems}
+                subtitle="last 30 days"
+              />
+            )}
+            {issueLevelItems.length > 0 && (
+              <DistributionCard
+                title="Issues by Level"
+                items={issueLevelItems}
+                subtitle="last 14 days"
+              />
+            )}
+          </div>
+
+          {/* Full issues table — click opens inline detail panel */}
+          {richIssues.length > 0
+            ? <IssuesTable issues={richIssues} onSelectIssue={setSelectedIssueId} />
+            : fallbackIssueItems.length > 0 && (
+              <DistributionCard
+                title="Top Unresolved Issues"
+                items={fallbackIssueItems}
+                subtitle="by frequency · restart server for full table with links"
+              />
+            )
+          }
+
+          {/* Release stability */}
+          {releases.length > 0 && <ReleasesCard releases={releases} />}
         </>
       )}
 
@@ -482,6 +685,13 @@ export function DeveloperMetrics() {
         {s('dev_advisory_daily') && <MetricCard series={s('dev_advisory_daily')!} />}
       </div>
 
+      {/* Inline issue detail panel — position:fixed, renders over everything */}
+      {selectedIssueId && (
+        <IssueDetailPanel
+          issueId={selectedIssueId}
+          onClose={() => setSelectedIssueId(null)}
+        />
+      )}
     </div>
   );
 }

@@ -20,27 +20,30 @@ _UUID_RE = re.compile(
     r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
     re.IGNORECASE,
 )
+_NUMERIC_ID_RE = re.compile(r"(?<=/)\d{6,}(?=/|$)")
 _LOG_SKIP_PREFIXES = ("/docs", "/redoc", "/openapi", "/_", "/favicon")
 _background_tasks: set[asyncio.Task[None]] = set()
+_log_semaphore = asyncio.Semaphore(20)
 
 
 async def _write_request_log(method: str, path: str, status_code: int, duration_ms: int) -> None:
     from promptly.db.session import AsyncSessionLocal  # lazy to avoid circular import
     from promptly.models.api_request_log import ApiRequestLog  # lazy to avoid circular import
 
-    try:
-        async with AsyncSessionLocal() as session:
-            session.add(
-                ApiRequestLog(
-                    method=method,
-                    path=path,
-                    status_code=status_code,
-                    duration_ms=duration_ms,
+    async with _log_semaphore:
+        try:
+            async with AsyncSessionLocal() as session:
+                session.add(
+                    ApiRequestLog(
+                        method=method,
+                        path=path,
+                        status_code=status_code,
+                        duration_ms=duration_ms,
+                    )
                 )
-            )
-            await session.commit()
-    except Exception:  # noqa: S110
-        pass
+                await session.commit()
+        except Exception:  # noqa: S110
+            pass
 
 
 class HttpRequestLogMiddleware(BaseHTTPMiddleware):
@@ -59,7 +62,7 @@ class HttpRequestLogMiddleware(BaseHTTPMiddleware):
             return response
         finally:
             duration_ms = int((time.monotonic() - start) * 1000)
-            normalized = _UUID_RE.sub("{id}", path)[:255]
+            normalized = _NUMERIC_ID_RE.sub("{id}", _UUID_RE.sub("{id}", path))[:255]
             try:
                 task: asyncio.Task[None] = asyncio.create_task(
                     _write_request_log(request.method, normalized, status_code, duration_ms)
