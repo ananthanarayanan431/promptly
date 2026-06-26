@@ -9,7 +9,7 @@ export interface EndpointLatency {
 
 export interface EndpointError {
   id: string;
-  created_at: string;
+  created_at: string | null;
   status_code: number;
   duration_ms: number;
   user_id: string | null;

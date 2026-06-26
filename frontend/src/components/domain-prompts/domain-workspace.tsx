@@ -348,7 +348,7 @@ function TournamentRunningViz({ domainId, vizMode, onVizChange }: {
                 </div>
                 {state.answer_b != null ? (
                   <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.55, paddingLeft: 8, borderLeft: `2px solid ${C_COLORS[state.duel_j % C_COLORS.length]}66` }}>
-                    <span style={{ fontWeight: 700, color: 'var(--text-subtle)' }}>A: </span>
+                    <span style={{ fontWeight: 700, color: 'var(--text-subtle)' }}>B: </span>
                     {state.answer_b || <em style={{ color: 'var(--text-subtle)' }}>(no response)</em>}
                   </div>
                 ) : (

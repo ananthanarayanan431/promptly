@@ -84,7 +84,7 @@ async def delete_endpoint_errors(db: AsyncSession, path: str, window: str) -> in
     result: CursorResult[Any]
     if delta is None:
         result = await db.execute(  # type: ignore[assignment]
-            text("DELETE FROM api_request_logs" " WHERE path = :path AND status_code >= 400"),
+            text("DELETE FROM api_request_logs WHERE path = :path AND status_code >= 400"),
             {"path": path},
         )
     else:

@@ -101,6 +101,9 @@ class TournamentStateResponse(BaseModel):
     question: str
     answer_a: str | None = None
     answer_b: str | None = None
+    mutations_applied: int = 0
+    inference_error_count: int = 0
+    last_inference_error: str = ""
 
 
 class OptimizationRunResponse(BaseModel):

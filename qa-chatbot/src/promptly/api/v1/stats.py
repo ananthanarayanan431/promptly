@@ -30,6 +30,7 @@ _default_limiter = RateLimiter(requests=60, window_seconds=60)
 # Blended cost per 1M tokens (input+output average) by council model
 _MODEL_COST_PER_M: dict[str, float] = {
     "gpt-4o-mini": 0.30,
+    "gpt-4.1-mini": 0.40,
     "claude-3-haiku": 0.75,
     "gemini-2.0-flash": 0.25,
     "grok-2": 6.00,

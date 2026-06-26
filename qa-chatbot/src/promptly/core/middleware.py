@@ -115,6 +115,9 @@ class HttpRequestLogMiddleware(BaseHTTPMiddleware):
                     pass
 
             return response
+        except Exception as exc:  # noqa: BLE001
+            error_message = f"{type(exc).__name__}: {exc}"[:500]
+            raise
         finally:
             duration_ms = int((time.monotonic() - start) * 1000)
             normalized = _NUMERIC_ID_RE.sub("{id}", _UUID_RE.sub("{id}", path))[:255]

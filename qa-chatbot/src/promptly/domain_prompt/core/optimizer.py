@@ -523,8 +523,9 @@ async def _score_one(
         if isinstance(parsed, int | float):
             return max(0.0, min(1.0, float(parsed)))
 
-        # Regex fallback: extract first numeric value after "score":
-        m = re.search(r'"score"\s*:\s*([0-9]*\.?[0-9]+)', raw)
+        # Regex fallback: handle JSON-style, plain-text, and case variants
+        # e.g. "score": 0.8  /  score: 0.8  /  Score = 0.8  /  Score: 0.8
+        m = re.search(r'[Ss]core["\s]*[:=]\s*([0-9]*\.?[0-9]+)', raw)
         if m:
             return max(0.0, min(1.0, float(m.group(1))))
 
@@ -848,7 +849,10 @@ async def optimize_domain_prompt(
             inference_error_log,
         )
         winner_idx, loser_idx = (i, j) if duel_result == 0 else (j, i)
-        wm.record_win(winner_idx, loser_idx, gamma)
+        # Skip win recording when both answers are empty — both prompts failed to answer,
+        # so the judge result is noise and should not skew Copeland scores.
+        if ans_i or ans_j:
+            wm.record_win(winner_idx, loser_idx, gamma)
 
         await _emit_tournament_state(
             domain_id,
@@ -906,7 +910,8 @@ async def optimize_domain_prompt(
                     wm.add_candidate()
                     existing_texts.add(text)
                     added += 1
-            mutations_applied += 1
+            if added > 0:
+                mutations_applied += 1
             _log.info(
                 "mutation_round_complete",
                 round=t,

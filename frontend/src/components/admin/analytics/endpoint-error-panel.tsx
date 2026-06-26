@@ -17,7 +17,7 @@ const CLEAR_OPTIONS = [
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function relativeTime(iso: string) {
+function relativeTime(iso: string | null) {
   if (!iso) return '—';
   const diff = Date.now() - new Date(iso).getTime();
   const m = Math.floor(diff / 60_000);
@@ -187,7 +187,11 @@ function ErrorLogRow({ err, last }: { err: EndpointError; last: boolean }) {
     <div style={{ borderBottom: last ? 'none' : '1px solid var(--border)' }}>
       {/* Summary row — always clickable */}
       <div
+        role="button"
+        tabIndex={0}
+        aria-expanded={expanded}
         onClick={() => setExpanded(e => !e)}
+        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpanded(x => !x); } }}
         style={{
           display: 'flex', alignItems: 'center', gap: 8,
           padding: '9px 14px',
@@ -198,7 +202,7 @@ function ErrorLogRow({ err, last }: { err: EndpointError; last: boolean }) {
         onMouseLeave={e => (e.currentTarget.style.background = '')}
       >
         <RowCell col="when" muted>
-          <span title={new Date(err.created_at).toLocaleString()}>
+          <span title={err.created_at ? new Date(err.created_at).toLocaleString() : '—'}>
             {relativeTime(err.created_at)}
           </span>
         </RowCell>
@@ -233,7 +237,7 @@ function ErrorLogRow({ err, last }: { err: EndpointError; last: boolean }) {
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
               <span style={{ fontWeight: 700, color: 'var(--text-subtle)', marginRight: 4 }}>WHEN</span>
-              {new Date(err.created_at).toLocaleString()}
+              {err.created_at ? new Date(err.created_at).toLocaleString() : '—'}
             </span>
             {err.user_id && (
               <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--mono)' }}>
@@ -354,7 +358,7 @@ function buildHttpAiFixPayload(detail: EndpointErrorDetail) {
     request_url: detail.path,
     breadcrumbs: recentSample.map(e => ({
       category: 'http',
-      message: `${e.method} ${detail.path} → ${e.status_code} (${e.duration_ms}ms)${e.user_id ? ` [user: ${e.user_id}]` : ''}`,
+      message: `${e.method} ${detail.path} → ${e.status_code} (${e.duration_ms}ms)`,
       timestamp: e.created_at,
     })),
   };
@@ -403,6 +407,8 @@ export function EndpointErrorPanel({
       setClearDoneLabel(opt?.label ?? window);
       setTimeout(() => setClearDoneLabel(null), 2500);
       queryClient.invalidateQueries({ queryKey: ['admin', 'endpoint-errors', path] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'analytics'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'endpoint-ai-fix', path] });
     },
   });
 
@@ -653,7 +659,7 @@ export function EndpointErrorPanel({
                       : '—'}
                   </div>
                   <div style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>
-                    {data.recent_errors[0]
+                    {data.recent_errors[0]?.created_at
                       ? new Date(data.recent_errors[0].created_at).toLocaleString()
                       : ''}
                   </div>

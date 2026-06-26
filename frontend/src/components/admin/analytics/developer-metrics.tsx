@@ -453,7 +453,10 @@ export function DeveloperMetrics() {
               {topFailItems.map((item, i) => (
                 <tr
                   key={item.label}
+                  tabIndex={0}
+                  aria-label={`View error details for ${item.label}`}
                   onClick={() => setSelectedEndpointPath(item.label)}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedEndpointPath(item.label); } }}
                   style={{
                     borderBottom: i < topFailItems.length - 1 ? '1px solid var(--border)' : 'none',
                     cursor: 'pointer',
