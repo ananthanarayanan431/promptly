@@ -57,10 +57,13 @@ export function useLikeMutation() {
 export function useUnlikeMutation() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => favoritesApi.remove(id),
-    onSuccess: (_data, id) => {
+    mutationFn: ({ id }: { id: string; promptVersionId?: string }) => favoritesApi.remove(id),
+    onSuccess: (_data, { id, promptVersionId }) => {
       qc.invalidateQueries({ queryKey: favoriteKeys.lists() });
       qc.removeQueries({ queryKey: favoriteKeys.detail(id) });
+      if (promptVersionId) {
+        qc.invalidateQueries({ queryKey: favoriteKeys.status(promptVersionId) });
+      }
     },
   });
 }

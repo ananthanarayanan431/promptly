@@ -1,3 +1,37 @@
+// ── Sentry / analytics backend-response types ─────────────────────────────────
+
+export interface EndpointLatency {
+  path: string;
+  count: number;
+  p50_ms: number;
+  p95_ms: number;
+}
+
+export interface SentryIssue {
+  id: string;
+  short_id: string;
+  title: string;
+  level: 'error' | 'warning' | 'info' | 'debug';
+  count: number;
+  user_count: number;
+  first_seen: string;
+  last_seen: string;
+  permalink: string;
+  culprit: string;
+  is_unhandled: boolean;
+  priority: number | null;
+  filename: string;
+}
+
+export interface SentryRelease {
+  version: string;
+  date_created: string;
+  new_groups: number;
+  commit_count: number;
+}
+
+// ── General API response types ────────────────────────────────────────────────
+
 export interface User {
   id: string;
   email: string;
@@ -442,44 +476,9 @@ export interface ApiKeyCreatedResponse extends ApiKeyResponse {
   key: string; // shown only once
 }
 
-export interface TransferJobSummary {
-  id: string;
-  source_model: string;
-  target_model: string;
-  status: string;
-  reused_mapping: boolean;
-  credits_charged: number;
-  source_prompt: string;
-  adapted_prompt: string | null;
-  error_message: string | null;
-  created_at: string;
-  redis_job_id: string | null;
-  token_count?: number | null;
-  mapping_text?: string | null;
-}
-
-export interface TransferJobListResponse {
-  jobs: TransferJobSummary[];
-}
+export type { TransferJobSummary, TransferJobListResponse } from '@/types/bridge';
 
 // ── Admin ─────────────────────────────────────────────────────────────────
-
-export interface UserActivitySession {
-  id: string;
-  title: string | null;
-  message_count: number;
-  token_count: number;
-  created_at: string;
-}
-
-export interface UserActivity {
-  email: string;
-  session_count: number;
-  total_tokens_consumed: number;
-  first_seen: string;
-  feature_counts: Record<string, number>;
-  sessions: UserActivitySession[];
-}
 
 export interface AdminUserItem {
   id: string;

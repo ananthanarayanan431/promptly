@@ -94,7 +94,23 @@ function formatTokens(n: number): string {
   return String(n);
 }
 
-function TokenCard({ tokenBalance }: { tokenBalance: number }) {
+function TokenCard({ tokenBalance }: { tokenBalance: number | undefined | null }) {
+  if (tokenBalance === null) return null;
+  if (tokenBalance === undefined) {
+    return (
+      <div className="ply-card" style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8, boxShadow: 'none' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Tokens</span>
+          <div style={{ width: 40, height: 12, borderRadius: 4, background: 'var(--surface-2)', animation: 'pulse 1.5s ease-in-out infinite' }} />
+        </div>
+        <div className="ply-progress">
+          <i style={{ width: '0%', background: 'var(--surface-2)' }} />
+        </div>
+        <div style={{ width: '70%', height: 10, borderRadius: 4, background: 'var(--surface-2)', animation: 'pulse 1.5s ease-in-out infinite' }} />
+      </div>
+    );
+  }
+
   // Clamp display at 0 — never reveal the internal overdraft buffer to users.
   const displayed = Math.max(0, tokenBalance);
   const isDepleted = displayed === 0;
@@ -123,7 +139,7 @@ function TokenCard({ tokenBalance }: { tokenBalance: number }) {
 }
 
 function RecentSessions() {
-  const { data } = useQuery<SessionsGrouped>({
+  const { data, isLoading, isError } = useQuery<SessionsGrouped>({
     queryKey: ['sessions'],
     queryFn: async () => {
       const res = await api.get<{ data: SessionsGrouped }>('/api/v1/chat/sessions');
@@ -131,6 +147,18 @@ function RecentSessions() {
     },
     staleTime: 60_000,
   });
+
+  if (isLoading) {
+    return (
+      <div style={{ padding: '4px 10px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {[80, 65, 90].map((w, i) => (
+          <div key={i} style={{ height: 28, borderRadius: 6, background: 'var(--surface-2)', width: `${w}%`, animation: 'pulse 1.5s ease-in-out infinite' }} />
+        ))}
+      </div>
+    );
+  }
+
+  if (isError) return null;
 
   const sessions: SessionSummary[] = data
     ? [...data.today, ...data.last_7_days, ...data.last_30_days, ...data.older].slice(0, 5)
@@ -176,7 +204,7 @@ function RecentSessions() {
 export function Sidebar() {
   const pathname = usePathname();
 
-  const { data: fetchedUser } = useQuery<User>({
+  const { data: fetchedUser, isError: userFetchError } = useQuery<User>({
     queryKey: ['user', 'me'],
     queryFn: async () => {
       const res = await api.get<{ data: User }>('/api/v1/users/me');
@@ -185,7 +213,7 @@ export function Sidebar() {
     staleTime: 1000 * 60 * 5,
   });
 
-  const tokenBalance = fetchedUser?.token_balance ?? TOKEN_START;
+  const tokenBalance = userFetchError ? null : fetchedUser?.token_balance;
 
   return (
     <aside style={{

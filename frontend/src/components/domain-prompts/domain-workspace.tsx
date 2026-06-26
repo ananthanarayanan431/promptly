@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { toast } from 'sonner';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import type { DomainPrompt, DomainListResponse, DatasetRowsResponse, QAPair, TournamentState, OptimizationRun, RunListResponse } from '@/types/domain-prompts';
@@ -1545,17 +1546,25 @@ export function DomainWorkspace() {
       );
       setPollingDomainId(capturedDomainId);
       setPollingJobId(res.data.data.job_id);
-    } catch { setReoptimizing(false); }
+    } catch (err: unknown) {
+      setReoptimizing(false);
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      toast.error(typeof detail === 'string' ? detail : 'Failed to start optimization — please try again.');
+    }
   }, [selected]);
 
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const handleDelete = useCallback(async () => {
     if (!selected) return;
-    if (!window.confirm('Delete this domain and all its data? This cannot be undone.')) return;
     try {
       await api.delete(`/api/v1/domain-prompts/${selected.id}`);
       setSelectedId(null);
+      setConfirmDeleteId(null);
       void qc.invalidateQueries({ queryKey: ['domain-prompts'] });
-    } catch { /* ignore */ }
+    } catch {
+      toast.error('Failed to delete domain — please try again.');
+      setConfirmDeleteId(null);
+    }
   }, [selected, qc]);
 
   const [cancelling, setCancelling] = useState(false);
@@ -1658,9 +1667,17 @@ export function DomainWorkspace() {
                 {recovering ? 'Restoring…' : 'Restore to Ready'}
               </button>
             )}
-            <button className="ply-btn ply-btn-sm" aria-label="Delete domain" onClick={handleDelete} title="Delete domain">
-              <Icon name="trash" size={13} />
-            </button>
+            {confirmDeleteId === selected?.id ? (
+              <>
+                <span style={{ fontSize: 12, color: 'var(--danger)' }}>Delete?</span>
+                <button className="ply-btn ply-btn-sm" style={{ color: 'var(--danger)' }} onClick={handleDelete} aria-label="Confirm delete">Yes</button>
+                <button className="ply-btn ply-btn-sm" onClick={() => setConfirmDeleteId(null)} aria-label="Cancel delete">No</button>
+              </>
+            ) : (
+              <button className="ply-btn ply-btn-sm" aria-label="Delete domain" onClick={() => setConfirmDeleteId(selected?.id ?? null)} title="Delete domain">
+                <Icon name="trash" size={13} />
+              </button>
+            )}
             <button
               className="ply-btn ply-btn-primary"
               onClick={() => setShowNew(true)}

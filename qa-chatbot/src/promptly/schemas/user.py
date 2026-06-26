@@ -17,7 +17,7 @@ class UserResponse(BaseModel):
     id: uuid.UUID
     email: str
     credits: int
-    token_balance: int = TOKEN_START
+    token_balance: int
     is_admin: bool = False
     data_sharing_enabled: bool = False
 

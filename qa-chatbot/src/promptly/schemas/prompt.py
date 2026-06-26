@@ -75,10 +75,6 @@ class PromptVersionListResponse(BaseModel):
     versions: list[PromptVersionOut]
 
 
-class PromptFamilyListResponse(BaseModel):
-    families: list[PromptVersionListResponse]
-
-
 class PaginatedPromptFamilyListResponse(BaseModel):
     page: int
     page_size: int

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -314,3 +315,4 @@ class AnalyticsResponse(BaseModel):
     generated_at: str
     statics: dict[str, float | int | str]
     series: list[AnalyticsSeries]
+    raw: dict[str, Any] = {}  # unstructured payloads (issue objects, releases, etc.)

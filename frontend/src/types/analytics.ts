@@ -13,11 +13,21 @@ export interface AnalyticsSeries {
   color?: string;
 }
 
+// Re-export backend-mirror types that live in api.ts so existing imports work unchanged.
+export type { EndpointLatency, SentryIssue, SentryRelease } from '@/types/api';
+import type { EndpointLatency, SentryIssue, SentryRelease } from '@/types/api';
+
 export interface AnalyticsResponse {
   view: string;
   generated_at: string;
   statics: Record<string, number | string>;
   series: AnalyticsSeries[];
+  raw?: {
+    sentry_issues?: SentryIssue[];
+    sentry_releases?: SentryRelease[];
+    endpoint_latency?: EndpointLatency[];
+    [key: string]: unknown;
+  };
 }
 
 // Helper: find a single series by key

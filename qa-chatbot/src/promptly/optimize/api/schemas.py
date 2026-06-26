@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -257,7 +257,7 @@ class JobPollResponse(BaseModel):
     """Returned from GET /chat/jobs/{job_id} — poll until status is completed or failed."""
 
     job_id: str
-    status: str  # queued | started | completed | failed
+    status: Literal["queued", "started", "completed", "failed"]
     result: ChatResponse | None = None  # populated when status == "completed"
     error: str | None = None  # populated when status == "failed"
 

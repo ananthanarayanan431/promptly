@@ -87,15 +87,6 @@ export function Header() {
           API keys
         </Link>
 
-        <button style={{ height: 28, padding: '0 10px', borderRadius: 6, border: '1px solid #2a2a2e',
-          background: 'transparent', fontSize: 12, color: '#b5b5ba', cursor: 'pointer',
-          display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'inherit' }}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
-            <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
-            <path d="M8.6 10.5l6.8-4M8.6 13.5l6.8 4"/>
-          </svg>
-          Share
-        </button>
       </div>
     </header>
   );
