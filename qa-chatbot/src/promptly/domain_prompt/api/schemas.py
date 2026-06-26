@@ -99,8 +99,8 @@ class TournamentStateResponse(BaseModel):
     duel_i: int
     duel_j: int
     question: str
-    answer_a: str = ""
-    answer_b: str = ""
+    answer_a: str | None = None
+    answer_b: str | None = None
 
 
 class OptimizationRunResponse(BaseModel):

@@ -18,7 +18,7 @@ class LLMSettings(BaseSettings):
     # All are routed through OpenRouter.
     COUNCIL_MODELS: list[str] = [
         "openai/gpt-4o-mini",
-        "anthropic/claude-3.5-haiku",
+        "openai/gpt-4.1-mini",
         "google/gemini-2.5-flash",
         "x-ai/grok-4.3",
     ]

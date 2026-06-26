@@ -7,6 +7,24 @@ export interface EndpointLatency {
   p95_ms: number;
 }
 
+export interface EndpointError {
+  id: string;
+  created_at: string;
+  status_code: number;
+  duration_ms: number;
+  user_id: string | null;
+  method: string;
+  query_params: string | null;
+  error_message: string | null;
+}
+
+export interface EndpointErrorDetail {
+  path: string;
+  total_errors: number;
+  status_breakdown: { status_code: number; count: number }[];
+  recent_errors: EndpointError[];
+}
+
 export interface SentryIssue {
   id: string;
   short_id: string;

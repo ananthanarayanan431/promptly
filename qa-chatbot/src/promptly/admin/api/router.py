@@ -7,6 +7,7 @@ from typing import Annotated, Any
 import httpx
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import JSONResponse
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -42,6 +43,10 @@ from promptly.admin.services.analytics.agent import (
     agent_skillopt,
 )
 from promptly.admin.services.analytics.developer import developer_metrics
+from promptly.admin.services.analytics.endpoint_errors import (
+    delete_endpoint_errors,
+    get_endpoint_errors,
+)
 from promptly.admin.services.analytics.platform import platform_engagement, platform_logins
 from promptly.admin.services.audit import log_audit
 from promptly.admin.services.health import check_system_health
@@ -658,7 +663,7 @@ async def get_analytics(
         "developer_metrics": developer_metrics,
     }
     result = await handlers[view](db, days)
-    return SuccessResponse(data=result)
+    return SuccessResponse[AnalyticsResponse](data=result)
 
 
 # ── Sentry ────────────────────────────────────────────────────────────────────
@@ -688,3 +693,52 @@ async def get_sentry_issue_ai_fix(
     _admin: Annotated[Any, Depends(require_admin)],
 ) -> Any:
     return await generate_ai_fix(payload)
+
+
+# ── Endpoint error details ────────────────────────────────────────────────────
+
+
+@router.get(
+    "/endpoint-errors",
+    summary="Admin — recent errors for a specific API path",
+    response_model=None,
+    responses=error_responses(401, 403, 422),
+)
+async def get_endpoint_error_detail(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    path: str = Query(
+        ..., description="Normalized API path, e.g. /api/v1/domain-prompts/{id}/runs"
+    ),  # noqa: E501
+    days: int = Query(default=30, ge=1, le=365),
+    _admin: Annotated[Any, Depends(require_admin)] = None,
+) -> Any:
+    result = await get_endpoint_errors(db, path, days)
+    return JSONResponse(content={"success": True, "data": result})
+
+
+_VALID_WINDOWS = {"1h", "12h", "1d", "7d", "all"}
+
+
+@router.delete(
+    "/endpoint-errors",
+    summary="Admin — clear error logs for a specific API path",
+    response_model=None,
+    responses=error_responses(401, 403, 422),
+)
+async def clear_endpoint_errors(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    path: str = Query(..., description="Normalized API path"),
+    window: str = Query(..., description="Time window to clear: 1h | 12h | 1d | 7d | all"),
+    _admin: Annotated[Any, Depends(require_admin)] = None,
+) -> Any:
+    if window not in _VALID_WINDOWS:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Invalid window {window!r}. Must be one of: {', '.join(sorted(_VALID_WINDOWS))}"
+            ),
+        )
+    deleted = await delete_endpoint_errors(db, path, window)
+    return JSONResponse(
+        content={"success": True, "data": {"deleted": deleted, "path": path, "window": window}}
+    )

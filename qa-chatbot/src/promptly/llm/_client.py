@@ -89,10 +89,17 @@ def _build(
 
         api_key = get_llm_settings().OPENROUTER_API_KEY.get_secret_value()
 
+    # Anthropic requires the prompt-caching beta header; without it, cache_control
+    # fields in the payload are rejected with "Extra inputs are not permitted" (502).
+    extra: dict[str, Any] = {}
+    if _is_anthropic(model):
+        extra["default_headers"] = {"anthropic-beta": "prompt-caching-2024-07-31"}
+
     return _CachingChatOpenAI(
         model=model,
         base_url=_OPENROUTER_BASE,
         api_key=SecretStr(api_key),
         temperature=temperature,
         max_tokens=max_tokens,
+        **extra,
     )

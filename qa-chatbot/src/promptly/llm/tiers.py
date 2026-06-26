@@ -45,7 +45,7 @@ TIERS: dict[str, LLMTier] = {
         desc="Balanced quality/cost. Current default configuration.",
         council_models=[
             "openai/gpt-4o-mini",  # $0.15/$0.60 per 1M
-            "anthropic/claude-3.5-haiku",  # $0.80/$4.00 per 1M
+            "openai/gpt-4.1-mini",  # $0.40/$1.60 per 1M
             "google/gemini-2.5-flash",  # $0.30/$2.50 per 1M
             "x-ai/grok-4.3",  # $1.25/$2.50 per 1M
         ],

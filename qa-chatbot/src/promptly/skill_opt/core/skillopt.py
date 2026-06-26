@@ -60,7 +60,7 @@ _log = get_logger(__name__)
 
 # ── Model config ──────────────────────────────────────────────────────────────
 # Default models when no llm_effort override is set
-_EXECUTOR_MODEL = "anthropic/claude-3.5-haiku"
+_EXECUTOR_MODEL = "openai/gpt-4.1-mini"
 _OPTIMIZER_MODEL = "openai/gpt-4o-mini"
 _SCORER_MODEL = "openai/gpt-4o-mini"
 _SEED_MODEL = "openai/gpt-4o-mini"
@@ -73,7 +73,7 @@ _MERGE_MODEL = "google/gemini-2.0-flash"
 # The OPTIMIZER + SCORER stay cheap (meta-operations, not critical for quality).
 _LLM_EFFORT_EXECUTOR: dict[str, str] = {
     "low": "google/gemini-2.0-flash",  # $0.10/1M — fast & cheap
-    "medium": "anthropic/claude-3.5-haiku",  # $0.80/1M — default
+    "medium": "openai/gpt-4.1-mini",  # $0.40/1M — default
     "high": "openai/gpt-4o",  # $2.50/1M — best answer quality
 }
 

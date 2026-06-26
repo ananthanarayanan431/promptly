@@ -61,7 +61,7 @@ export function ChatInput({
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, 300)}px`;
+    el.style.height = `${el.scrollHeight}px`;
   }, [text]);
 
   const handleSubmit = () => {
@@ -142,7 +142,7 @@ export function ChatInput({
         </div>
       )}
 
-      <div style={{ position: 'relative', borderRadius: 12,
+      <div style={{ display: 'flex', flexDirection: 'column', borderRadius: 12,
         border: '1.5px solid var(--primary)',
         background: 'var(--surface)',
         boxShadow: '0 0 0 4px var(--primary-ring)',
@@ -152,15 +152,16 @@ export function ChatInput({
           placeholder={hasPreviousTurns ? 'Give feedback to refine the result...' : 'Paste your prompt here to optimize...'}
           disabled={isLoading} autoFocus={autoFocus} rows={1}
           style={{ width: '100%', resize: 'none', background: 'transparent',
-            padding: hasPreviousTurns ? '14px 16px 44px' : '16px 16px 44px',
+            padding: hasPreviousTurns ? '14px 16px 10px' : '16px 16px 10px',
             minHeight: hasPreviousTurns ? 56 : 128,
+            maxHeight: 240,
+            overflowY: 'auto',
             fontSize: 14, lineHeight: 1.6, color: 'var(--text)', outline: 'none', border: 'none',
             fontFamily: 'inherit', boxSizing: 'border-box',
             opacity: isLoading ? 0.5 : 1 }} />
 
-        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0,
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '0 10px 10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '0 10px 10px', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <button type="button" onClick={toggleVersioning}
               title={versioning ? 'Stop versioning' : 'Save as version'}

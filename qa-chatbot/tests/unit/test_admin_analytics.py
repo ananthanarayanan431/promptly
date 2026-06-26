@@ -1,7 +1,7 @@
 from datetime import UTC, datetime, timedelta
 
-from promptly.admin.api.router import _fill_days
 from promptly.admin.api.schemas import AnalyticsPoint, AnalyticsResponse, AnalyticsSeries
+from promptly.admin.services.analytics.helpers import fill_days as _fill_days
 
 
 def test_fill_days_pads_missing_dates() -> None:

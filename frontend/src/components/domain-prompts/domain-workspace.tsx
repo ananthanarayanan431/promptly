@@ -84,13 +84,16 @@ function LiveStatsBar({ domainId, datasetSize }: { domainId: string; datasetSize
 
   const candidates = state?.candidate_count ?? '—';
   const trials = state ? `${state.round}/${state.total_rounds}` : '—';
+  const mutated = state?.mutations_applied ?? 0;
+
+  const isGenerating = state?.round === 0;
 
   return (
     <div className="ply-card" style={{ padding: '14px 18px', display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 0 }}>
-      <Stat label="Phase" value={`Round ${state?.round ?? '—'}`} hint={`of ${state?.total_rounds ?? 40}`} />
+      <Stat label="Phase" value={isGenerating ? 'Generating' : `Round ${state?.round ?? '—'}`} hint={isGenerating ? 'building candidates' : `of ${state?.total_rounds ?? 40}`} />
       <Stat label="Win rate" value="—" hint="winner head-to-head" />
-      <Stat label="Candidates" value={String(candidates)} hint="pool size" />
-      <Stat label="Trials" value={trials} hint="head-to-head" />
+      <Stat label="Candidates" value={String(candidates)} hint={mutated > 0 ? `${mutated} replaced` : 'pool size'} />
+      <Stat label="Trials" value={isGenerating ? '—' : trials} hint="head-to-head" />
       <Stat label="Knowledge" value={String(datasetSize || '—')} hint="Q&A pairs" />
     </div>
   );
@@ -101,11 +104,19 @@ type VizMode = 'matrix' | 'bracket';
 
 const C_COLORS = ['#7c5cff', '#06b6d4', '#f59e0b', '#10b981', '#f43f5e', '#8b5cf6', '#ec4899'];
 
+const CANDIDATE_ENTRY_STYLE = `
+  @keyframes candidateIn {
+    from { opacity: 0; transform: scale(0.85); }
+    to   { opacity: 1; transform: scale(1); }
+  }
+`;
+
 function TournamentRunningViz({ domainId, vizMode, onVizChange }: {
   domainId: string;
   vizMode: VizMode;
   onVizChange: (v: VizMode) => void;
 }) {
+  const prevNamesRef = useRef<string[]>([]);
   const { data: state } = useQuery<TournamentState | null>({
     queryKey: ['tournament-state', domainId],
     queryFn: async () => {
@@ -125,8 +136,16 @@ function TournamentRunningViz({ domainId, vizMode, onVizChange }: {
   const minWinRate = state ? Math.min(...state.avg_win_rates) : 0;
   const winRateRange = Math.max(maxWinRate - minWinRate, 0.01);
 
+  // Track which candidate names are newly added so we can animate only them.
+  const prevNames = prevNamesRef.current;
+  const isNewName = (name: string) => !prevNames.includes(name);
+  useEffect(() => {
+    if (state?.names) prevNamesRef.current = state.names;
+  });
+
   return (
     <div className="ply-card anim-fade" style={{ overflow: 'hidden' }}>
+      <style>{CANDIDATE_ENTRY_STYLE}</style>
       {/* Header bar */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -138,14 +157,16 @@ function TournamentRunningViz({ domainId, vizMode, onVizChange }: {
           <div>
             <div style={{ fontWeight: 600, fontSize: 13.5 }}>Prompt Duel Optimizer</div>
             <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
-              Double Thompson Sampling{state ? ` · duel: ${state.names[state.duel_i]} vs ${state.names[state.duel_j]}` : ''}
+              {state?.round === 0
+                ? 'Building candidate pool…'
+                : `Double Thompson Sampling${state ? ` · duel: ${state.names[state.duel_i]} vs ${state.names[state.duel_j]}` : ''}`}
             </div>
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {state && (
             <span className="mono" style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
-              round {state.round}/{state.total_rounds}
+              {state.round === 0 ? 'generating…' : `round ${state.round}/${state.total_rounds}`}
             </span>
           )}
           <div className="ply-progress" style={{ width: 120 }}>
@@ -153,6 +174,29 @@ function TournamentRunningViz({ domainId, vizMode, onVizChange }: {
           </div>
         </div>
       </div>
+
+      {/* Inference error warning */}
+      {state && (state.inference_error_count ?? 0) > 0 && (
+        <div style={{
+          display: 'flex', alignItems: 'flex-start', gap: 10,
+          padding: '9px 16px', background: 'rgba(244,63,94,0.08)',
+          borderBottom: '1px solid rgba(244,63,94,0.25)',
+        }}>
+          <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#f43f5e" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 1 }}>
+            <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: '#f43f5e' }}>
+              {state.inference_error_count} LLM inference error{(state.inference_error_count ?? 0) > 1 ? 's' : ''} — answers may be empty
+            </span>
+            {state.last_inference_error && (
+              <div className="mono" style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {state.last_inference_error}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Tab bar */}
       <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)', padding: '0 16px' }}>
@@ -188,18 +232,20 @@ function TournamentRunningViz({ domainId, vizMode, onVizChange }: {
                 {/* Column headers */}
                 <div />
                 {state.names.map((name, ci) => (
-                  <div key={ci} style={{
+                  <div key={name} style={{
                     textAlign: 'center', fontWeight: 700,
                     color: C_COLORS[ci % C_COLORS.length],
                     fontFamily: 'var(--mono)', fontSize: 11.5, paddingBottom: 4,
+                    ...(isNewName(name) ? { animation: `candidateIn 0.28s ease-out ${ci * 60}ms both` } : {}),
                   }}>{name}</div>
                 ))}
                 {/* Rows */}
                 {state.names.map((name, ri) => [
-                  <div key={`lbl-${ri}`} style={{
+                  <div key={`lbl-${name}`} style={{
                     fontWeight: 700, color: C_COLORS[ri % C_COLORS.length],
                     fontFamily: 'var(--mono)', fontSize: 11.5,
                     display: 'flex', alignItems: 'center',
+                    ...(isNewName(name) ? { animation: `candidateIn 0.28s ease-out ${ri * 60}ms both` } : {}),
                   }}>{name}</div>,
                   ...state.names.map((_, ci) => {
                     const isSelf = ri === ci;
@@ -238,7 +284,7 @@ function TournamentRunningViz({ domainId, vizMode, onVizChange }: {
                 const pct = ((rate - minWinRate) / winRateRange) * 80 + 10;
                 const isLeading = rate === maxWinRate;
                 return (
-                  <div key={i} style={{ display: 'grid', gridTemplateColumns: '56px 1fr 64px', alignItems: 'center', gap: 10 }}>
+                  <div key={name} style={{ display: 'grid', gridTemplateColumns: '56px 1fr 64px', alignItems: 'center', gap: 10, ...(isNewName(name) ? { animation: `candidateIn 0.28s ease-out ${i * 60}ms both` } : {}) }}>
                     <span className="mono" style={{ fontSize: 12, fontWeight: 700, color: C_COLORS[i % C_COLORS.length] }}>{name}</span>
                     <div style={{ height: 10, background: 'var(--surface-2)', borderRadius: 999, overflow: 'hidden' }}>
                       <div style={{
@@ -279,10 +325,10 @@ function TournamentRunningViz({ domainId, vizMode, onVizChange }: {
                     win rate {(state.avg_win_rates[state.duel_i] * 100).toFixed(0)}%
                   </span>
                 </div>
-                {state.answer_a ? (
+                {state.answer_a != null ? (
                   <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.55, paddingLeft: 8, borderLeft: `2px solid ${C_COLORS[state.duel_i % C_COLORS.length]}66` }}>
                     <span style={{ fontWeight: 700, color: 'var(--text-subtle)' }}>A: </span>
-                    {state.answer_a}
+                    {state.answer_a || <em style={{ color: 'var(--text-subtle)' }}>(no response)</em>}
                   </div>
                 ) : (
                   <div style={{ fontSize: 11, color: 'var(--text-subtle)', fontStyle: 'italic' }}>answering Q…</div>
@@ -300,10 +346,10 @@ function TournamentRunningViz({ domainId, vizMode, onVizChange }: {
                     win rate {(state.avg_win_rates[state.duel_j] * 100).toFixed(0)}%
                   </span>
                 </div>
-                {state.answer_b ? (
+                {state.answer_b != null ? (
                   <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.55, paddingLeft: 8, borderLeft: `2px solid ${C_COLORS[state.duel_j % C_COLORS.length]}66` }}>
                     <span style={{ fontWeight: 700, color: 'var(--text-subtle)' }}>A: </span>
-                    {state.answer_b}
+                    {state.answer_b || <em style={{ color: 'var(--text-subtle)' }}>(no response)</em>}
                   </div>
                 ) : (
                   <div style={{ fontSize: 11, color: 'var(--text-subtle)', fontStyle: 'italic' }}>answering Q…</div>

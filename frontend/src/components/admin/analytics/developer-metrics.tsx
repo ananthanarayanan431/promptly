@@ -10,6 +10,7 @@ import { StaticCard } from './static-card';
 import { IssuesTable } from './issues-table';
 import { ReleasesCard } from './releases-card';
 import { IssueDetailPanel } from './issue-detail-panel';
+import { EndpointErrorPanel } from './endpoint-error-panel';
 import type { SentryIssue, SentryRelease, EndpointLatency } from '@/types/analytics';
 
 // ── Colors ────────────────────────────────────────────────────────────────────
@@ -284,6 +285,7 @@ function EndpointLatencyTable({ rows }: { rows: EndpointLatency[] }) {
 
 export function DeveloperMetrics() {
   const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
+  const [selectedEndpointPath, setSelectedEndpointPath] = useState<string | null>(null);
 
   const { data, isLoading, isError } = useQuery<AnalyticsResponse>({
     queryKey: ['admin', 'analytics', 'developer_metrics'],
@@ -416,11 +418,69 @@ export function DeveloperMetrics() {
       </div>
 
       {topFailItems.length > 0 && (
-        <DistributionCard
-          title="Top Failing Endpoints"
-          items={topFailItems}
-          subtitle={`last 30 days`}
-        />
+        <div style={{
+          background: 'var(--surface)', border: '1px solid var(--border)',
+          borderRadius: 12, overflow: 'hidden',
+        }}>
+          <div style={{ padding: '14px 18px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-subtle)',
+              textTransform: 'uppercase', letterSpacing: '.07em' }}>
+              Top Failing Endpoints
+            </span>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+              click a row for details · last 30 days
+            </span>
+          </div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+            <thead>
+              <tr style={{ borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)' }}>
+                {(['Endpoint', 'Errors'] as const).map(h => (
+                  <th key={h} style={{
+                    padding: '7px 18px', textAlign: h === 'Errors' ? 'right' : 'left',
+                    fontSize: 10.5, fontWeight: 700, color: 'var(--text-subtle)',
+                    textTransform: 'uppercase', letterSpacing: '.07em',
+                    background: 'var(--surface-2)',
+                  }}>{h}</th>
+                ))}
+                <th style={{
+                  padding: '7px 18px', fontSize: 10.5, fontWeight: 700,
+                  color: 'var(--text-subtle)', textTransform: 'uppercase',
+                  letterSpacing: '.07em', background: 'var(--surface-2)',
+                }} />
+              </tr>
+            </thead>
+            <tbody>
+              {topFailItems.map((item, i) => (
+                <tr
+                  key={item.label}
+                  onClick={() => setSelectedEndpointPath(item.label)}
+                  style={{
+                    borderBottom: i < topFailItems.length - 1 ? '1px solid var(--border)' : 'none',
+                    cursor: 'pointer',
+                    transition: 'background .1s',
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-2)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = '')}
+                >
+                  <td style={{ padding: '9px 18px', fontFamily: 'var(--mono)', fontSize: 12,
+                    color: 'var(--text)', maxWidth: 420, overflow: 'hidden',
+                    textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {item.label}
+                  </td>
+                  <td style={{ padding: '9px 18px', textAlign: 'right',
+                    fontFamily: 'var(--mono)', fontWeight: 700,
+                    color: item.color }}>
+                    {item.value.toLocaleString()}
+                  </td>
+                  <td style={{ padding: '9px 18px', textAlign: 'right',
+                    fontSize: 11, color: '#a78bfa', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                    View details →
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
 
       <EndpointLatencyTable rows={endpointLatency} />
@@ -690,6 +750,14 @@ export function DeveloperMetrics() {
         <IssueDetailPanel
           issueId={selectedIssueId}
           onClose={() => setSelectedIssueId(null)}
+        />
+      )}
+
+      {/* Endpoint error detail panel */}
+      {selectedEndpointPath && (
+        <EndpointErrorPanel
+          path={selectedEndpointPath}
+          onClose={() => setSelectedEndpointPath(null)}
         />
       )}
     </div>

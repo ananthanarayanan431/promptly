@@ -58,7 +58,7 @@ N_COLS = 12  # columns shown in the score-matrix visualisation
 ACCEPT_FACTOR = 1.0  # σ′ must strictly exceed σ
 
 # ── LLM config ────────────────────────────────────────────────────────────────
-_ANSWERER_MODEL = "anthropic/claude-3.5-haiku"
+_ANSWERER_MODEL = "openai/gpt-4.1-mini"
 _REFLECTOR_MODEL = "openai/gpt-4o-mini"
 _SCORER_MODEL = "openai/gpt-4o-mini"
 

@@ -19,7 +19,7 @@ from promptly.llm._client import _build
 def build_duel_answerer(api_key: str) -> ChatOpenAI:
     """Fast answerer used during duels and held-out validation scoring."""
     return _build(
-        "anthropic/claude-3.5-haiku",
+        "openai/gpt-4o-mini",
         temperature=0.7,
         max_tokens=512,
         api_key=api_key,

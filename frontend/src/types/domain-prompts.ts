@@ -69,8 +69,11 @@ export interface TournamentState {
   duel_i: number;
   duel_j: number;
   question: string;
-  answer_a?: string;
-  answer_b?: string;
+  answer_a?: string | null;
+  answer_b?: string | null;
+  mutations_applied?: number;
+  inference_error_count?: number;
+  last_inference_error?: string;
 }
 
 export interface OptimizationRun {
