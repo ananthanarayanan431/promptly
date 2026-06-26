@@ -37,6 +37,7 @@ _default_limiter = RateLimiter(requests=60, window_seconds=60)
 
 router = APIRouter(prefix="/prompts", tags=["prompts"])
 
+_ANALYSIS_CREDITS = 5  # health-score and advisory each cost 5 credits
 
 # ---------------------------------------------------------------------------
 # Analysis endpoints
@@ -72,12 +73,12 @@ async def prompt_health_score(
         user_id=str(current_user.user_id),
     )
 
-    token_count = result.pop("_token_usage", 0)
-    if token_count:
-        await user_repo.deduct_tokens(current_user.user_id, token_count)
-
+    result.pop("_token_usage", None)
+    await user_repo.deduct_tokens(current_user.user_id, _ANALYSIS_CREDITS)
     usage_repo = UsageEventRepository(db)
-    await usage_repo.log(user_id=current_user.user_id, action="health_score", credits_spent=5)
+    await usage_repo.log(
+        user_id=current_user.user_id, action="health_score", credits_spent=_ANALYSIS_CREDITS
+    )
     await db.commit()
 
     return SuccessResponse(data=PromptHealthScoreResponse(**result))
@@ -112,12 +113,12 @@ async def prompt_advisory(
         user_id=str(current_user.user_id),
     )
 
-    token_count = result.pop("_token_usage", 0)
-    if token_count:
-        await user_repo.deduct_tokens(current_user.user_id, token_count)
-
+    result.pop("_token_usage", None)
+    await user_repo.deduct_tokens(current_user.user_id, _ANALYSIS_CREDITS)
     usage_repo = UsageEventRepository(db)
-    await usage_repo.log(user_id=current_user.user_id, action="advisory", credits_spent=5)
+    await usage_repo.log(
+        user_id=current_user.user_id, action="advisory", credits_spent=_ANALYSIS_CREDITS
+    )
     await db.commit()
 
     return SuccessResponse(data=PromptAdvisoryResponse(**result))

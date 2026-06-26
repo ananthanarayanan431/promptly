@@ -3321,10 +3321,31 @@ async def get_sentry_issue_detail(
         )
 
     if issue_resp.status_code != 200:
-        raise HTTPException(status_code=404, detail="Issue not found in Sentry")
+        sc = issue_resp.status_code
+        if sc == 404:
+            raise HTTPException(status_code=404, detail="Issue not found in Sentry")
+        if sc in (401, 403):
+            raise HTTPException(status_code=503, detail="Sentry auth failed — check token")
+        raise HTTPException(status_code=502, detail=f"Sentry returned {sc}")
 
     issue = issue_resp.json()
-    event_data: dict[str, Any] = {}
+    event_data: dict[str, Any] = {
+        "event_id": "",
+        "timestamp": "",
+        "user": {
+            "id": None,
+            "email": None,
+            "ip": None,
+            "geo_city": None,
+            "geo_country": None,
+            "geo_region": None,
+        },
+        "tags": [],
+        "exception": None,
+        "request": None,
+        "breadcrumbs": [],
+        "release": None,
+    }
 
     if event_resp.status_code == 200:
         event = event_resp.json()
@@ -3361,14 +3382,27 @@ async def get_sentry_issue_detail(
             elif etype == "request":
                 req = entry["data"]
                 raw_headers = req.get("headers") or []
-                exception_info_req_headers = (
+                all_headers = (
                     raw_headers if isinstance(raw_headers, list) else list(raw_headers.items())
                 )
+                safe_header_names = frozenset(
+                    {
+                        "content-type",
+                        "accept",
+                        "user-agent",
+                        "accept-encoding",
+                        "accept-language",
+                        "content-length",
+                    }
+                )
+                safe_headers = [
+                    (str(k), str(v)) for k, v in all_headers if str(k).lower() in safe_header_names
+                ]
                 request_info = {
                     "method": req.get("method", ""),
                     "url": req.get("url", ""),
                     "query_string": req.get("query", "") or "",
-                    "headers": exception_info_req_headers[:15],
+                    "headers": safe_headers,
                 }
 
             elif etype == "breadcrumbs":
@@ -3493,12 +3527,12 @@ def _build_ai_fix_prompt(payload: _AiFixRequest) -> str:
             for lineno, line_text in (frame.context or [])[-7:]:
                 marker = ">>>" if lineno == frame.lineno else "   "
                 parts.append(f"    {marker} {lineno:4d} | {line_text}")
-            if frame.vars:
-                vars_str = ", ".join(f"{k}={v}" for k, v in list(frame.vars.items())[:4])
-                parts.append(f"    vars: {vars_str}")
+            # vars are omitted — they can contain secrets (tokens, passwords, PII)
 
     if payload.request_method and payload.request_url:
-        parts.append(f"\nREQUEST: {payload.request_method} {payload.request_url}")
+        # Strip query string — may contain API keys or session tokens
+        url_no_qs = payload.request_url.split("?")[0]
+        parts.append(f"\nREQUEST: {payload.request_method} {url_no_qs}")
 
     if payload.breadcrumbs:
         parts.append("\nLAST BREADCRUMBS:")

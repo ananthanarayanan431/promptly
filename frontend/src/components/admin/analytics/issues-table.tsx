@@ -100,7 +100,7 @@ export function IssuesTable({
             onClick={() => onSelectIssue(issue.id)}
             role="button"
             tabIndex={0}
-            onKeyDown={e => e.key === 'Enter' && onSelectIssue(issue.id)}
+            onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && onSelectIssue(issue.id)}
             style={{
               display: 'grid',
               gridTemplateColumns: '1fr 70px 70px 80px 90px 90px',
@@ -109,9 +109,12 @@ export function IssuesTable({
               background: 'transparent',
               transition: 'background 0.12s',
               cursor: 'pointer',
+              outline: 'none',
             }}
             onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-2)')}
             onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+            onFocus={e => (e.currentTarget.style.boxShadow = 'inset 0 0 0 2px #6366f1')}
+            onBlur={e => (e.currentTarget.style.boxShadow = 'none')}
           >
             {/* Title + culprit */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
