@@ -30,7 +30,6 @@ export function AgentDomain() {
   const pdoSeries = getSeries(data, 'domain_pdo');
   const gepaSeries = getSeries(data, 'domain_gepa');
 
-  // Build PDO vs GEPA split data
   const splitDates = (pdoSeries?.data ?? []).map(p => p.date.slice(5));
   const splitData = splitDates.map((date, i) => ({
     date,

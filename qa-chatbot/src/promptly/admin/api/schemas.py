@@ -292,6 +292,43 @@ class BulkTokenResult(BaseModel):
     amount: int
 
 
+# ── Feature 8: Domain File Library ───────────────────────────────────────────
+
+
+class AdminDomainItem(BaseModel):
+    domain_id: uuid.UUID
+    domain_name: str
+    user_id: uuid.UUID
+    user_email: str
+    status: str
+    row_count: int | None
+    has_pdf: bool
+    has_dataset: bool
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=False)
+
+
+class AdminDomainList(BaseModel):
+    page: int
+    per_page: int
+    total: int
+    domains: list[AdminDomainItem]
+
+
+class AdminDomainQARow(BaseModel):
+    question: str
+    answer: str
+
+
+class AdminDomainQAResponse(BaseModel):
+    domain_id: uuid.UUID
+    domain_name: str
+    user_email: str
+    rows: list[AdminDomainQARow]
+    row_count: int
+
+
 # ── Analytics ─────────────────────────────────────────────────────────────────
 
 

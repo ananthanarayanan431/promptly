@@ -4,16 +4,21 @@ import uuid
 from datetime import UTC, datetime
 from typing import Annotated, Any
 
+import anyio
 import httpx
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from promptly.admin.api.schemas import (
     AdminApiKeyItem,
     AdminApiKeyList,
+    AdminDomainItem,
+    AdminDomainList,
+    AdminDomainQAResponse,
+    AdminDomainQARow,
     AdminOpenRouterInfo,
     AdminStats,
     AdminUserItem,
@@ -61,6 +66,9 @@ from promptly.core.exceptions import NotFoundException
 from promptly.core.user_context import UserContext
 from promptly.db.redis import get_redis_client
 from promptly.dependencies import get_db, require_admin
+from promptly.domain_prompt.data.models import DomainDataset, DomainPrompt
+from promptly.domain_prompt.infrastructure.storage import download_bytes as minio_download_bytes
+from promptly.domain_prompt.infrastructure.storage import download_text as minio_download_text
 from promptly.models.admin_audit_log import AdminAuditLog
 from promptly.models.api_key import ApiKey
 from promptly.models.message import Message
@@ -741,4 +749,209 @@ async def clear_endpoint_errors(
     deleted = await delete_endpoint_errors(db, path, window)
     return JSONResponse(
         content={"success": True, "data": {"deleted": deleted, "path": path, "window": window}}
+    )
+
+
+# ── Domain File Library (data-sharing users only) ─────────────────────────────
+
+
+@router.get(
+    "/domain-prompts",
+    summary="Admin — list shared domain prompts",
+    description=(
+        "Return a paginated list of domain prompts owned by users with data sharing enabled."
+        " Admin-only."
+    ),
+    response_model=SuccessResponse[AdminDomainList],
+    responses=error_responses(401, 403, 500),
+)
+async def list_shared_domain_prompts(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    page: int = Query(default=1, ge=1),
+    per_page: int = Query(default=20, ge=1, le=100),
+    _admin: Annotated[Any, Depends(require_admin)] = None,
+) -> SuccessResponse[AdminDomainList]:
+    total: int = (
+        await db.execute(
+            select(func.count())
+            .select_from(DomainPrompt)
+            .join(User, DomainPrompt.user_id == User.id)
+            .where(User.data_sharing_enabled == True)  # noqa: E712
+        )
+    ).scalar_one()
+
+    rows = (
+        await db.execute(
+            select(
+                DomainPrompt.id.label("domain_id"),
+                DomainPrompt.name.label("domain_name"),
+                DomainPrompt.user_id,
+                DomainPrompt.status,
+                DomainPrompt.created_at,
+                User.email.label("user_email"),
+                DomainDataset.pdf_key,
+                DomainDataset.dataset_key,
+                DomainDataset.row_count,
+            )
+            .join(User, DomainPrompt.user_id == User.id)
+            .outerjoin(DomainDataset, DomainDataset.domain_id == DomainPrompt.id)
+            .where(User.data_sharing_enabled == True)  # noqa: E712
+            .order_by(DomainPrompt.created_at.desc())
+            .offset((page - 1) * per_page)
+            .limit(per_page)
+        )
+    ).all()
+
+    domains = [
+        AdminDomainItem(
+            domain_id=r.domain_id,
+            domain_name=r.domain_name,
+            user_id=r.user_id,
+            user_email=r.user_email,
+            status=r.status,
+            row_count=r.row_count,
+            has_pdf=bool(r.pdf_key),
+            has_dataset=bool(r.dataset_key),
+            created_at=r.created_at,
+        )
+        for r in rows
+    ]
+
+    return SuccessResponse(
+        data=AdminDomainList(page=page, per_page=per_page, total=total, domains=domains)
+    )
+
+
+@router.get(
+    "/domain-prompts/{domain_id}/dataset",
+    summary="Admin — get QA pairs for a shared domain",
+    description=(
+        "Return the Q&A pairs for a domain owned by a user with data sharing enabled."
+        " Admin-only."
+    ),
+    response_model=SuccessResponse[AdminDomainQAResponse],
+    responses=error_responses(401, 403, 404, 500),
+)
+async def get_shared_domain_dataset(
+    domain_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _admin: Annotated[Any, Depends(require_admin)] = None,
+) -> SuccessResponse[AdminDomainQAResponse]:
+    import json
+
+    from promptly.config.env import get_minio_settings
+
+    row = (
+        await db.execute(
+            select(
+                DomainPrompt.name.label("domain_name"),
+                User.email.label("user_email"),
+                User.data_sharing_enabled,
+                DomainDataset.dataset_key,
+                DomainDataset.minio_bucket,
+            )
+            .join(User, DomainPrompt.user_id == User.id)
+            .outerjoin(DomainDataset, DomainDataset.domain_id == DomainPrompt.id)
+            .where(DomainPrompt.id == domain_id)
+        )
+    ).one_or_none()
+
+    if row is None:
+        raise NotFoundException(detail="Domain not found")
+    if not row.data_sharing_enabled:
+        raise HTTPException(status_code=403, detail="Data sharing not enabled for this user")
+    if not row.dataset_key:
+        return SuccessResponse(
+            data=AdminDomainQAResponse(
+                domain_id=domain_id,
+                domain_name=row.domain_name,
+                user_email=row.user_email,
+                rows=[],
+                row_count=0,
+            )
+        )
+
+    bucket = row.minio_bucket or get_minio_settings().MINIO_BUCKET_NAME
+    try:
+        raw = await anyio.to_thread.run_sync(lambda: minio_download_text(bucket, row.dataset_key))
+    except Exception as exc:
+        log.warning("admin_domain_dataset_read_error", domain_id=str(domain_id), error=str(exc))
+        raise HTTPException(status_code=500, detail="Failed to read dataset from storage") from exc
+
+    qa_rows: list[AdminDomainQARow] = []
+    for line in raw.strip().splitlines():
+        try:
+            obj = json.loads(line)
+            if isinstance(obj, dict) and "question" in obj and "answer" in obj:
+                qa_rows.append(
+                    AdminDomainQARow(question=str(obj["question"]), answer=str(obj["answer"]))
+                )
+        except Exception:  # noqa: BLE001, S112
+            continue
+
+    return SuccessResponse(
+        data=AdminDomainQAResponse(
+            domain_id=domain_id,
+            domain_name=row.domain_name,
+            user_email=row.user_email,
+            rows=qa_rows,
+            row_count=len(qa_rows),
+        )
+    )
+
+
+@router.get(
+    "/domain-prompts/{domain_id}/pdf",
+    summary="Admin — download PDF for a shared domain",
+    description=(
+        "Stream the source PDF for a domain owned by a user with data sharing enabled."
+        " Admin-only."
+    ),
+    response_model=None,
+    responses=error_responses(401, 403, 404, 500),
+)
+async def download_shared_domain_pdf(
+    domain_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _admin: Annotated[Any, Depends(require_admin)] = None,
+) -> StreamingResponse:
+    from promptly.config.env import get_minio_settings
+
+    row = (
+        await db.execute(
+            select(
+                DomainPrompt.name.label("domain_name"),
+                User.data_sharing_enabled,
+                DomainDataset.pdf_key,
+                DomainDataset.minio_bucket,
+            )
+            .join(User, DomainPrompt.user_id == User.id)
+            .outerjoin(DomainDataset, DomainDataset.domain_id == DomainPrompt.id)
+            .where(DomainPrompt.id == domain_id)
+        )
+    ).one_or_none()
+
+    if row is None:
+        raise NotFoundException(detail="Domain not found")
+    if not row.data_sharing_enabled:
+        raise HTTPException(status_code=403, detail="Data sharing not enabled for this user")
+    if not row.pdf_key:
+        raise HTTPException(status_code=404, detail="No PDF on file for this domain")
+
+    bucket = row.minio_bucket or get_minio_settings().MINIO_BUCKET_NAME
+    try:
+        pdf_bytes = await anyio.to_thread.run_sync(
+            lambda: minio_download_bytes(bucket, row.pdf_key)
+        )
+    except Exception as exc:
+        log.warning("admin_domain_pdf_read_error", domain_id=str(domain_id), error=str(exc))
+        raise HTTPException(status_code=500, detail="Failed to read PDF from storage") from exc
+
+    safe_name = "".join(c if c.isalnum() or c in "-_ " else "_" for c in row.domain_name)
+    filename = f"{safe_name}.pdf"
+
+    return StreamingResponse(
+        iter([pdf_bytes]),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

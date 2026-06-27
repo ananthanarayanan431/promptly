@@ -760,3 +760,37 @@ export interface BulkTokenResult {
   updated: number;
   amount: number;
 }
+
+// ── Admin Domain File Library ─────────────────────────────────────────────────
+
+export interface AdminDomainItem {
+  domain_id: string;
+  domain_name: string;
+  user_id: string;
+  user_email: string;
+  status: string;
+  row_count: number | null;
+  has_pdf: boolean;
+  has_dataset: boolean;
+  created_at: string;
+}
+
+export interface AdminDomainList {
+  page: number;
+  per_page: number;
+  total: number;
+  domains: AdminDomainItem[];
+}
+
+export interface AdminDomainQARow {
+  question: string;
+  answer: string;
+}
+
+export interface AdminDomainQAResponse {
+  domain_id: string;
+  domain_name: string;
+  user_email: string;
+  rows: AdminDomainQARow[];
+  row_count: number;
+}
