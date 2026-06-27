@@ -5,7 +5,8 @@ Values are calibrated for interactive web use. Paper's original values noted in 
 """
 
 # ── Tournament parameters (paper §4 / Appendix E) ────────────────────────────
-NUM_CANDIDATES = 10  # initial pool size (paper: 20–50; 10 balances cost/quality)
+NUM_CANDIDATES = 10  # full pool size reached after intro phase (paper: 20–50)
+INITIAL_CANDIDATES = 4  # tournament starts with this many; one added per round until full
 TOURNAMENT_ROUNDS = 30  # total D-TS rounds (matches paper)
 MUTATION_INTERVAL = 10  # mutation at rounds 10 and 20 (paper: same)
 MUTATION_SOURCES = 3  # top-K prompts used as mutation seeds (paper: top-3)

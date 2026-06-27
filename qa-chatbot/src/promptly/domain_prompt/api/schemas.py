@@ -99,8 +99,11 @@ class TournamentStateResponse(BaseModel):
     duel_i: int
     duel_j: int
     question: str
-    answer_a: str = ""
-    answer_b: str = ""
+    answer_a: str | None = None
+    answer_b: str | None = None
+    mutations_applied: int = 0
+    inference_error_count: int = 0
+    last_inference_error: str = ""
 
 
 class OptimizationRunResponse(BaseModel):
@@ -166,6 +169,8 @@ class GepaStateResponse(BaseModel):
     pool: list[GepaCandidate]
     pending: GepaPending | None
     budget_used: int
+    budget_max: int | None = None
+    n_pareto_size: int | None = None
     full_pct: float
     baseline: float | None
     current_iter: GepaCurrentIter | None

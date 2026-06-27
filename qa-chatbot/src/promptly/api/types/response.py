@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Generic, TypeVar
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from .error_codes import Error
 
@@ -22,6 +22,20 @@ class SuccessResponse(Response[DataT]):
 
     success: bool = True
     data: DataT = Field(..., description="The data of the response")
+
+    @model_validator(mode="after")
+    def _data_must_be_concrete_model(self) -> SuccessResponse[DataT]:
+        # When SuccessResponse is called without a type parameter (e.g.
+        # SuccessResponse(data=some_dict)) Pydantic v2 coerces the dict to the
+        # TypeVar bound — plain BaseModel — which has no __private_attributes__
+        # and silently produces a broken object that crashes on repr/str.
+        # Fail fast here so the bug surfaces at construction time.
+        if type(self.data) is BaseModel:
+            raise ValueError(
+                "SuccessResponse.data must be a concrete BaseModel subclass, not BaseModel itself. "
+                "Pass a typed model instance or use SuccessResponse[YourModel](data=...)."
+            )
+        return self
 
 
 class ErrorResponse(BaseModel):

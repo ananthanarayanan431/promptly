@@ -29,6 +29,7 @@ import asyncio
 import json
 import math
 import random
+import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -36,6 +37,7 @@ from typing import Any
 from promptly.domain_prompt.constants.optimizer import (
     GAMMA_ANSWER,
     GAMMA_REASONING,
+    INITIAL_CANDIDATES,
     JUDGE_MAX_TOKENS,
     MAX_SCORE_EXAMPLES,
     MAX_VAL_EXAMPLES,
@@ -375,7 +377,11 @@ async def _generate_mutation_batch(
 
 # ── Answering ─────────────────────────────────────────────────────────────────
 async def _get_answer(
-    prompt: str, question: str, llm: LLMClient, token_counter: list[int] | None = None
+    prompt: str,
+    question: str,
+    llm: LLMClient,
+    token_counter: list[int] | None = None,
+    error_log: list[str] | None = None,
 ) -> str:
     try:
         response = await llm.ainvoke(
@@ -388,7 +394,10 @@ async def _get_answer(
             _tally(response, token_counter)
         return str(response.content).strip()
     except Exception as exc:  # noqa: BLE001
-        _log.warning("inference_failed", error=str(exc))
+        msg = f"{type(exc).__name__}: {exc}"
+        _log.warning("inference_failed", error=msg, exc_info=True)
+        if error_log is not None:
+            error_log.append(msg[:300])
         return ""
 
 
@@ -412,6 +421,7 @@ async def _duel(
     judge_llm: LLMClient,
     rng: random.Random,
     token_counter: list[int] | None = None,
+    error_log: list[str] | None = None,
 ) -> tuple[int, float, str, str]:
     """Run one duel. Returns (winner_index, gamma, ans_a, ans_b).
 
@@ -427,8 +437,8 @@ async def _duel(
     second_prompt = prompt_a if flip else prompt_b
 
     ans_first, ans_second = await asyncio.gather(
-        _get_answer(first_prompt, question, llm, token_counter),
-        _get_answer(second_prompt, question, llm, token_counter),
+        _get_answer(first_prompt, question, llm, token_counter, error_log),
+        _get_answer(second_prompt, question, llm, token_counter, error_log),
     )
 
     # Unflip so ans_a/ans_b correspond to prompt_a/prompt_b (original order)
@@ -500,8 +510,27 @@ async def _score_one(
         if token_counter is not None:
             _tally(response, token_counter)
         raw = _strip_fences(str(response.content).strip())
-        obj: Any = json.loads(raw)
-        return max(0.0, min(1.0, float(obj.get("score", 0.0))))
+
+        # Parse: model may return {"score": 0.87}, a bare float, or embed JSON in prose
+        parsed: Any = None
+        try:
+            parsed = _json_loads_tolerant(raw)
+        except Exception:  # noqa: BLE001, S110
+            pass
+
+        if isinstance(parsed, dict):
+            return max(0.0, min(1.0, float(parsed.get("score", 0.0))))
+        if isinstance(parsed, int | float):
+            return max(0.0, min(1.0, float(parsed)))
+
+        # Regex fallback: handle JSON-style, plain-text, and case variants
+        # e.g. "score": 0.8  /  score: 0.8  /  Score = 0.8  /  Score: 0.8
+        m = re.search(r'[Ss]core["\s]*[:=]\s*([0-9]*\.?[0-9]+)', raw)
+        if m:
+            return max(0.0, min(1.0, float(m.group(1))))
+
+        _log.warning("score_judge_unparseable", raw=raw[:120])
+        return 0.0
     except Exception as exc:  # noqa: BLE001
         _log.warning("score_judge_failed", error=str(exc))
         return 0.0
@@ -631,9 +660,12 @@ async def _emit_tournament_state(
     duel_i: int,
     duel_j: int,
     question_snippet: str,
-    answer_a: str,
-    answer_b: str,
+    answer_a: str | None,
+    answer_b: str | None,
     t: int,
+    mutations_applied: int = 0,
+    inference_error_count: int = 0,
+    last_inference_error: str = "",
 ) -> None:
     if domain_id is None:
         return
@@ -653,8 +685,11 @@ async def _emit_tournament_state(
             "duel_i": duel_i,
             "duel_j": duel_j,
             "question": question_snippet[:200],
-            "answer_a": answer_a[:300],
-            "answer_b": answer_b[:300],
+            "answer_a": answer_a[:300] if answer_a is not None else None,
+            "answer_b": answer_b[:300] if answer_b is not None else None,
+            "mutations_applied": mutations_applied,
+            "inference_error_count": inference_error_count,
+            "last_inference_error": last_inference_error[:200],
         }
         await set_dp_tournament_state(domain_id, state)
     except Exception as exc:  # noqa: BLE001
@@ -731,7 +766,9 @@ async def optimize_domain_prompt(
             unique.append(v)
     initial_texts = unique[:num_candidates]
 
-    candidates = [_Candidate(text=t) for t in initial_texts]
+    n_initial = min(INITIAL_CANDIDATES, len(initial_texts))
+    candidates = [_Candidate(text=t) for t in initial_texts[:n_initial]]
+    pending_candidates = [_Candidate(text=t) for t in initial_texts[n_initial:]]
     wm = _WinMatrix(size=len(candidates))
 
     if len(candidates) < 2:
@@ -752,9 +789,48 @@ async def optimize_domain_prompt(
         rounds=num_rounds,
     )
 
+    # ── Emit initial state (round 0, INITIAL_CANDIDATES in pool) ──────
+    # The matrix grows naturally as the tournament runs — no need for a
+    # pre-tournament loop.  Just park the UI on the starting state.
+    if domain_id is not None:
+        try:
+            from promptly.domain_prompt.infrastructure.cache import set_dp_tournament_state
+
+            n = len(candidates)
+            await set_dp_tournament_state(
+                domain_id,
+                {
+                    "round": 0,
+                    "total_rounds": num_rounds,
+                    "candidate_count": n,
+                    "names": [f"C{i}" for i in range(n)],
+                    "copeland_scores": [0.0] * n,
+                    "avg_win_rates": [0.5] * n,
+                    "W": [[0.0] * n for _ in range(n)],
+                    "duel_i": 0,
+                    "duel_j": min(1, n - 1),
+                    "question": "",
+                    "answer_a": None,
+                    "answer_b": None,
+                    "mutations_applied": 0,
+                    "inference_error_count": 0,
+                    "last_inference_error": "",
+                },
+            )
+        except Exception as exc:  # noqa: BLE001
+            _log.warning("candidate_reveal_emit_failed", error=str(exc))
+
     # ── PDO tournament (D-TS) ─────────────────────────────────────────────────
     mutation_tip_idx = 0
+    mutations_applied = 0
+    inference_error_log: list[str] = []
+
     for round_idx in range(num_rounds):
+        # Grow the pool by one candidate per round until all are introduced.
+        if pending_candidates:
+            candidates.append(pending_candidates.pop(0))
+            wm.add_candidate()
+
         t = round_idx + 1  # 1-indexed round count (used in UCB/LCB log term)
 
         i, j = _select_duel_pair(wm, rng, t)
@@ -770,12 +846,29 @@ async def optimize_domain_prompt(
             judge_llm,
             rng,
             token_counter,
+            inference_error_log,
         )
         winner_idx, loser_idx = (i, j) if duel_result == 0 else (j, i)
-        wm.record_win(winner_idx, loser_idx, gamma)
+        # Skip win recording when both answers are empty — both prompts failed to answer,
+        # so the judge result is noise and should not skew Copeland scores.
+        if ans_i or ans_j:
+            wm.record_win(winner_idx, loser_idx, gamma)
 
         await _emit_tournament_state(
-            domain_id, round_idx, num_rounds, candidates, wm, i, j, question, ans_i, ans_j, t
+            domain_id,
+            round_idx,
+            num_rounds,
+            candidates,
+            wm,
+            i,
+            j,
+            question,
+            ans_i,
+            ans_j,
+            t,
+            mutations_applied=mutations_applied,
+            inference_error_count=len(inference_error_log),
+            last_inference_error=inference_error_log[-1] if inference_error_log else "",
         )
 
         if cancel_check is not None and await cancel_check():
@@ -817,6 +910,8 @@ async def optimize_domain_prompt(
                     wm.add_candidate()
                     existing_texts.add(text)
                     added += 1
+            if added > 0:
+                mutations_applied += 1
             _log.info(
                 "mutation_round_complete",
                 round=t,

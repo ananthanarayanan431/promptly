@@ -26,7 +26,15 @@ _background_tasks: set[asyncio.Task[None]] = set()
 _log_semaphore = asyncio.Semaphore(20)
 
 
-async def _write_request_log(method: str, path: str, status_code: int, duration_ms: int) -> None:
+async def _write_request_log(
+    method: str,
+    path: str,
+    status_code: int,
+    duration_ms: int,
+    user_id: str | None,
+    query_params: str | None = None,
+    error_message: str | None = None,
+) -> None:
     from promptly.db.session import AsyncSessionLocal  # lazy to avoid circular import
     from promptly.models.api_request_log import ApiRequestLog  # lazy to avoid circular import
 
@@ -39,6 +47,9 @@ async def _write_request_log(method: str, path: str, status_code: int, duration_
                         path=path,
                         status_code=status_code,
                         duration_ms=duration_ms,
+                        user_id=user_id,
+                        query_params=query_params,
+                        error_message=error_message,
                     )
                 )
                 await session.commit()
@@ -46,26 +57,82 @@ async def _write_request_log(method: str, path: str, status_code: int, duration_
             pass
 
 
+def _extract_user_id(auth_header: str) -> str | None:
+    """Decode JWT sub claim without verification — for logging only."""
+    if not auth_header.startswith("Bearer "):
+        return None
+    try:
+        import base64
+        import json as _json
+
+        payload_b64 = auth_header[7:].split(".")[1]
+        payload_b64 += "=" * (-len(payload_b64) % 4)
+        return str(_json.loads(base64.b64decode(payload_b64)).get("sub") or "") or None
+    except Exception:  # noqa: BLE001, S110
+        return None
+
+
 class HttpRequestLogMiddleware(BaseHTTPMiddleware):
     """Append every request to api_request_logs via a fire-and-forget background task."""
 
     async def dispatch(self, request: Request, call_next: Any) -> Any:
+        from starlette.responses import Response as _StarletteResponse
+
         path = request.url.path
         if path in _SKIP_PATHS or any(path.startswith(p) for p in _LOG_SKIP_PREFIXES):
             return await call_next(request)
 
         start = time.monotonic()
         status_code = 500
+        error_message: str | None = None
+        raw_query = request.url.query
+        query_params: str | None = raw_query[:500] if raw_query else None
+
         try:
             response = await call_next(request)
             status_code = response.status_code
+
+            # Capture JSON error body for 4xx/5xx without breaking streaming responses
+            if status_code >= 400 and "application/json" in response.headers.get(
+                "content-type", ""
+            ):
+                try:
+                    chunks: list[bytes] = []
+                    async for chunk in response.body_iterator:
+                        chunks.append(chunk)
+                    body = b"".join(chunks)
+                    error_message = body.decode("utf-8", errors="replace")[:500]
+                    headers = {
+                        k: v for k, v in response.headers.items() if k.lower() != "content-length"
+                    }
+                    response = _StarletteResponse(
+                        content=body,
+                        status_code=status_code,
+                        headers=headers,
+                        media_type="application/json",
+                    )
+                except Exception:  # noqa: BLE001, S110
+                    pass
+
             return response
+        except Exception as exc:  # noqa: BLE001
+            error_message = f"{type(exc).__name__}: {exc}"[:500]
+            raise
         finally:
             duration_ms = int((time.monotonic() - start) * 1000)
             normalized = _NUMERIC_ID_RE.sub("{id}", _UUID_RE.sub("{id}", path))[:255]
+            user_id = _extract_user_id(request.headers.get("Authorization", ""))
             try:
                 task: asyncio.Task[None] = asyncio.create_task(
-                    _write_request_log(request.method, normalized, status_code, duration_ms)
+                    _write_request_log(
+                        request.method,
+                        normalized,
+                        status_code,
+                        duration_ms,
+                        user_id,
+                        query_params=query_params,
+                        error_message=error_message,
+                    )
                 )
                 _background_tasks.add(task)
                 task.add_done_callback(_background_tasks.discard)

@@ -749,6 +749,7 @@ export function GepaOptimizer({
   scoreAfter,
   roundsRun,
   poolSize,
+  isRunning,
 }: {
   domainId: string;
   optimizedPrompt: string | null;
@@ -758,17 +759,26 @@ export function GepaOptimizer({
   scoreAfter?: number | null;
   roundsRun?: number | null;
   poolSize?: number | null;
+  isRunning?: boolean;
 }) {
-  const { data: state } = useQuery<GepaState | null>({
+  const { data: state, isError, error } = useQuery<GepaState | null>({
     queryKey: ['gepa-state', domainId],
     queryFn: async () => {
-      const res = await api.get<{ data: GepaState | null }>(`/api/v1/domain-prompts/${domainId}/gepa-state`);
-      return res.data.data ?? null;
+      try {
+        const res = await api.get<{ data: GepaState | null }>(`/api/v1/domain-prompts/${domainId}/gepa-state`);
+        return res.data.data ?? null;
+      } catch (err) {
+        // Only 404 means state not written yet; all other errors are real failures.
+        const status = (err as { response?: { status?: number } }).response?.status;
+        if (status === 404) return null;
+        throw err;
+      }
     },
     // Poll fast while a run is in progress; back off to 30 s when idle.
     refetchInterval: (query) => {
       const s = query.state.data;
-      return s && s.phase !== 'completed' ? 2000 : 30_000;
+      if (isRunning || (s && s.phase !== 'completed')) return 2000;
+      return 30_000;
     },
     staleTime: 0,
   });
@@ -781,10 +791,14 @@ export function GepaOptimizer({
     setTimeout(() => setCopied(false), 2000);
   }
 
-  const isRunning   = !!state && state.phase !== 'completed';
-  const isCompleted = state?.phase === 'completed';
-  const noState     = !state && optimizedPrompt !== null;
-  const isIdle      = !state && !optimizedPrompt;
+  const isLiveRunning = !!state && state.phase !== 'completed';
+  const isCompleted   = state?.phase === 'completed';
+  const noState       = !state && optimizedPrompt !== null;
+  // Idle only when not actively running (no prop + no live state + no result)
+  const isIdle        = !isRunning && !state && !optimizedPrompt;
+  // Backend hasn't emitted gepa-state yet, but a run is definitely in progress.
+  // Guard on !isError so a persistent 500/network failure doesn't show "starting" forever.
+  const isStarting    = !!isRunning && !state && !isError;
 
   const best = state?.pool.find(c => c.star) ?? state?.pool[state.pool.length - 1] ?? null;
   const frontier = state?.pool.length
@@ -799,16 +813,55 @@ export function GepaOptimizer({
 
   if (isIdle) return <GepaIdleCard />;
 
+  if (isError) return (
+    <div className="ply-card" style={{ padding: '20px 22px', display: 'flex', alignItems: 'flex-start', gap: 12, background: 'var(--danger-soft)', border: '1px solid var(--danger)' }}>
+      <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="var(--danger)" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 1 }}>
+        <circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/>
+      </svg>
+      <div>
+        <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--danger)', marginBottom: 4 }}>Failed to load GEPA state</div>
+        <div style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>
+          {(error as { message?: string })?.message ?? 'An unexpected error occurred while polling the optimization state.'}
+        </div>
+      </div>
+    </div>
+  );
+
+  if (isStarting) return (
+    <div className="ply-card anim-fade" style={{ padding: '24px 22px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+        <span style={{
+          width: 38, height: 38, borderRadius: 10, flexShrink: 0,
+          background: 'var(--primary-soft)',
+          display: 'grid', placeItems: 'center',
+        }}>
+          <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round"
+            style={{ animation: 'spin 2.5s linear infinite' }}>
+            <path d="M21 12a9 9 0 11-6.219-8.56" />
+          </svg>
+        </span>
+        <div>
+          <div style={{ fontWeight: 600, fontSize: 14 }}>GEPA starting…</div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+            Splitting dataset, scoring seed baseline, initialising candidate pool.
+          </div>
+        </div>
+      </div>
+      <div className="ply-progress indet" style={{ height: 4 }}><i /></div>
+      <div style={{ fontSize: 12, color: 'var(--text-subtle)' }}>Live iteration view will appear once the first rollout completes.</div>
+    </div>
+  );
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
       {/* Stats bar — shown while running or when we have live completed state */}
-      {(isRunning || isCompleted) && state && (
+      {(isLiveRunning || isCompleted) && state && (
         <div className="ply-card" style={{ padding: '14px 18px', display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 0 }}>
           <GepaStat
             label="Phase"
             value={<span style={{ fontSize: 13 }}>{phaseLabel}</span>}
-            hint={isRunning ? <span className="ply-dot ply-dot-pulse" style={{ background: 'var(--primary)' }} /> : null}
+            hint={isLiveRunning ? <span className="ply-dot ply-dot-pulse" style={{ background: 'var(--primary)' }} /> : null}
           />
           <GepaStat
             label="Best score"
@@ -838,7 +891,7 @@ export function GepaOptimizer({
       )}
 
       {/* Live workspace */}
-      {isRunning && state && (
+      {isLiveRunning && state && (
         <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 14, alignItems: 'start' }}>
 
           {/* Left: rail + budget (sticky) */}

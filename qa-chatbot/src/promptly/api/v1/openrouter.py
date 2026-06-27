@@ -89,7 +89,7 @@ _COST_IO: dict[str, tuple[float, float]] = {
     "gemini-2.0-flash": (0.10, 0.40),
     "gpt-4o-mini": (0.15, 0.60),
     # Medium tier additions
-    "claude-3.5-haiku": (0.80, 4.00),
+    "claude-3-haiku": (0.25, 1.25),
     "gemini-2.5-flash": (0.30, 2.50),
     "grok-4.3": (1.25, 2.50),
     # High tier
