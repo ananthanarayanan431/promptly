@@ -120,6 +120,26 @@ async def list_domains(
     return SuccessResponse(data=DomainListResponse(domains=[_to_response(d) for d in domains]))
 
 
+@router.get(
+    "/runs",
+    response_model=SuccessResponse[RunListResponse],
+    dependencies=[Depends(_read_limiter)],
+    summary="List all optimization runs",
+    description="Return all past optimization runs across all domain projects for the current user.",  # noqa: E501
+    responses=error_responses(401, 429, 500),
+)
+async def list_all_runs(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[UserContext, Depends(get_current_user)],
+) -> SuccessResponse[RunListResponse]:
+    """Return all optimization runs (PDO + GEPA) for the current user, newest first."""
+    run_repo = DomainOptimizationRunRepository(db)
+    runs = await run_repo.get_all_runs_for_user(current_user.user_id)
+    return SuccessResponse(
+        data=RunListResponse(runs=[OptimizationRunResponse.model_validate(r) for r in runs])
+    )
+
+
 @router.post(
     "/",
     response_model=SuccessResponse[CreateDomainJobResponse],
