@@ -8,12 +8,13 @@ import { AgentOptimizer } from './analytics/agent-optimizer';
 import { AgentSkillOpt } from './analytics/agent-skillopt';
 import { AgentDomain } from './analytics/agent-domain';
 import { AgentBridge } from './analytics/agent-bridge';
+import { AgentDomainFiles } from './analytics/agent-domain-files';
 import { DeveloperMetrics } from './analytics/developer-metrics';
 
 type TopToggle = 'platform' | 'agents';
 
 type PlatformView = 'feature_engagement' | 'login_activity' | 'user_metrics' | 'developer_metrics';
-type AgentView = 'prompt_optimizer' | 'skill_builder' | 'domain_pdogepa' | 'bridge';
+type AgentView = 'prompt_optimizer' | 'skill_builder' | 'domain_pdogepa' | 'domain_files' | 'bridge';
 
 const PLATFORM_ITEMS: { id: PlatformView; label: string }[] = [
   { id: 'feature_engagement',  label: 'Feature Engagement' },
@@ -22,10 +23,11 @@ const PLATFORM_ITEMS: { id: PlatformView; label: string }[] = [
   { id: 'developer_metrics',   label: 'Developer Metrics' },
 ];
 
-const AGENT_ITEMS: { id: AgentView; label: string }[] = [
+const AGENT_ITEMS: { id: AgentView; label: string; child?: boolean }[] = [
   { id: 'prompt_optimizer', label: 'Prompt Optimizer' },
   { id: 'skill_builder',    label: 'Skill Builder' },
   { id: 'domain_pdogepa',   label: 'Domain PDO/GEPA' },
+  { id: 'domain_files',     label: 'Domain Files', child: true },
   { id: 'bridge',           label: 'Bridge' },
 ];
 
@@ -52,6 +54,53 @@ function SidebarItem({
   );
 }
 
+function SidebarChildItem({
+  label, active, onClick,
+}: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'stretch', paddingLeft: 14 }}>
+      {/* Tree connector: vertical line + horizontal elbow */}
+      <div style={{
+        display: 'flex', flexDirection: 'column', alignItems: 'center',
+        width: 16, flexShrink: 0, marginRight: 4,
+      }}>
+        <div style={{
+          width: 1, flex: 1, maxHeight: 14,
+          background: 'var(--border)',
+        }} />
+        <div style={{
+          width: 10, height: 1, alignSelf: 'flex-start', marginLeft: 0,
+          background: 'var(--border)',
+        }} />
+        <div style={{ flex: 1 }} />
+      </div>
+
+      <button
+        onClick={onClick}
+        style={{
+          flex: 1, display: 'flex', alignItems: 'center', gap: 6,
+          padding: '7px 10px', textAlign: 'left',
+          background: active ? 'color-mix(in oklab, var(--primary) 12%, transparent)' : 'transparent',
+          color: active ? 'var(--primary)' : 'var(--text-muted)',
+          border: 'none', borderRadius: 7,
+          fontSize: 12.5, fontWeight: active ? 600 : 400,
+          cursor: 'pointer', transition: 'all .12s',
+        }}
+      >
+        {/* Arrow chevron */}
+        <svg
+          width="9" height="9" viewBox="0 0 9 9" fill="none"
+          style={{ flexShrink: 0, opacity: active ? 1 : 0.45 }}
+        >
+          <path d="M2 1.5 L6 4.5 L2 7.5" stroke={active ? 'var(--primary)' : 'currentColor'}
+            strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+        {label}
+      </button>
+    </div>
+  );
+}
+
 export function ViewTab() {
   const [toggle, setToggle] = useState<TopToggle>('platform');
   const [platformView, setPlatformView] = useState<PlatformView>('feature_engagement');
@@ -75,6 +124,8 @@ export function ViewTab() {
       desc: 'SkillOpt runs, score improvements, edit acceptance, and tier breakdown' },
     domain_pdogepa:     { title: 'Domain PDO/GEPA',
       desc: 'Domain prompt optimization and dataset augmentation usage' },
+    domain_files:       { title: 'Domain Files',
+      desc: 'View and download PDF files and Q&A datasets from users who have enabled data sharing' },
     bridge:             { title: 'Bridge',
       desc: 'Prompt bridge usage, token consumption, and unique users' },
   };
@@ -107,17 +158,28 @@ export function ViewTab() {
 
         {/* Sidebar nav items */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {sidebarItems.map(item => (
-            <SidebarItem
-              key={item.id}
-              label={item.label}
-              active={activeId === item.id}
-              onClick={() => {
-                if (toggle === 'platform') setPlatformView(item.id as PlatformView);
-                else setAgentView(item.id as AgentView);
-              }}
-            />
-          ))}
+          {(sidebarItems as { id: string; label: string; child?: boolean }[]).map(item => {
+            const isActive = activeId === item.id;
+            const handleClick = () => {
+              if (toggle === 'platform') setPlatformView(item.id as PlatformView);
+              else setAgentView(item.id as AgentView);
+            };
+            return item.child ? (
+              <SidebarChildItem
+                key={item.id}
+                label={item.label}
+                active={isActive}
+                onClick={handleClick}
+              />
+            ) : (
+              <SidebarItem
+                key={item.id}
+                label={item.label}
+                active={isActive}
+                onClick={handleClick}
+              />
+            );
+          })}
         </div>
       </div>
 
@@ -142,6 +204,7 @@ export function ViewTab() {
         {toggle === 'agents' && agentView === 'prompt_optimizer' && <AgentOptimizer />}
         {toggle === 'agents' && agentView === 'skill_builder' && <AgentSkillOpt />}
         {toggle === 'agents' && agentView === 'domain_pdogepa' && <AgentDomain />}
+        {toggle === 'agents' && agentView === 'domain_files' && <AgentDomainFiles />}
         {toggle === 'agents' && agentView === 'bridge' && <AgentBridge />}
       </div>
     </div>
