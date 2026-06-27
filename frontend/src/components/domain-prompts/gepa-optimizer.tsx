@@ -761,7 +761,7 @@ export function GepaOptimizer({
   poolSize?: number | null;
   isRunning?: boolean;
 }) {
-  const { data: state } = useQuery<GepaState | null>({
+  const { data: state, isError, error } = useQuery<GepaState | null>({
     queryKey: ['gepa-state', domainId],
     queryFn: async () => {
       try {
@@ -796,8 +796,9 @@ export function GepaOptimizer({
   const noState       = !state && optimizedPrompt !== null;
   // Idle only when not actively running (no prop + no live state + no result)
   const isIdle        = !isRunning && !state && !optimizedPrompt;
-  // Backend hasn't emitted gepa-state yet, but a run is definitely in progress
-  const isStarting    = !!isRunning && !state;
+  // Backend hasn't emitted gepa-state yet, but a run is definitely in progress.
+  // Guard on !isError so a persistent 500/network failure doesn't show "starting" forever.
+  const isStarting    = !!isRunning && !state && !isError;
 
   const best = state?.pool.find(c => c.star) ?? state?.pool[state.pool.length - 1] ?? null;
   const frontier = state?.pool.length
@@ -811,6 +812,20 @@ export function GepaOptimizer({
     : 'Done';
 
   if (isIdle) return <GepaIdleCard />;
+
+  if (isError) return (
+    <div className="ply-card" style={{ padding: '20px 22px', display: 'flex', alignItems: 'flex-start', gap: 12, background: 'var(--danger-soft)', border: '1px solid var(--danger)' }}>
+      <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="var(--danger)" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 1 }}>
+        <circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/>
+      </svg>
+      <div>
+        <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--danger)', marginBottom: 4 }}>Failed to load GEPA state</div>
+        <div style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>
+          {(error as { message?: string })?.message ?? 'An unexpected error occurred while polling the optimization state.'}
+        </div>
+      </div>
+    </div>
+  );
 
   if (isStarting) return (
     <div className="ply-card anim-fade" style={{ padding: '24px 22px', display: 'flex', flexDirection: 'column', gap: 18 }}>

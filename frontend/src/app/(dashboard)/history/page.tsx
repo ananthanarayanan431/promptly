@@ -490,7 +490,7 @@ export default function HistoryPage() {
   const { data: runsData, isLoading: runsLoading } = useQuery<RunListResponse>({
     queryKey: ['all-domain-runs'],
     queryFn: async () => {
-      const res = await api.get<{ data: RunListResponse }>('/api/v1/domain-prompts/runs');
+      const res = await api.get<{ data: RunListResponse }>('/api/v1/domain-prompts/runs?limit=500');
       return res.data.data;
     },
     staleTime: 30_000,
