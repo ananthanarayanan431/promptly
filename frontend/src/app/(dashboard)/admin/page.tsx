@@ -23,17 +23,17 @@ type Tab =
   | 'audit-log'
   | 'jobs';
 
-const TABS: { id: Tab; label: string; icon: string; desc: string }[] = [
-  { id: 'overview',    label: 'Overview',      icon: '📊', desc: 'Platform KPIs, usage trends, top consumers' },
-  { id: 'users',       label: 'Users',         icon: '👥', desc: 'All accounts, token balances, bulk actions, activity drill-down' },
-  { id: 'rate-limits', label: 'Rate Limits',   icon: '⚡', desc: 'Live Redis counters, endpoint pressure, per-user reset' },
-  { id: 'errors',      label: 'Errors',        icon: '🐛', desc: 'GlitchTip issues, occurrences, status' },
-  { id: 'health',      label: 'Health',        icon: '🩺', desc: 'Redis, database, Celery worker and queue status' },
-  { id: 'jobs',        label: 'Jobs',          icon: '⚙️',  desc: 'Active and recent chat and domain-prompt jobs' },
-  { id: 'api-keys',    label: 'API Keys',      icon: '🔑', desc: 'All user API keys with revocation controls' },
-  { id: 'audit-log',   label: 'Audit Log',     icon: '📋', desc: 'Admin action history with details and timestamps' },
-  { id: 'prompts',     label: 'User Activity', icon: '👤', desc: 'Per-user session history, prompt detail, and usage breakdown' },
-  { id: 'openrouter',  label: 'OpenRouter',    icon: '🤖', desc: 'API credits, spend, and model usage' },
+const TABS: { id: Tab; label: string; desc: string }[] = [
+  { id: 'overview',    label: 'Overview',      desc: 'Platform KPIs, usage trends, top consumers' },
+  { id: 'users',       label: 'Users',         desc: 'All accounts, token balances, bulk actions, activity drill-down' },
+  { id: 'rate-limits', label: 'Rate Limits',   desc: 'Live Redis counters, endpoint pressure, per-user reset' },
+  { id: 'errors',      label: 'Errors',        desc: 'GlitchTip issues, occurrences, status' },
+  { id: 'health',      label: 'Health',        desc: 'Redis, database, Celery worker and queue status' },
+  { id: 'jobs',        label: 'Jobs',          desc: 'Active and recent chat and domain-prompt jobs' },
+  { id: 'api-keys',    label: 'API Keys',      desc: 'All user API keys with revocation controls' },
+  { id: 'audit-log',   label: 'Audit Log',     desc: 'Admin action history with details and timestamps' },
+  { id: 'prompts',     label: 'User Activity', desc: 'Per-user session history, prompt detail, and usage breakdown' },
+  { id: 'openrouter',  label: 'OpenRouter',    desc: 'API credits, spend, and model usage' },
 ];
 
 export default function AdminPage() {
@@ -53,7 +53,7 @@ export default function AdminPage() {
             </p>
           </div>
           <span style={{ fontSize: 11.5, padding: '4px 10px', borderRadius: 99, background: 'color-mix(in oklab, var(--danger) 10%, transparent)', color: 'var(--danger)', fontWeight: 700, border: '1px solid color-mix(in oklab, var(--danger) 25%, transparent)' }}>
-            🔒 Admin only
+            Admin only
           </span>
         </div>
 
@@ -80,7 +80,6 @@ export default function AdminPage() {
                 flexShrink: 0,
               }}
             >
-              <span style={{ fontSize: 14 }}>{tab.icon}</span>
               {tab.label}
             </button>
           ))}
